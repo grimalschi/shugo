@@ -1,0 +1,17 @@
+---
+import { getProducts } from "../lib/shop"
+
+const products = await getProducts()
+const links = [
+  { href: "/", title: "Home" },
+  { href: "/about", title: "About the shop" },
+]
+---
+<header>
+  <nav>
+    <g-for each={links} as="link">
+      <a href={link.href}>{link.title}</a>
+    </g-for>
+  </nav>
+  <small>Products in the catalog: {products.length}</small>
+</header>

@@ -1,0 +1,6 @@
+# Build output of Shugo projects and of the framework itself
+_build/
+/bin/
+node_modules/
+*.test
+*.prof
