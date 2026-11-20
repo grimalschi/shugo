@@ -13,6 +13,7 @@ The words of the author of the project, 20 November 2026 year.
 - You need to analyze how patterns use variables and data: the dependency tree returns.
 - The template can see data code variables not in pure form, but through serialization. The author named Seroval for this; what exactly to copy is discussed below.
 - How data gets into pages and components can be changed for the sake of a simple and quick comparison. The main thing is the effectiveness of updates.
+- In the second variant, changes are recognized from the log that triggers on tables, and not from the mandatory field `updated_at`: the log sees inserts and deletions, and it cannot be forgotten to update. Confirmed by 20 on November 2026 year.
 
 ## Two trial implementations
 
