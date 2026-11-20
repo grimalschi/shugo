@@ -218,6 +218,9 @@ func summary(verb string, r *evaluate.Report) string {
 	if r.Pages.Added+r.Pages.Changed+r.Pages.Removed+r.Shared.Added+r.Shared.Changed+r.Shared.Removed == 0 {
 		out.WriteString("\n  nothing has changed")
 	}
+	if r.Checked && len(r.Unseen) == 0 {
+		out.WriteString("\n  checked: everything was computed, and every page that came out different had been seen to read what has changed")
+	}
 	return out.String()
 }
 

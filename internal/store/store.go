@@ -5,8 +5,8 @@
 //
 // The store keeps the fingerprint of what every page and every shared block
 // was computed from: an update computes a page again only when that
-// differs. Every update compares all of them, so they are kept together,
-// as one value that is read at once.
+// differs. Every update compares all of them, so they are kept together, in
+// a few hundred values that are read at once, and not with the records.
 //
 // The store also knows who shows what: which pages and shared blocks show a
 // shared block, and how many records use the values kept under a name. An
@@ -32,7 +32,7 @@ import (
 
 // layout names the set of tables below. A store laid out in another way is
 // emptied: it holds nothing that a build cannot make again.
-const layout = "4"
+const layout = "5"
 
 const schema = `
 CREATE TABLE meta   (name TEXT PRIMARY KEY, value BLOB NOT NULL) WITHOUT ROWID;
@@ -142,9 +142,12 @@ const (
 	metaSite    = "site"    // the program of that project
 	metaVersion = "version" // grows with every update
 	metaTotals  = "totals"  // how many pages, shared blocks and values there are
-	// The fingerprints of what the records were computed from.
-	metaPagePrints   = "prints of pages"
-	metaSharedPrints = "prints of shared blocks"
+)
+
+// What the fingerprints are of: the names of their values in meta start so.
+const (
+	PagePrints   = "prints of pages "
+	SharedPrints = "prints of shared blocks "
 )
 
 // reader reads through one transaction, so everything it returns belongs to
@@ -288,39 +291,106 @@ func (r *reader) Totals() (Totals, error) {
 	return t, err
 }
 
-// Prints is the fingerprints of what pages and shared blocks were computed
-// from: of pages by their addresses, of shared blocks by their names.
-type Prints struct{ Pages, Shared map[string]uint64 }
-
-// Prints returns the fingerprints the store keeps.
-func (r *reader) Prints() (Prints, error) {
-	var out Prints
-	var err error
-	if out.Pages, err = r.prints(metaPagePrints); err != nil {
-		return out, err
-	}
-	out.Shared, err = r.prints(metaSharedPrints)
-	return out, err
+// Prints are the fingerprints of what pages, or shared blocks, were computed
+// from, by the address of the page or the name of the block. They are kept
+// in parts, by a hash of the name, so that an update which changes a few of
+// them writes a few kilobytes and not all of them.
+type Prints struct {
+	parts [printParts]map[string]uint64
+	moved [printParts]bool
+	count int
 }
 
-// A list of fingerprints is written as the length of a name, the name and
-// eight bytes, over and over.
-func (r *reader) prints(name string) (map[string]uint64, error) {
-	data, _, err := r.blob(r.meta, name)
+const printParts = 256
+
+// part tells which part a name belongs to.
+func part(name string) int {
+	hash := uint32(2166136261)
+	for i := 0; i < len(name); i++ {
+		hash = (hash ^ uint32(name[i])) * 16777619
+	}
+	return int(hash % printParts)
+}
+
+// Get returns the fingerprint kept under a name.
+func (p *Prints) Get(name string) (print uint64, found bool) {
+	print, found = p.parts[part(name)][name]
+	return print, found
+}
+
+// Set keeps a fingerprint under a name.
+func (p *Prints) Set(name string, print uint64) {
+	at := part(name)
+	if p.parts[at] == nil {
+		p.parts[at] = map[string]uint64{}
+	}
+	if kept, found := p.parts[at][name]; !found {
+		p.count++
+	} else if kept == print {
+		return
+	}
+	p.parts[at][name], p.moved[at] = print, true
+}
+
+// Delete drops the fingerprint kept under a name.
+func (p *Prints) Delete(name string) {
+	at := part(name)
+	if _, found := p.parts[at][name]; found {
+		delete(p.parts[at], name)
+		p.moved[at] = true
+		p.count--
+	}
+}
+
+// Len tells how many fingerprints there are.
+func (p *Prints) Len() int { return p.count }
+
+// Names returns the names that fingerprints are kept under.
+func (p *Prints) Names() []string {
+	names := make([]string, 0, p.count)
+	for _, part := range p.parts {
+		for name := range part {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+// Prints returns the fingerprints the store keeps: of is PagePrints or
+// SharedPrints.
+func (r *reader) Prints(of string) (*Prints, error) {
+	rows, err := r.tx.Query("SELECT name, value FROM meta WHERE name >= ? AND name < ?", of, of+"\xff")
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[string]uint64, len(data)/24)
-	for len(data) > 0 {
-		length, size := binary.Uvarint(data)
-		if size <= 0 || uint64(len(data)-size) < length+8 {
-			return nil, fmt.Errorf("store: the %s are damaged", name)
+	defer rows.Close()
+	out := &Prints{}
+	for rows.Next() {
+		var name string
+		var data []byte
+		if err := rows.Scan(&name, &data); err != nil {
+			return nil, err
 		}
-		data = data[size:]
-		out[string(data[:length])] = binary.LittleEndian.Uint64(data[length:])
-		data = data[length+8:]
+		at, err := strconv.Atoi(strings.TrimPrefix(name, of))
+		if err != nil || at < 0 || at >= printParts {
+			return nil, fmt.Errorf("store: there is no part %q of the fingerprints", name)
+		}
+		// A part is written as the length of a name, the name and eight
+		// bytes, over and over.
+		list := make(map[string]uint64, len(data)/24)
+		for len(data) > 0 {
+			length, size := binary.Uvarint(data)
+			if size <= 0 || uint64(len(data)-size) < length+8 {
+				return nil, fmt.Errorf("store: the %s are damaged", name)
+			}
+			data = data[size:]
+			list[string(data[:length])] = binary.LittleEndian.Uint64(data[length:])
+			data = data[length+8:]
+		}
+		out.parts[at] = list
+		out.count += len(list)
 	}
-	return out, nil
+	return out, rows.Err()
 }
 
 // within returns statements that run inside a transaction.
@@ -569,7 +639,10 @@ func (u *Update) DropValues(hash record.Hash, fewer int) (gone bool, err error) 
 // stay, used by nothing: most of them will be computed again as they were.
 // SweepValues drops the rest once the records are back.
 func (u *Update) ClearRecords() error {
-	_, err := u.tx.Exec("DELETE FROM page; DELETE FROM shared; DELETE FROM shows; UPDATE value SET uses = 0")
+	if _, err := u.tx.Exec("DELETE FROM page; DELETE FROM shared; DELETE FROM shows; UPDATE value SET uses = 0"); err != nil {
+		return err
+	}
+	_, err := u.tx.Exec("DELETE FROM meta WHERE name >= ? AND name < ?", "prints ", "prints \xff")
 	return err
 }
 
@@ -596,18 +669,22 @@ func (u *Update) SetTotals(t Totals) error {
 	return err
 }
 
-// SetPrints keeps the fingerprints in place of those the store had.
-func (u *Update) SetPrints(prints Prints) error {
-	for name, list := range map[string]map[string]uint64{metaPagePrints: prints.Pages, metaSharedPrints: prints.Shared} {
-		data := make([]byte, 0, len(list)*32)
-		for key, print := range list {
-			data = binary.AppendUvarint(data, uint64(len(key)))
-			data = append(data, key...)
+// SetPrints keeps the fingerprints that have changed since they were read.
+func (u *Update) SetPrints(of string, prints *Prints) error {
+	for at, list := range prints.parts {
+		if !prints.moved[at] {
+			continue
+		}
+		data := make([]byte, 0, len(list)*40)
+		for name, print := range list {
+			data = binary.AppendUvarint(data, uint64(len(name)))
+			data = append(data, name...)
 			data = binary.LittleEndian.AppendUint64(data, print)
 		}
-		if _, err := u.tx.Exec(put, name, data); err != nil {
+		if _, err := u.tx.Exec(put, of+strconv.Itoa(at), data); err != nil {
 			return err
 		}
+		prints.moved[at] = false
 	}
 	return nil
 }

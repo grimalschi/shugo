@@ -14,8 +14,11 @@ import (
 // The random test writes pages at random, builds them, and compares every
 // page with HTML that this file works out by itself, straight from the tree
 // of the page and the data, without JavaScript, values or programs. Then it
-// changes the data at random several times: after every update the pages
-// must again be what the data says.
+// changes the data at random — all of it, and many times in one place only
+// — and after every update the pages must again be what the data says. An
+// update computes only the pages whose templates read what has changed, so
+// a page that follows a change in one place is a page whose template was
+// rightly found to read it.
 //
 // The pages use three components written by hand below, with slots, shared
 // blocks and a component inside a component; what is random is everything
@@ -508,14 +511,54 @@ func (m *maker) data() map[string]any {
 	}
 }
 
+// edit changes one thing in the data: one value, one item, one tag.
+func (m *maker) edit(data map[string]any) {
+	word := func() string { return m.pick("Jug", "Tom & Jerry", "<b>bold</b>", "pitcher", "", "edited") }
+	items := data["items"].([]any)
+	item := func() map[string]any { return items[m.r.IntN(len(items))].(map[string]any) }
+	switch kind := m.r.IntN(12); {
+	case kind == 0:
+		data["title"] = word()
+	case kind == 1:
+		data["count"] = float64(m.r.IntN(4))
+	case kind == 2:
+		data["flag"] = data["flag"] != true
+	case kind == 3:
+		data["user"].(map[string]any)["name"] = word()
+	case kind == 4:
+		data["html"] = m.pick("<em>raw</em>", "", "<i>edited</i>")
+	case kind == 5 || len(items) == 0:
+		data["items"] = append(items, map[string]any{"id": float64(m.r.IntN(1000)), "name": word(), "price": 1.5, "active": true, "tags": []any{"new"}})
+	case kind == 6:
+		data["items"] = items[:len(items)-1]
+	case kind == 7:
+		item()["name"] = word()
+	case kind == 8:
+		item()["price"] = float64(m.r.IntN(50)) / 2
+	case kind == 9:
+		it := item()
+		it["active"] = it["active"] != true
+	case kind == 10:
+		it := item()
+		it["tags"] = append(it["tags"].([]any), m.pick("new", "sale", "<eco>"))
+	default:
+		it := item()
+		if tags := it["tags"].([]any); len(tags) > 0 {
+			tags[m.r.IntN(len(tags))] = m.pick("a&b", "edited")
+		} else {
+			it["id"] = float64(m.r.IntN(1000))
+		}
+	}
+}
+
 func TestRandomPages(t *testing.T) {
 	seed := uint64(20261120)
 	if text := os.Getenv("SHUGO_SEED"); text != "" {
 		seed, _ = strconv.ParseUint(text, 10, 64)
 	}
-	pages, rounds := 150, 6
+	pages, rounds, edits := 150, 4, 12
 	if testing.Short() {
-		pages, rounds = 30, 2
+		pages, rounds, edits = 30, 2, 3
 	}
 	m := &maker{r: rand.New(rand.NewPCG(seed, 1))}
 
@@ -532,14 +575,17 @@ func TestRandomPages(t *testing.T) {
 	}
 	s := newSite(t, files.String())
 
-	for round := range rounds {
-		data := m.data()
+	// compute brings the site up to date with the data and compares every
+	// page with what the data says.
+	built := false
+	compute := func(what string, data map[string]any) {
 		encoded, _ := json.Marshal(data)
 		if err := os.WriteFile(filepath.Join(s.root, "data.json"), encoded, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if round == 0 {
+		if !built {
 			s.build()
+			built = true
 		} else {
 			s.update()
 		}
@@ -552,11 +598,21 @@ func TestRandomPages(t *testing.T) {
 			if got := s.page(fmt.Sprintf("/p%d", i)); got != want.String() {
 				var source strings.Builder
 				sources(&source, nodes)
-				t.Errorf("seed %d, round %d, page %d\ntemplate: %s\n    data: %s\n     got: %s\n    want: %s", seed, round, i, source.String(), encoded, got, want.String())
+				t.Errorf("seed %d, %s, page %d\ntemplate: %s\n    data: %s\n     got: %s\n    want: %s", seed, what, i, source.String(), encoded, got, want.String())
 				if failed++; failed == 3 {
 					t.FailNow()
 				}
 			}
+		}
+	}
+	for round := range rounds {
+		// All the data is new; then it changes in one place at a time, and
+		// every page that shows that place must follow.
+		data := m.data()
+		compute(fmt.Sprintf("round %d", round), data)
+		for edit := range edits {
+			m.edit(data)
+			compute(fmt.Sprintf("round %d, edit %d", round, edit), data)
 		}
 	}
 }

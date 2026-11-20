@@ -160,9 +160,9 @@ const arrow = async () => { await 1 }
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"Card", "b", "ns"} {
-		if !u.names.imports[name] {
-			t.Errorf("%s is not among the imports", name)
+	for name, from := range map[string]string{"Card": "./x", "b": "./x", "ns": "./y"} {
+		if u.names.imports[name] != from {
+			t.Errorf("%s is imported from %q, want %q", name, u.names.imports[name], from)
 		}
 	}
 	for _, name := range []string{"getStaticPaths", "title", "item", "big", "rest", "hoisted", "helper", "arrow"} {

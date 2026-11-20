@@ -138,7 +138,7 @@ export const shout = (text: string) => text.toUpperCase()
 ---
 import { data, shout } from "../lib/data"
 ---
-<p>{shout(data.title)}</p>`, "pages/index.shugo → lib/data.ts → node:fs: the template calls a function of a module that reads files"},
+<p>{shout(data.title)}</p>`, "pages/index.shugo → lib/data.ts → node:fs: the template calls shout of a module that reads files"},
 
 		{"a template calls a function of a module that waits when it is imported", `-- lib/remote.ts --
 export const posts = await Promise.resolve([{ title: "a" }])
@@ -383,6 +383,31 @@ func TestSharedBlockWhoseDataIsGone(t *testing.T) {
 	})
 	_, err := s.run(evaluate.Options{})
 	if err == nil || !strings.Contains(err.Error(), "while computing the shared block "+cardCup) {
+		t.Errorf("%v", err)
+	}
+}
+
+// A script that changes data it shares with other scripts makes what a page
+// shows depend on which script ran first. It is found when a page is
+// computed from other data than its fingerprint was made of.
+func TestScriptThatChangesSharedData(t *testing.T) {
+	_, err := newSite(t, `
+-- lib/data.ts --
+export const list = [3, 1, 2]
+export const load = () => (Date.now() > 0 ? list : [])
+-- pages/first.shugo --
+---
+import { load } from "../lib/data"
+const numbers = load()
+---
+<p>{numbers.join()}</p>
+-- pages/second.shugo --
+---
+import { load } from "../lib/data"
+const sorted = load().sort()
+---
+<p>{sorted.join()}</p>`).tryBuild()
+	if err == nil || !strings.Contains(err.Error(), "another script changes data that this one has read") {
 		t.Errorf("%v", err)
 	}
 }

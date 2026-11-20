@@ -1,6 +1,8 @@
 package compile
 
 import (
+	"sort"
+
 	"github.com/tdewolff/parse/v2/js"
 
 	"github.com/grimalschi/shugo/internal/syntax"
@@ -14,6 +16,9 @@ type reads struct {
 	names  []string // variables and imported values, in the order the template meets them
 	shapes []*shape // what it reads of each
 	props  *shape   // what it reads of Shugo.props; nil if nothing
+	// calls are the imports the template calls or shows as components,
+	// sorted: they are code, which the template imports itself.
+	calls []string
 }
 
 // reading is how an expression uses the value of one of its parts.
@@ -68,6 +73,10 @@ func analyze(f *syntax.File, script *bindings, nodes []node) (*reads, Errors) {
 	if out.props != nil {
 		out.props.settle()
 	}
+	for name := range a.called {
+		out.calls = append(out.calls, name)
+	}
+	sort.Strings(out.calls)
 	return out, a.errs
 }
 
@@ -204,11 +213,17 @@ func (a *analyzer) tag(target code) {
 		}
 		root = unwrap(dot.X)
 	}
-	if name, isFree := freeName(root); isFree && a.script.imports[name] && !a.isBound(name) {
+	if name, isFree := freeName(root); isFree && a.imported(name) && !a.isBound(name) {
 		a.called[name] = true
 		return
 	}
 	a.read(e, asValue)
+}
+
+// imported tells whether the script imports the name.
+func (a *analyzer) imported(name string) bool {
+	_, is := a.script.imports[name]
+	return is
 }
 
 // isBound tells whether a <g-for> around gives the name to its items.
@@ -238,7 +253,7 @@ func (a *analyzer) named(name string) *shape {
 			a.errorf("the template uses %s, a function that the script declares. A template sees the data of the script, not its code: move the function to a module and import it, or call it in the script and show the result", name)
 		}
 		return nil
-	case !a.script.vars[name] && !a.script.imports[name]:
+	case !a.script.vars[name] && !a.imported(name):
 		return nil
 	}
 	if s, read := a.shapes[name]; read {
@@ -429,7 +444,7 @@ func (a *analyzer) call(callee js.IExpr) {
 		name, isFree := freeName(n)
 		switch {
 		case !isFree:
-		case a.script.imports[name] && !a.isBound(name):
+		case a.imported(name) && !a.isBound(name):
 			a.called[name] = true
 		default:
 			// A function kept in data is not data: reading it whole makes
@@ -437,7 +452,7 @@ func (a *analyzer) call(callee js.IExpr) {
 			a.read(n, asValue)
 		}
 	case *js.DotExpr:
-		if name, isFree := freeName(n.X); isFree && a.script.imports[name] && !a.isBound(name) {
+		if name, isFree := freeName(n.X); isFree && a.imported(name) && !a.isBound(name) {
 			a.called[name] = true
 			return
 		}

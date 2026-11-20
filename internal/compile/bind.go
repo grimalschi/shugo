@@ -13,9 +13,9 @@ import (
 // bindings is what the script of a file declares, as far as its template is
 // concerned, and what the script does that decides where it may run.
 type bindings struct {
-	imports map[string]bool // the names the script imports
-	vars    map[string]bool // the variables the script declares, exported ones too
-	funcs   map[string]bool // those of them declared as a function or a class
+	imports map[string]string // the names the script imports, each with the module it is from, as written
+	vars    map[string]bool   // the variables the script declares, exported ones too
+	funcs   map[string]bool   // those of them declared as a function or a class
 	// waits tells that the script waits for something: it has await outside
 	// of the functions it declares. now tells that it asks what time it is.
 	waits, now bool
@@ -23,7 +23,7 @@ type bindings struct {
 
 // bind reads the script that esbuild has taken the types out of.
 func bind(f *syntax.File, s *script) (*bindings, error) {
-	b := &bindings{imports: map[string]bool{}, vars: map[string]bool{}, funcs: map[string]bool{}}
+	b := &bindings{imports: map[string]string{}, vars: map[string]bool{}, funcs: map[string]bool{}}
 	if len(s.lines) == 0 {
 		return b, nil
 	}
@@ -34,15 +34,16 @@ func bind(f *syntax.File, s *script) (*bindings, error) {
 	for _, statement := range ast.List {
 		switch n := statement.(type) {
 		case *js.ImportStmt:
+			from := strings.Trim(string(n.Module), "\"'`")
 			if n.Default != nil {
-				b.imports[string(n.Default)] = true
+				b.imports[string(n.Default)] = from
 			}
 			for _, alias := range n.List {
 				switch {
 				case alias.Binding != nil:
-					b.imports[string(alias.Binding)] = true
+					b.imports[string(alias.Binding)] = from
 				case alias.Name != nil:
-					b.imports[string(alias.Name)] = true
+					b.imports[string(alias.Name)] = from
 				}
 			}
 		case *js.ExportStmt:

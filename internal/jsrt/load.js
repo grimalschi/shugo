@@ -636,6 +636,15 @@ class Run {
         // What the scripts gave is not needed once the unit is computed.
         if (page) this.pages.get(name).loaded = undefined;
         else this.blocks.delete(name);
+        // The template is given what its script left, and that must be
+        // what the fingerprint was made of: other scripts have run since.
+        if (kept !== undefined && loaded.values !== null) {
+          const { a, b } = loaded;
+          this.printed(loaded);
+          if (loaded.a !== a || loaded.b !== b) {
+            throw new Error("what the template reads has changed since the script ran: another script changes data that this one has read. A script must not change data that it shares with others: sort or fill a copy, as in [...list].sort()");
+          }
+        }
         const parts = this.parts(loaded.values);
         const print = hex(loaded.a, loaded.b);
         this.emit(page ? this.render.page(name, loaded.index, loaded.params, parts, print) : this.render.block(name, parts?.get(loaded.values[0][0]), print));

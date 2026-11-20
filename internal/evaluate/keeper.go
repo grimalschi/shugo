@@ -38,10 +38,9 @@ type keeper struct {
 	pages  map[string]record.Hash
 	shared map[string]store.Kept
 	whole  bool
-	// prints are the fingerprints of what every page and shared block was
+	// The fingerprints of what every page and every shared block was
 	// computed from, as the store has them and as this run changes them.
-	prints      store.Prints
-	printsMoved bool
+	pagePrints, sharedPrints *store.Prints
 	// anew tells that the records of another compiled project were dropped.
 	anew   bool
 	totals store.Totals
@@ -91,7 +90,11 @@ func newKeeper(site *program.Site, u *store.Update, report *Report, limit int) (
 	if err != nil {
 		return nil, err
 	}
-	prints, err := u.Prints()
+	pagePrints, err := u.Prints(store.PagePrints)
+	if err != nil {
+		return nil, err
+	}
+	sharedPrints, err := u.Prints(store.SharedPrints)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +103,8 @@ func newKeeper(site *program.Site, u *store.Update, report *Report, limit int) (
 		loading[file.Path] = file.Loads
 	}
 	return &keeper{
-		site: site, update: u, report: report, limit: limit, totals: totals, loading: loading, prints: prints,
+		site: site, update: u, report: report, limit: limit, totals: totals, loading: loading,
+		pagePrints: pagePrints, sharedPrints: sharedPrints,
 		again:     func(string, bool) bool { return false },
 		seenPages: map[string]struct{}{}, seenShared: map[int64]struct{}{},
 		met: map[string]met{}, named: map[int64]string{}, asked: map[int64]struct{}{}, blank: map[int64]struct{}{},
@@ -117,7 +121,7 @@ func newKeeper(site *program.Site, u *store.Update, report *Report, limit int) (
 // most of them will be computed again as they were.
 func (k *keeper) clear() error {
 	k.anew, k.totals = true, store.Totals{}
-	k.prints, k.printsMoved = store.Prints{Pages: map[string]uint64{}, Shared: map[string]uint64{}}, true
+	k.pagePrints, k.sharedPrints = &store.Prints{}, &store.Prints{}
 	return k.update.ClearRecords()
 }
 
@@ -275,14 +279,12 @@ func (k *keeper) put(data []byte) error {
 
 	// The fingerprint goes with the record, whatever becomes of it: a record
 	// that came out the same may have been computed from something else.
-	list := k.prints.Pages
+	prints := k.pagePrints
 	if u.shared {
-		list = k.prints.Shared
+		prints = k.sharedPrints
 	}
-	before, printed := list[u.name]
-	if !printed || before != print {
-		list[u.name], k.printsMoved = print, true
-	}
+	before, printed := prints.Get(u.name)
+	prints.Set(u.name, print)
 
 	// What the store has of the unit. A record that is what it was needs
 	// nothing more: what it shows is in the store already, and it was
@@ -504,8 +506,7 @@ func (k *keeper) remove(path string) error {
 	if err := k.change(store.PageUser(path), old, nil, nil); err != nil {
 		return fmt.Errorf("the page %s: %w", path, err)
 	}
-	delete(k.prints.Pages, path)
-	k.printsMoved = true
+	k.pagePrints.Delete(path)
 	k.report.Pages.note(&k.report.Pages.Removed, &k.report.Pages.RemovedNames, path, k.limit)
 	return k.update.DeletePage(path)
 }
@@ -552,10 +553,11 @@ func (k *keeper) finish() error {
 	if err := k.update.SetTotals(k.totals); err != nil {
 		return err
 	}
-	if k.printsMoved {
-		if err := k.update.SetPrints(k.prints); err != nil {
-			return err
-		}
+	if err := k.update.SetPrints(store.PagePrints, k.pagePrints); err != nil {
+		return err
+	}
+	if err := k.update.SetPrints(store.SharedPrints, k.sharedPrints); err != nil {
+		return err
 	}
 	if err := k.rendered(); err != nil {
 		return err
@@ -691,8 +693,7 @@ func (k *keeper) sweep() error {
 				return err
 			}
 			delete(k.fresh, id)
-			delete(k.prints.Shared, name)
-			k.printsMoved = true
+			k.sharedPrints.Delete(name)
 			k.report.Shared.note(&k.report.Shared.Removed, &k.report.Shared.RemovedNames, name, k.limit)
 		}
 	}

@@ -41,7 +41,9 @@ shugo export    write the site as files into _build/dist
 
 Run `shugo build` after every change and read the errors: each names a file, a line and a column.
 
-`shugo update` is for data that changed outside of the project's code: it runs the compiled code again and writes only what differs. If a file of the project changed, it compiles the project first, so it is always safe to run.
+`shugo update` is for data that changed outside of the project's code. It runs every script again, which loads the data, and computes only the pages and shared blocks whose templates read something that has changed. If a file of the project changed, it compiles the project first, so it is always safe to run.
+
+`shugo update -check` computes everything, whatever has changed, and names the pages that came out different although nothing they read did. Run it when a page looks stale: see [Data](#data).
 
 `shugo export` writes `/about` as `about/index.html`, the page for missing addresses as `404.html`, and copies `public/` and the style sheet.
 
@@ -50,7 +52,8 @@ Run `shugo build` after every change and read the errors: each names a file, a l
 ```
 ---
 import Card from "../components/Card.shugo"
-import { getProducts, price, type Product } from "@/lib/shop"
+import { getProducts, type Product } from "@/lib/shop"
+import { price } from "@/lib/format"
 
 const products: Product[] = await getProducts()
 const total = products.reduce((sum, item) => sum + item.price, 0)
@@ -72,8 +75,10 @@ const total = products.reduce((sum, item) => sum + item.price, 0)
 ```
 
 - The script is optional: a file may be markup alone.
-- The script runs once for every page the file gives. Everything it declares is visible in the markup: values, functions, imports.
-- Top-level `await` is fine. Top-level `return` is an error.
+- The script runs once for every page the file gives, on every build and update: it is where data is loaded.
+- The markup sees the **values** the script declares and everything the script **imports**. It does not see a function the script declares: import the function from a module, or call it in the script and show the result.
+- A function that the markup calls comes from a module that loads nothing: `lib/format.ts` here, apart from `lib/shop.ts` that reads the data. See [Data](#data).
+- Top-level `await` is fine in the script, never in the markup. Top-level `return` is an error.
 - TypeScript everywhere: in the script and inside `{…}`. Types are removed, not checked: a type error does not stop the build, and `post.titel` shows nothing.
 - Markup goes to the page as written, HTML entities included: `&nbsp;`, `&lt;`.
 
@@ -178,6 +183,13 @@ const { title, featured = false } = Shugo.props as Props
 - What stands inside `<g-slot>…</g-slot>` is shown only when nothing at all was put into the slot.
 - A component may show itself: `<Shugo.self node={child} />`.
 - A component may be picked at run time: `const View = compact ? List : Grid`, then `<View />`.
+
+A component is one of two kinds, by what its script does:
+
+- **It shows what it is given.** The script works on `Shugo.props` alone: no `await`, no module that reads files or the network. Give it anything, objects too. This is what most components are.
+- **It loads data.** The script has `await`, or imports a module that reads files or the network. Such a component takes only plain values — text, numbers, `true`, `false`, `null` — or nothing, and it cannot read `Shugo.url` or `Shugo.params`. It is computed once for the whole site for every set of values, however many pages show it: `<ProductCard id={product.id} />`, `<Header />`.
+
+Giving an object to a component that loads data is an error that says so.
 
 ### `Shugo`
 
@@ -284,7 +296,7 @@ With `[page].shugo` the first page is `/blog/1`. `paginate(items, { pageSize, pa
 
 ## Data
 
-There is no special data layer: load data with ordinary TypeScript.
+There is no special data layer: load data with ordinary TypeScript, in scripts.
 
 Read data files when the code runs, with a path from the root of the project:
 
@@ -298,14 +310,31 @@ export const posts: Post[] = JSON.parse(readFileSync("data/posts.json", "utf8"))
 
 `import posts from "../data/posts.json"` works too, but then the data is a part of the compiled code: every change of it means compiling the project again.
 
-The props of a page come from `getStaticPaths` and may be anything. The props of a component decide whether it is computed once:
+### Who loads
 
-- **For many pages of one kind**, load once in `getStaticPaths` and hand every page its part through `props`.
-- **For what every page shows** (a menu, the settings of the site), load in a component without props, such as `<Header />`. A component is computed once for the whole site when neither it nor any component it imports reads `Shugo.url` or `Shugo.params`, and it is called with plain values (strings, numbers, booleans) or without props.
-- **Pass an id, not an object**, to a component that many pages show: `<ProductCard id={product.id} />`. Each card is then computed once, and when the product changes only the card changes, not the pages that show it.
-- **Put shared loading into a module** in `lib/`: a module runs once per build.
+- **Pages and layouts** load in their scripts. For many pages of one kind, load once in `getStaticPaths` and hand every page its part through `props`.
+- **A component with plain props or none** may load too. Use it for what many pages show: `<Header />` for the menu, `<ProductCard id={product.id} />` for a product. It is computed once and kept once.
+- **A component that is given objects** only shows them. Load in the page and pass the data down.
+- **Put shared loading into a module** in `lib/`: a module runs once per build or update.
+
+### What an update computes
+
+On every update all scripts run: that loads the data. Then Shugo compares, for every page and shared block, exactly what its markup reads of the script — the compiler knows that from the expressions — and computes the markup only where that has changed. Change the price of one product and its page and its card are computed, nothing else.
+
+Three things follow, and the build says so when one of them is broken:
+
+1. **The markup works on data.** It gets a copy of what it reads: text, numbers, `true` and `false`, lists, plain objects, dates, `Map`, `Set`. A function or an instance of a class in a variable that the markup reads is an error; reading a member of such an instance, `{money.amount}`, is fine.
+2. **The markup calls only what loads nothing.** A function for the markup lives in a module that reads no file and asks no network, also not at import. Keep `lib/shop.ts` (data) apart from `lib/format.ts` (helpers). The same holds for what a component that only shows what it is given imports.
+3. **No clock and no chance in the markup.** `new Date()`, `Date.now()` and `Math.random()` belong to a script: `const year = new Date().getFullYear()`, then `{year}`.
+
+To keep updates small:
+
+- **Read members in the markup, not whole objects.** `{item.title}` reads one value. `{format(item)}`, `{item.tags.join(", ")}` and `{items[0]}` read the whole of `item`, `item.tags` and `items`, so any change in them computes the page again. Where a function needs the whole object, call it in the script: `const cost = finalPrice(item)`, then `{price(cost)}`.
+- **Pass an id, not an object**, to a component that many pages show. The card then finds its product itself, and a change of the product computes the card and not the pages that show it.
+- **Load in bulk.** The script of every page runs on every update: a request in the script of a page with a thousand pages is a thousand requests. Load once in a module or in `getStaticPaths`.
 - Create `Intl.NumberFormat`, `Intl.DateTimeFormat` and the like once in a module, not on every call: they are slow to make.
-- The script of a component runs every time the component is shown, unless it is computed once as described above. Do not query a database there for a component shown thousands of times.
+
+One thing Shugo cannot see: a package from `node_modules` that reads a file or a database by itself, called from the markup or from a component that only shows what it is given. Such a page stays as it is when that file changes. `shugo update -check` finds it; the cure is to do that reading in a script.
 
 ## Styles and scripts
 
@@ -326,6 +355,8 @@ The props of a page come from `getStaticPaths` and may be anything. The props of
 | `<Fragment slot="x">` | `<g-fragment slot="x">` |
 | `set:html={html}` | `<g-html value={html} />` |
 | `class:list={[…]}` | a string built in an expression |
+| a helper declared in the frontmatter and called in the markup | import it from a module in `lib/` that loads nothing, or call it in the script |
+| a component that fetches and takes an object | pass an id and let it fetch, or fetch in the page and pass the data |
 | `<Layout title="…">` around the page | `pages/+layout.shugo`, applied by folder; `<title slot="head">` in the page |
 | `client:load`, islands | not there: pages are static; write a `<script>` |
 | scoped `<style>` | `<style>` is global |

@@ -181,7 +181,7 @@ func Run(p *project.Project, compiled *compile.Result, st *store.Store, options 
 // changed computes the pages and shared blocks whose fingerprint is not
 // what the store has, and drops the pages the project no longer has.
 func changed(s *session, k *keeper, pages []listed, took func(step string)) error {
-	units := make([]unit, 0, len(pages)+len(k.prints.Shared))
+	units := make([]unit, 0, len(pages)+k.sharedPrints.Len())
 	there := make(map[string]struct{}, len(pages))
 	for _, page := range pages {
 		units = append(units, unit{name: page.path})
@@ -190,7 +190,7 @@ func changed(s *session, k *keeper, pages []listed, took func(step string)) erro
 	// A shared block the store knows may show something else by now, if its
 	// script loads data. One that only shows what it is given cannot: its
 	// name says all that it shows.
-	for name := range k.prints.Shared {
+	for _, name := range k.sharedPrints.Names() {
 		if k.loads(name) {
 			units = append(units, unit{shared: true, name: name})
 		}
@@ -202,13 +202,14 @@ func changed(s *session, k *keeper, pages []listed, took func(step string)) erro
 			k.failed[u.name] = failure
 			return nil
 		}
-		kept, known := k.prints.Shared[u.name]
+		prints := k.pagePrints
 		if u.shared {
+			prints = k.sharedPrints
 			k.report.Loaded.Shared++
 		} else {
 			k.report.Loaded.Pages++
-			kept, known = k.prints.Pages[u.name]
 		}
+		kept, known := prints.Get(u.name)
 		if !known || kept != print || k.check {
 			compute = append(compute, u)
 		}
@@ -250,15 +251,11 @@ func changed(s *session, k *keeper, pages []listed, took func(step string)) erro
 			return err
 		}
 	}
-	var gone []string
-	for path := range k.prints.Pages {
+	for _, path := range k.pagePrints.Names() {
 		if _, still := there[path]; !still {
-			gone = append(gone, path)
-		}
-	}
-	for _, path := range gone {
-		if err := k.remove(path); err != nil {
-			return err
+			if err := k.remove(path); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

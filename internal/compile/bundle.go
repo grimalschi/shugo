@@ -364,8 +364,8 @@ func (b *builder) sealed(meta *metafile) error {
 				}
 				u := b.units[b.ids[chains[0][0]]]
 				errs = append(errs, u.file.Errorf(u.file.Script.Start,
-					"%s → %s: the template calls a function of a module that reads %s%s. A template works on the data of its script and can load nothing itself, so that a page changes only when its data does. Move the function into a module that loads nothing, or call it in the script and show the result",
-					strings.Join(chains[0], " → "), out.Path, what, more))
+					"%s → %s: the template calls %s of a module that reads %s%s. A template works on the data of its script and can load nothing itself, so that a page changes only when its data does. Move the function into a module that loads nothing, or call it in the script and show the result",
+					strings.Join(chains[0], " → "), out.Path, u.calledOf(chains[0][1]), what, more))
 			}
 		}
 	}
@@ -374,6 +374,29 @@ func (b *builder) sealed(meta *metafile) error {
 		return errs
 	}
 	return nil
+}
+
+// calledOf names what the template of the file calls of a module, as far
+// as the names of the two tell: the script writes "../lib/shop" where the
+// bundler says lib/shop.ts.
+func (u *unit) calledOf(module string) string {
+	stem := func(path string) string {
+		base := path[strings.LastIndexByte(path, '/')+1:]
+		if dot := strings.LastIndexByte(base, '.'); dot > 0 {
+			base = base[:dot]
+		}
+		return base
+	}
+	var names []string
+	for _, name := range u.reads.calls {
+		if stem(u.names.imports[name]) == stem(module) {
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		return "a function"
+	}
+	return strings.Join(names, ", ")
 }
 
 // imports tells whether a module imports the given path itself.
