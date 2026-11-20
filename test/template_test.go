@@ -178,3 +178,70 @@ export interface Product { title: string; cents: number }
 export const price = (cents: number): string => (cents / 100).toFixed(2)`)
 	expect(t, got, `<p>Jug: 12.50 s/l</p>`)
 }
+
+func TestNamespaceOfComponentsAndShorthand(t *testing.T) {
+	got := one(t, `---
+import * as ui from "@/components/ui"
+const src = "/a.png"
+const title = "T"
+---
+<ui.Button href="/x">go</ui.Button><img {src} alt=""><ui.Title {title} /><p title="{not code}">{"{"}{/* nothing */}</p>`, `-- components/ui.ts --
+export { default as Button } from "./Button.shugo"
+export { default as Title } from "./Title.shugo"
+-- components/Button.shugo --
+<a class="button" href={Shugo.props.href}><g-slot /></a>
+-- components/Title.shugo --
+<h1>{Shugo.props.title}</h1>`)
+	expect(t, got, `<a class="button" href="/x">go</a><img src="/a.png" alt=""><h1>T</h1><p title="{not code}">{</p>`)
+}
+
+func TestStyles(t *testing.T) {
+	s := newSite(t, `
+-- pages/+layout.shugo --
+---
+import "../styles/main.css"
+---
+<html><head><title>T</title></head><body><g-slot /></body></html>
+<style>
+  body { margin: 0 }
+</style>
+-- pages/index.shugo --
+---
+import Card from "../components/Card.shugo"
+---
+<Card /><Card />
+<style is:inline>h1 { color: blue }</style>
+-- components/Card.shugo --
+<b class="card">card</b>
+<style>.card { color: green }</style>
+-- styles/main.css --
+@import "./base.css";
+.logo { background: url("./logo.svg") }
+-- styles/base.css --
+html { font-family: sans-serif }
+-- styles/logo.svg --
+<svg xmlns="http://www.w3.org/2000/svg"/>
+`)
+	s.build()
+	page := s.page("/")
+	// A <style> of a template goes to the style sheet of the site, once,
+	// however many times the template is shown; is:inline stays in the page.
+	if strings.Contains(page, "color: green") || strings.Contains(page, "margin: 0") || !strings.Contains(page, "<style>h1 { color: blue }</style>") {
+		t.Errorf("page: %s", page)
+	}
+	link := page[strings.Index(page, `href="/_assets/`)+len(`href="/_assets/`):]
+	sheet := s.read("_build/assets/" + link[:strings.Index(link, `"`)])
+	for _, want := range []string{"font-family:sans-serif", `.logo{background:url("/_assets/logo.`, ".card{color:green}", "body{margin:0}"} {
+		if !strings.Contains(sheet, want) {
+			t.Errorf("the style sheet has no %q: %s", want, sheet)
+		}
+	}
+	if strings.Count(sheet, ".card{") != 1 {
+		t.Errorf("the styles of a component are there more than once: %s", sheet)
+	}
+	// What a style sheet points at is copied next to it.
+	name := sheet[strings.Index(sheet, "/_assets/logo.")+len("/_assets/"):]
+	if got := s.read("_build/assets/" + name[:strings.Index(name, `"`)]); !strings.Contains(got, "<svg") {
+		t.Errorf("the picture of the style sheet: %q", got)
+	}
+}

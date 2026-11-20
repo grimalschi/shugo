@@ -1,26 +1,44 @@
 # Data loading
 
-The document describes where the data for pages comes from, when they are loaded and how framework learns what has changed in them.
+The document describes where the data for pages comes from and when they are loaded.
 
 ## Decisions
 
-- The data gets a TS code at the top of the `.shugo` files.
-- Data loading is a separate stage. It performs JS files collected during compilation, and they load data immediately for the entire project.
-- After downloading, the new data is compared with the past. As a result, the next stage recalculates only what is associated with changes. The comparison most likely makes Go.
-- Changes are about comparing data, not tracking the source. Therefore, framework is not tied to the database, its capabilities and structure.
+- The data gets code on TypeScript at the top of the `.shugo` files.
+- Your data can load pages, layouts and components.
+- The framework is not tied to a data source: it can be a database, file or someone else's API. What has changed is determined by comparison, not tracking the source.
+- For now, every update will start anew and load all the data; then the result is compared to the past.
+- Updating part of the data on signals from sources is a good idea for the future: [proposal](partial-reload.md).
 
-## From the prototype, pending approval
+## Made in the first version, waiting for approval
 
-- Data is the usual values: objects, lists, strings, numbers. Fields that are calculated when accessed are not tracked.
-- If the page data has not changed by a single byte, the page is not further understood.
-- Shared data (cap, menu) should come with one shared input, not a copy in each page's data.
-- Selection from big general data ("more products of this category", recommendations) is done at the data stage. The template comes with a ready list.
-- The time to compare grows with the amount of data, not with the size of the change.
+### Data does not leave JS
+
+Data code and template expressions are executed in one process ([1](decisions.md#1-data-loading-and-expression-are-counted-together-go-compares-the-result)). Therefore, everything that is in the code is available in the template: functions, dates, `Map`, classes. Serialization is not needed, and a library like Seroval is also available.
+
+In Go, only the ready expression values are left text.
+
+### Where to download
+
+| What you need | Where to download |
+| --- | --- |
+| Single page data | the Page Code |
+| Data of many pages of one type | in `getStaticPaths`, by one request, and distribute via `props` |
+| Data shared across all pages (menu, settings) | in a component without parameters: it is executed once |
+| Data needed in several locations | in the module from `lib/`: the module is performed once per calculation |
+
+There is no separate concept of “project data”: this is a regular module that is imported.
+
+### What is worth knowing
+
+- Page code is executed for each page, component code is executed for each display. The request to the database in the product card code will be executed as many times as the cards on the site. The exception is common blocks: they are executed once.
+- Modules from `lib/` are run once. Loaded in the module lives to the end of the calculation.
+- Simultaneously, 32 pages are calculated to allow for parallel responses from sources.
+- Creating `Intl.NumberFormat` and similar objects is expensive. You need to create them once in the module, not every call: at the stand, this accelerated the calculation threefold.
 
 ## Open questions
 
-- Can components and layouts load their data?
-- Data shared throughout the project.
-- Reloading part of the data: by signal from the source, by life, by webhook.
-- In what form data is transferred from JS to Go and stored between stages.
-- What can be returned from the data code, except for the usual values (dates, functions).
+- Approve the combination of downloads and expressions.
+- Partial Reboot: [proposal](partial-reload.md).
+- Memory between calculations for expensive requests to strangers API.
+- Time and random numbers in the data code: each update will give a new value, and the page will be considered changed.

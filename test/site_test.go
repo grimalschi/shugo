@@ -18,7 +18,7 @@ import (
 
 // site is a project in a temporary folder with its store.
 type site struct {
-	t       *testing.T
+	t       testing.TB
 	root    string
 	store   *store.Store
 	pages   *server.Pages
@@ -29,10 +29,17 @@ type site struct {
 
 // newSite makes a project of files written one after another, each under a
 // line "-- path --".
-func newSite(t *testing.T, files string) *site {
+func newSite(t testing.TB, files string) *site {
 	t.Helper()
-	s := &site{t: t, root: t.TempDir(), runtime: os.Getenv("SHUGO_RUNTIME")}
+	s := openSite(t, t.TempDir())
 	s.write(files)
+	return s
+}
+
+// openSite opens the store of the project in a folder.
+func openSite(t testing.TB, root string) *site {
+	t.Helper()
+	s := &site{t: t, root: root, runtime: os.Getenv("SHUGO_RUNTIME")}
 	if err := os.MkdirAll(filepath.Join(s.root, project.Output), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -74,6 +81,16 @@ func (s *site) write(files string) {
 	flush()
 }
 
+// read returns a file of the project.
+func (s *site) read(name string) string {
+	s.t.Helper()
+	data, err := os.ReadFile(filepath.Join(s.root, filepath.FromSlash(name)))
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	return string(data)
+}
+
 func (s *site) remove(name string) {
 	s.t.Helper()
 	if err := os.Remove(filepath.Join(s.root, filepath.FromSlash(name))); err != nil {
@@ -100,6 +117,7 @@ func (s *site) tryBuild() (*evaluate.Report, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer s.pages.Refresh()
 	return evaluate.Run(p, compiled, s.store, evaluate.Options{Log: &s.printed})
 }
 
@@ -121,6 +139,7 @@ func (s *site) update() *evaluate.Report {
 		s.t.Fatal(err)
 	}
 	report, err := evaluate.Run(p, compiled, s.store, evaluate.Options{Log: &s.printed})
+	s.pages.Refresh()
 	if err != nil {
 		s.t.Fatalf("update: %v", err)
 	}
@@ -150,7 +169,7 @@ func (s *site) has(address string) bool {
 }
 
 // expect compares the HTML of a page with what it should be.
-func expect(t *testing.T, got, want string) {
+func expect(t testing.TB, got, want string) {
 	t.Helper()
 	if got != want {
 		t.Errorf("\n got: %s\nwant: %s", got, want)

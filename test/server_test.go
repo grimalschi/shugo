@@ -38,7 +38,9 @@ User-agent: *
 <svg xmlns="http://www.w3.org/2000/svg"/>
 `
 
-func serve(t *testing.T, s *site) *httptest.Server {
+func serve(t *testing.T, s *site) *httptest.Server { return serveSite(t, s) }
+
+func serveSite(t testing.TB, s *site) *httptest.Server {
 	t.Helper()
 	ts := httptest.NewServer(&server.Server{
 		Pages:  s.pages,

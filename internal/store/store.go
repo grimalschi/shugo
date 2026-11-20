@@ -143,9 +143,9 @@ func (r *reader) Values(hash record.Hash) (data []byte, found bool, err error) {
 	return r.blob(r.value, hash[:])
 }
 
-// Pages calls visit with every page in the order of paths.
-func (r *reader) Pages(visit func(path string, record []byte) error) error {
-	rows, err := r.tx.Query("SELECT path, record FROM page ORDER BY path")
+// Pages calls visit with the record of every page.
+func (r *reader) Pages(visit func(path string, record []byte)) error {
+	rows, err := r.tx.Query("SELECT path, record FROM page")
 	if err != nil {
 		return err
 	}
@@ -156,9 +156,25 @@ func (r *reader) Pages(visit func(path string, record []byte) error) error {
 		if err := rows.Scan(&path, &data); err != nil {
 			return err
 		}
-		if err := visit(path, data); err != nil {
+		visit(path, data)
+	}
+	return rows.Err()
+}
+
+// SharedBlocks calls visit with the record of every shared block.
+func (r *reader) SharedBlocks(visit func(id int64, record []byte)) error {
+	rows, err := r.tx.Query("SELECT id, record FROM shared")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var data []byte
+		if err := rows.Scan(&id, &data); err != nil {
 			return err
 		}
+		visit(id, data)
 	}
 	return rows.Err()
 }
@@ -166,6 +182,17 @@ func (r *reader) Pages(visit func(path string, record []byte) error) error {
 // within returns statements that run inside a transaction.
 func (q queries) within(tx *sql.Tx) reader {
 	return reader{tx, queries{tx.Stmt(q.meta), tx.Stmt(q.page), tx.Stmt(q.shared), tx.Stmt(q.value)}}
+}
+
+// Version returns the number of the latest update, as of now.
+func (s *Store) Version() (int64, error) {
+	return (&reader{queries: s.reads[0]}).Version()
+}
+
+// Values returns the values kept under a name, as of now. Values never
+// change under their name; they only go away when no record names them.
+func (s *Store) Values(hash record.Hash) (data []byte, found bool, err error) {
+	return (&reader{queries: s.reads[0]}).Values(hash)
 }
 
 // View is one state of the store being read.
