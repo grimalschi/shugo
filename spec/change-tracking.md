@@ -97,7 +97,7 @@ Variant 1:
 
 Variant 2:
 
-- The main thing around it is not done: how external sources get into the base. At the stand, the base writes a generator.
+- The main thing around it is not done: how external sources get into the base. A generator writes the base on the stand. The device is discussed in [Data Adapter](data-adapter.md).
 - The query constructor is small: see the restrictions above.
 - The first build is one and a half times longer: 620 thousand queries and 610 thousand reads in storage.
 - The route is listed as a whole when the entry has been added or deleted: 0.25 s on 100,000 pages.
@@ -349,7 +349,7 @@ Order of works:
 
 - Choose the option: first, second or second with the dependency tree from the first.
 - For the 1 variant: approve the mechanism and three rules for site authors.
-- For the 2 variant: how external sources get into the database; what the query builder should be able to do.
+- For the 2 variant: what the query designer should be able to do. How external sources get into the database is in [Data Adapter](data-adapter.md).
 - Approve a copy of your part instead of Seroval.
 - Comparison of prints on Go: he owns the storage and knows what common blocks someone else needs. You can compare in JS, the price is the same.
 - Accuracy through functions: `{finalPrice(item)}` now means "goods as a whole". The compiler can look into the function of the project and find out that it reads `price` and `discount`. Do it right away.

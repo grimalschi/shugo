@@ -9,6 +9,7 @@ The document describes where the data for pages comes from and when they are loa
 - The framework is not tied to a data source: it can be a database, file or someone else's API. What has changed is determined by comparison, not tracking the source.
 - For now, every update will start anew and load all the data; then the result is compared to the past.
 - Updating part of the data on signals from sources is a good idea for the future: [proposal](partial-reload.md).
+- The framework stores a copy of the project data in SQLite; data from the source brings an adapter to it: [Data adapter and data copy](data-adapter.md).
 
 ## Made in the first version, waiting for approval
 

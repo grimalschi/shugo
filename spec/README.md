@@ -22,6 +22,7 @@ Documents are written together. Each of the three sections:
 | [Components](components.md) | Reusable template parts, parameters, slots |
 | [Layouts](layouts.md) | Overall page binding |
 | [Data loading](data-loading.md) | Where data comes from |
+| [Data adapter and data copy](data-adapter.md) | How data from any source gets into the copy that builds dependencies |
 | [Blocks and incremental updates](blocks.md) | How data changes only reach the parts of the site that show it |
 | [Change tracking](change-tracking.md) | How to find out what has changed, and only this is calculated: the sentence and measurements |
 | [Storage](storage.md) | What lies between the stages and in what form |
