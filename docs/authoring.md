@@ -44,6 +44,8 @@ Run `shugo build` after every change and read the errors: each names a file, a l
 
 `shugo update` is for data that changed: it computes the pages and components that read a row of the data database which is not what it was, and nothing else. It takes tens of milliseconds, whatever the size of the site. If a file of the project changed, it compiles the project first and computes everything, so it is always safe to run.
 
+`shugo update -check` computes every page and names the ones that came out different although no row they read has changed. Such a page reads data past the data database. Run it when a page looks stale.
+
 `shugo export` writes `/about` as `about/index.html`, the page for missing addresses as `404.html`, and copies `public/` and the style sheet.
 
 ## A page
@@ -53,7 +55,7 @@ Run `shugo build` after every change and read the errors: each names a file, a l
 import Card from "../components/Card.shugo"
 import { price } from "@/lib/shop"
 
-const products = Shugo.query("products").select("title", "price").order("title").all()
+const products = Shugo.query("products").order("title").all()
 const total = products.reduce((sum, item) => sum + item.price, 0)
 ---
 <title slot="head">Catalogue</title>
@@ -247,14 +249,16 @@ export function getStaticPaths({ query }) {
   return query("products").select("slug").all().map(({ slug }) => ({ params: { slug } }))
 }
 
-const product = Shugo.query("products").select("title", "price").where({ slug: Shugo.params.slug }).first()
+const product = Shugo.query("products").where({ slug: Shugo.params.slug }).first()
 ---
 <h1>{product.title}</h1>
 ```
 
-`getStaticPaths` sees the imports and nothing else of the script. It runs once; the rest of the script runs for every item it returned, with that item's `params` in `Shugo.params`.
+`getStaticPaths` sees the imports and nothing else of the script. It runs once; the rest of the script runs for every item it returned. `Shugo.params` holds the parameters as they stand in the address of the page: always text, and only the ones the file name has.
 
-**Return `params` alone and let every page ask for its own data.** Then one product that changes has one page computed. `getStaticPaths` may also hand data to its pages, `{ params, props: { product } }`, read as `Shugo.props`; but then only the route knows what a page shows, and when a row it read changes, all its pages are computed again.
+**Return `params` alone and let every page ask for its own data.** Then one product that changes has one page computed. `getStaticPaths` may also hand rows to its pages, `{ params, props: { product } }`, read as `Shugo.props`; but then only the route knows what a page shows, and when anything of a row it read changes, all its pages are computed again.
+
+The list of addresses is the one place where `select` pays: of a hundred thousand rows it fetches one column instead of all.
 
 For lists split into pages name the file `[...page].shugo`. `paginate` in `getStaticPaths` takes the number of items and says which pages there are; `Shugo.paginate` in the page takes a query and returns the items of that page:
 
@@ -264,7 +268,7 @@ For lists split into pages name the file `[...page].shugo`. `paginate` in `getSt
 export function getStaticPaths({ query, paginate }) {
   return paginate(query("posts").count(), { pageSize: 10 })
 }
-const page = Shugo.paginate(Shugo.query("posts").select("slug", "title").order("date", "desc"), { pageSize: 10 })
+const page = Shugo.paginate(Shugo.query("posts").order("date", "desc"), { pageSize: 10 })
 ---
 <g-for each={page.data} as="post">…</g-for>
 <g-if cond={page.url.prev}><a href={page.url.prev}>Newer</a></g-if>
@@ -285,7 +289,7 @@ With `[page].shugo` the first page is `/blog/1`. `paginate(count, { pageSize, pa
 
 The data of a site lives in one SQLite database, named in `shugo.json`: `{ "data": "data/site.db" }`. Whatever brings data to the site — an import script, a sync with a CMS, a person with a SQL console — writes to that database. Pages read it with `Shugo.query`, and only with it.
 
-That is what makes updates exact. Shugo notes for every page and every shared component which rows it read, and the database keeps a journal of the rows that change. `shugo update` computes what read a changed row. Nothing has to be marked, declared or invalidated.
+That is what makes updates exact. Shugo notes for every page and every shared component which rows it asked for and which columns of them were read while it was computed — in its script, in its template, in the functions they call, in the components the template gives a row to. The database keeps a journal of the rows that change. `shugo update` computes what read a changed column of a changed row. Nothing has to be marked, declared or invalidated, and a query need not name its columns.
 
 ### Rules for the database
 
@@ -293,18 +297,17 @@ That is what makes updates exact. Shugo notes for every page and every shared co
 - Shugo adds a table `_shugo_journal`, a table `_shugo_meta` and triggers named `_shugo_…` to the database and switches it to WAL mode. Leave them alone. Write to the tables with anything, in any way; `INSERT OR REPLACE` and upserts are fine.
 - After a table is added, removed or altered, the next update computes everything once.
 - Views are not queried: Shugo cannot tell which rows a view is made of. Query the tables.
-- Data read from anywhere else — a file, `fetch`, a module that holds state — is not tracked: `shugo update` does not see it change. `shugo build` computes everything and reads it again.
+- Data read from anywhere else — a file, `fetch`, a value that a module keeps between pages — is not tracked: `shugo update` does not see it change. `shugo build` computes everything and reads it again; `shugo update -check` names the pages that depend on such data.
 
 ### Queries
 
 ```ts
 Shugo.query("products")                       // a table
-  .select("title", "price")                   // the columns to take; all of them without it
   .where({ category: "c9", available: true }) // equal values
   .where("price", "<", 1000)                  // =  !=  <  <=  >  >=  like  in
   .order("position")                          // .order("price", "desc")
   .limit(24).offset(48)
-  .all()                                      // the rows, as plain objects
+  .all()                                      // the rows, as objects
 ```
 
 | | |
@@ -313,11 +316,15 @@ Shugo.query("products")                       // a table
 | `.first()` | the first row, or `null` |
 | `.get(key)` | the row with this primary key, or `null` |
 | `.count()` | how many rows the `where` finds; order, limit and offset do not matter |
+| `.select("title", "price")` | take these columns only, to fetch less; without it a row has all its columns |
 | `.join("categories", "category")` | puts into every row the row of `categories` whose key is the row's `category`, as `row.categories`, or `null`. Options: `{ select: ["title"], as: "group", on: "slug" }`; `on` must be the key or a unique column of the other table. For many rows, make a second query |
 
 - Every step returns a new query, so a query can be kept and asked in several ways.
 - The primary key is in every row, selected or not.
-- **Select what the page shows.** A page is computed again when a column it took changes. With `select("title", "price")` a change of the stock does not reach it; without `select` every change of the row does.
+- **A page depends on what is read of its rows, not on what a query took.** A row notes every column that is read of it: `item.title` in a template, `item.price` inside a function that got the row, `variant.stock` in a component that got the row. A change of any other column does not reach the page. A branch of `<g-if>` that is not taken reads nothing; when the data sends the page into it, the page is computed again.
+- Taking a row as a whole reads all of it: `{ ...row }`, `JSON.stringify(row)`, `Object.keys(row)`, `{...row}` among attributes. Read the columns you show instead.
+- **A row belongs to the script that asked for it.** Do not keep rows, `Shugo` or a query in a variable of a module for other pages: read there, a row would leave that page depending on nothing, so it throws and says so. Let every script ask for its rows; the database is fast.
+- `structuredClone(row)` does not work on a row; copy with `{ ...row }`.
 - **Compare with values of the column's kind**: a text for a text column, a number for a number column. `where({ id: 5 })` on a text column is an error that says what to write.
 - `where({ column: null })` finds rows without a value.
 - Rows come in the order the database finds them; say `order()` where the order matters, and add an index for it on big tables: `CREATE INDEX … ON products (category, position)` for `where({ category }).order("position")`.
@@ -329,7 +336,7 @@ Shugo.query("products")                       // a table
 - **In a component called with an id**, for what many pages show: `<ProductCard id={row.id} />` with `Shugo.query("products").get(id)` inside. Such a component is computed once for every id and kept on its own, so when the product changes its card is computed, and none of the pages that show it. A component is computed once like this when neither it nor any component it imports reads `Shugo.url` or `Shugo.params`, and it is called with plain values (strings, numbers, booleans) or without props.
 - **In a component without props**, for what every page shows: `<Header />` reads the menu itself.
 - Not in a module of `lib/` when it is imported: a query belongs to the page or component that asks, so only `Shugo.query` and the `query` of `getStaticPaths` can ask. A helper takes the query function or the rows as an argument.
-- A component that got an object from its page (`<Variant variant={row} />`) needs no query: it shows what the page read.
+- A component that got a row from its page (`<Variant variant={row} />`) needs no query: it shows what the page asked for, and the page depends on what the component reads of the row.
 - Throw an error when a row that must be there is not: `if (!product) throw new Error(…)`.
 
 Create `Intl.NumberFormat`, `Intl.DateTimeFormat` and the like once in a module, not on every call: they are slow to make.

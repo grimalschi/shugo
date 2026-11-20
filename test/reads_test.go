@@ -571,3 +571,47 @@ console.log("price " + Shugo.params.price)
 	expect(t, s.page("/price/10"), `<p>string undefined Big jug</p>`)
 	s.sameAsBuilt()
 }
+
+// shugo update -check ends with an error when a page shows what Shugo did
+// not see it read, and says where to look.
+func TestCheckCommand(t *testing.T) {
+	s := newSite(t, `
+-- shugo.json --
+{"data": "data/shop.db"}
+-- note.txt --
+old
+-- pages/index.shugo --
+---
+import { readFileSync } from "node:fs"
+const note = readFileSync("note.txt", "utf8").trim()
+const item = Shugo.query("products").get("p1")
+---
+<p>{note}: {item.title}</p>
+`)
+	s.sql(readRows)
+	s.store.Close() // the commands open the store themselves
+	if out, errs, status := shugo(t, "build", s.root); status != 0 {
+		t.Fatalf("build: %d\n%s\n%s", status, out, errs)
+	}
+
+	s.sql(`UPDATE products SET title = 'Big jug' WHERE id = 'p1'`)
+	out, errs, status := shugo(t, "update", "-check", s.root)
+	if status != 0 || !strings.Contains(out, "checked: everything was computed") || !strings.Contains(out, "pages: 0 added, 1 changed") {
+		t.Errorf("a check with nothing unseen: %d\n%s\n%s", status, out, errs)
+	}
+
+	s.write("-- note.txt --\nnew\n")
+	out, errs, status = shugo(t, "update", "-check", s.root)
+	for _, want := range []string{
+		"1 pages or shared blocks came out different although no row they read has changed; the first: the page /.",
+		"Put that data into the database and ask for it with Shugo.query",
+	} {
+		if status != 1 || !strings.Contains(errs, want) {
+			t.Errorf("a check with a page that read a file: %d\n%s\n%s\nwant: %s", status, out, errs, want)
+		}
+	}
+	// The store is right after the check all the same.
+	if out, _, status := shugo(t, "update", "-check", s.root); status != 0 || !strings.Contains(out, "nothing has changed") {
+		t.Errorf("the check again: %d\n%s", status, out)
+	}
+}
