@@ -575,3 +575,55 @@ console.log("page " + item.id)
 	expect(t, s.page("/products/plain"), `<h1>Not special</h1>`)
 	s.sameAsBuilt()
 }
+
+// A page that one route stops giving may at once be given by a less exact
+// route. It is dropped and made anew within one update, and what it shows
+// and what it read stays on the books.
+func TestDataPageChangesRoutes(t *testing.T) {
+	s := newSite(t, `
+-- shugo.json --
+{"data": "data/shop.db"}
+-- components/Card.shugo --
+---
+const item = Shugo.query("products").select("title").get(Shugo.props.id)
+console.log("card " + Shugo.props.id)
+---
+<b>{item.title}</b>
+-- pages/x/[slug].shugo --
+---
+import Card from "../../components/Card.shugo"
+export const getStaticPaths = ({ query }) => query("products").select("slug").where({ category: "c1" }).all().map(({ slug }) => ({ params: { slug } }))
+const item = Shugo.query("products").select("price").where({ slug: Shugo.params.slug }).first()
+console.log("exact " + item.id)
+---
+<p>exact {item.price} <Card id={item.id} /></p>
+-- pages/[...all].shugo --
+---
+import Card from "../components/Card.shugo"
+export const getStaticPaths = ({ query }) => query("products").select("slug").all().map(({ slug }) => ({ params: { all: "x/" + slug } }))
+const item = Shugo.query("products").select("price").where({ slug: Shugo.params.all.slice(2) }).first()
+console.log("loose " + item.id)
+---
+<p>loose {item.price} <Card id={item.id} /></p>
+`)
+	s.sql(queryRows)
+	if report := s.build(); report.Shadowed != 3 || report.Pages.Total != 4 {
+		t.Fatalf("shadowed %d, pages %d", report.Shadowed, report.Pages.Total)
+	}
+	s.computed()
+	expect(t, s.page("/x/jug"), `<p>exact 10 <b>Jug</b></p>`)
+	expect(t, s.page("/x/vase"), `<p>loose 9 <b>Vase</b></p>`)
+
+	// The exact route lets the page go; the loose one has it from now on.
+	s.changed(`UPDATE products SET category = 'c2' WHERE id = 'p1'`, "loose p1")
+	expect(t, s.page("/x/jug"), `<p>loose 10 <b>Jug</b></p>`)
+	// The page still shows its card, and still reads its row.
+	s.changed(`UPDATE products SET title = 'Carafe' WHERE id = 'p1'`, "card p1")
+	expect(t, s.page("/x/jug"), `<p>loose 10 <b>Carafe</b></p>`)
+	s.changed(`UPDATE products SET price = 11 WHERE id = 'p1'`, "loose p1")
+	// And back: the exact route takes the page over.
+	s.changed(`UPDATE products SET category = 'c1' WHERE id = 'p1'`, "exact p1")
+	expect(t, s.page("/x/jug"), `<p>exact 11 <b>Carafe</b></p>`)
+	s.changed(`UPDATE products SET price = 12 WHERE id = 'p1'`, "exact p1")
+	s.sameAsBuilt()
+}

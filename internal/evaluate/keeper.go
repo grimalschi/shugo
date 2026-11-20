@@ -455,12 +455,12 @@ func (k *keeper) change(user string, old []byte, now *record.Record, values [][]
 	k.is.of(now)
 	for id := range k.is.shared {
 		if _, kept := k.was.shared[id]; !kept {
-			k.shows.more = append(k.shows.more, edge{id, user})
+			k.shows.list = append(k.shows.list, edge{id, user, true})
 		}
 	}
 	for id := range k.was.shared {
 		if _, kept := k.is.shared[id]; !kept {
-			k.shows.fewer = append(k.shows.fewer, edge{id, user})
+			k.shows.list = append(k.shows.list, edge{id, user, false})
 			k.loose[id] = struct{}{}
 		}
 	}
@@ -737,35 +737,37 @@ func (k *keeper) rendered() error {
 // found and not told the store yet. Told in order, a hundred thousand pages
 // that show the same layout are written several times faster.
 type edges struct {
-	update      *store.Update
-	more, fewer []edge
+	update *store.Update
+	list   []edge
 }
 
+// edge says that a user shows a shared block, or no longer does.
 type edge struct {
 	shared int64
 	user   string
+	shows  bool
 }
 
+// settle tells the store. A page may be dropped and come back within one
+// run, so of what was said about one user and one block the last word
+// counts: the order of the changes is kept where they meet.
 func (e *edges) settle() error {
-	for _, list := range [][]edge{e.more, e.fewer} {
-		sort.Slice(list, func(a, b int) bool {
-			if list[a].shared != list[b].shared {
-				return list[a].shared < list[b].shared
-			}
-			return list[a].user < list[b].user
-		})
-	}
-	for _, one := range e.more {
-		if err := e.update.Show(one.shared, one.user); err != nil {
+	sort.SliceStable(e.list, func(a, b int) bool {
+		if e.list[a].shared != e.list[b].shared {
+			return e.list[a].shared < e.list[b].shared
+		}
+		return e.list[a].user < e.list[b].user
+	})
+	for _, one := range e.list {
+		tell := e.update.Unshow
+		if one.shows {
+			tell = e.update.Show
+		}
+		if err := tell(one.shared, one.user); err != nil {
 			return err
 		}
 	}
-	for _, one := range e.fewer {
-		if err := e.update.Unshow(one.shared, one.user); err != nil {
-			return err
-		}
-	}
-	e.more, e.fewer = e.more[:0], e.fewer[:0]
+	e.list = e.list[:0]
 	return nil
 }
 

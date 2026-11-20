@@ -180,35 +180,38 @@ func (s *shape) key(row []any) []byte {
 // readings are the changes of who read what that a run has found and not
 // told the store yet.
 type readings struct {
-	update      *store.Update
-	more, fewer []read
+	update *store.Update
+	list   []read
 }
 
+// read says that a reader made a reading, or no longer makes it.
 type read struct {
 	reading
 	reader string
+	made   bool
 }
 
+// settle tells the store, in the order of the readings: that is the order
+// the store keeps them in. A page may be dropped and come back within one
+// run, so of what was said about one reader and one reading the last word
+// counts.
 func (r *readings) settle() error {
-	for _, list := range [][]read{r.more, r.fewer} {
-		sort.Slice(list, func(a, b int) bool {
-			if list[a].reading != list[b].reading {
-				return list[a].reading.before(list[b].reading)
-			}
-			return list[a].reader < list[b].reader
-		})
-	}
-	for _, one := range r.more {
-		if err := r.update.Read(one.shape, []byte(one.key), one.reader); err != nil {
+	sort.SliceStable(r.list, func(a, b int) bool {
+		if r.list[a].reading != r.list[b].reading {
+			return r.list[a].reading.before(r.list[b].reading)
+		}
+		return r.list[a].reader < r.list[b].reader
+	})
+	for _, one := range r.list {
+		tell := r.update.Unread
+		if one.made {
+			tell = r.update.Read
+		}
+		if err := tell(one.shape, []byte(one.key), one.reader); err != nil {
 			return err
 		}
 	}
-	for _, one := range r.fewer {
-		if err := r.update.Unread(one.shape, []byte(one.key), one.reader); err != nil {
-			return err
-		}
-	}
-	r.more, r.fewer = r.more[:0], r.fewer[:0]
+	r.list = r.list[:0]
 	return nil
 }
 
@@ -268,10 +271,10 @@ func (k *keeper) read(reader string, kept []byte, text []byte) (encoded []byte, 
 	for a, b := 0, 0; a < len(before) || b < len(now); {
 		switch {
 		case b == len(now) || (a < len(before) && before[a].before(now[b])):
-			k.reads.fewer = append(k.reads.fewer, read{before[a], reader})
+			k.reads.list = append(k.reads.list, read{before[a], reader, false})
 			a++
 		case a == len(before) || now[b].before(before[a]):
-			k.reads.more = append(k.reads.more, read{now[b], reader})
+			k.reads.list = append(k.reads.list, read{now[b], reader, true})
 			b++
 		default:
 			a, b = a+1, b+1
