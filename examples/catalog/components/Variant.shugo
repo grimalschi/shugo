@@ -1,6 +1,5 @@
 ---
-import type { Variant } from "../lib/catalog"
-const { variant } = Shugo.props as { variant: Variant }
+const { variant } = Shugo.props as { variant: { title: string; stock: number } }
 ---
 <li class={variant.stock > 0 ? "variant" : "variant out"}>
   {variant.title}:

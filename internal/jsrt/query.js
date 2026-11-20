@@ -2,7 +2,7 @@
 //
 // A query is built step by step and run by all(), first(), get() or count():
 //
-//   Shugo.query("products").select("id", "title").where({ category: "c9" }).order("position").limit(24).all()
+//   Shugo.query("products").select("title", "price").where({ category: "c9" }).order("position").limit(24).all()
 //
 // Every query that runs leaves readings with the page or shared block that
 // made it: which rows of which table it looked for, and which of their
@@ -12,7 +12,7 @@
 // A reading is the rows of one table that hold given values in given
 // columns. Readings come in shapes: a shape names the table, those columns,
 // and the columns a change of which matters to the reader. The shapes of a
-// project are few, so a shape is told to the Go side once and a reading is
+// project are few, so a shape is told to the Go side once, and a reading is
 // its number and the values.
 //
 // Runs on Bun and on Node: each has SQLite built in.
@@ -40,15 +40,11 @@ class Data {
   constructor(prepare, declare) {
     this.prepare = prepare;
     this.declare = declare; // tells the Go side a new shape: its number and what it is
-    this.statements = new Map(); // SQL → prepared statement
     this.tables = new Map(); // name → what table() returns
     this.shapes = new Map(); // what a shape is → its number
-  }
-
-  statement(sql) {
-    let statement = this.statements.get(sql);
-    if (statement === undefined) this.statements.set(sql, (statement = this.prepare(sql)));
-    return statement;
+    // A project asks the same few questions with other values over and over.
+    // How to ask one and what it reads is worked out once: see Query.#plan.
+    this.plans = new Map();
   }
 
   // table returns the columns of a table: their names, what kind of values
@@ -57,19 +53,19 @@ class Data {
     let table = this.tables.get(name);
     if (table !== undefined) return table;
     if (typeof name !== "string") throw new TypeError(`the name of a table is a text, got ${describe(name)}`);
-    const columns = name.startsWith("_shugo_") ? [] : this.statement("SELECT name, type, pk FROM pragma_table_info(?) ORDER BY cid").all(name);
-    const kind = this.statement("SELECT type FROM sqlite_master WHERE name = ?").get(name)?.type;
+    const columns = name.startsWith("_shugo_") ? [] : this.prepare("SELECT name, type, pk FROM pragma_table_info(?) ORDER BY cid").all(name);
+    const kind = this.prepare("SELECT type FROM sqlite_master WHERE name = ?").get(name)?.type;
     if (kind === "view") {
       throw new Error(`${name} is a view. Shugo cannot tell which records a view is made of, so it cannot know when to compute a page again: query the tables themselves`);
     }
     if (kind !== "table" || columns.length === 0) {
-      const names = this.statement("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' AND name NOT LIKE '\\_shugo\\_%' ESCAPE '\\' ORDER BY name").all().map((row) => row.name);
+      const names = this.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' AND name NOT LIKE '\\_shugo\\_%' ESCAPE '\\' ORDER BY name").all().map((row) => row.name);
       throw new Error(`there is no table ${JSON.stringify(name)} in the data database; it has: ${names.join(", ") || "no tables"}`);
     }
     table = { name, columns: new Map(columns.map((column) => [column.name, kindOf(column.type)])), key: columns.find((column) => column.pk > 0).name, unique: new Set() };
     table.unique.add(table.key);
-    for (const index of this.statement(`SELECT name FROM pragma_index_list(?) WHERE "unique" = 1`).all(name)) {
-      const parts = this.statement("SELECT name FROM pragma_index_info(?)").all(index.name);
+    for (const index of this.prepare(`SELECT name FROM pragma_index_list(?) WHERE "unique" = 1`).all(name)) {
+      const parts = this.prepare("SELECT name FROM pragma_index_info(?)").all(index.name);
       if (parts.length === 1 && parts[0].name !== null) table.unique.add(parts[0].name);
     }
     this.tables.set(name, table);
@@ -107,16 +103,17 @@ const numeral = /^\s*[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?\s*$/;
 function fit(table, column, value) {
   const kind = table.columns.get(column);
   const type = typeof value;
-  if (type === "boolean") value = value ? 1 : 0;
-  else if (type === "number" && Number.isFinite(value)) {
-    if (kind === "text") throw new TypeError(`${table.name}.${column} holds text, and it is compared with the number ${value}: write ${JSON.stringify(String(value))}`);
-  } else if (type === "string") {
+  if (type === "string") {
     // A column of numbers holds a text only if the text is not a number.
     if (kind === "number" && numeral.test(value)) throw new TypeError(`${table.name}.${column} holds numbers, and it is compared with the text ${JSON.stringify(value)}: write ${Number(value)}`);
-  } else {
-    throw new TypeError(`${table.name}.${column} is compared with ${describe(value)}: a value in a query is a text, a number, true or false`);
+    return value;
   }
-  return value;
+  if (type === "number" && Number.isFinite(value)) {
+    if (kind === "text") throw new TypeError(`${table.name}.${column} holds text, and it is compared with the number ${value}: write ${JSON.stringify(String(value))}`);
+    return value;
+  }
+  if (type === "boolean") return value ? 1 : 0;
+  throw new TypeError(`${table.name}.${column} is compared with ${describe(value)}: a value in a query is a text, a number, true or false`);
 }
 
 function describe(value) {
@@ -129,40 +126,51 @@ const quote = (name) => `"${name.replaceAll('"', '""')}"`;
 
 const comparisons = new Set(["=", "!=", "<", "<=", ">", ">=", "like", "in"]);
 
-// Reads collects the readings of one page or shared block while it is computed.
+// Reads collects the readings of one page or shared block while it is
+// computed: the number of a shape, then the values of its key, one reading
+// after another. The shape tells how many values a key has.
 export class Reads {
   constructor() {
-    this.seen = new Set();
+    this.list = [];
   }
 
-  note(shape, key) {
-    this.seen.add(JSON.stringify([shape, ...key]));
-  }
-
-  // text is what goes to the Go side: a JSON list of readings, each the
-  // number of its shape and the values of its key.
+  // text is what goes to the Go side: the readings as a JSON list.
   text() {
-    return this.seen.size === 0 ? "" : "[" + [...this.seen].join(",") + "]";
+    return this.list.length === 0 ? "" : JSON.stringify(this.list);
   }
 }
 
+const blank = { select: null, equal: [], among: null, other: [], order: [], limit: -1, offset: -1, joins: [] };
+
 // Query is a question to one table. Every step returns a new query, so a
 // query can be kept and asked in several ways.
+//
+// A query knows its steps twice: as what they said, and as a text that
+// names them without their values. A project asks few different questions,
+// so how to ask a question — its SQL, the order of its values and the
+// shapes of what it reads — is worked out when it is first asked, and found
+// by that text ever after.
 export class Query {
   #data;
   #reads;
   #table;
+  #steps;
+  #values;
   #parts;
 
-  constructor(data, reads, name, parts) {
+  constructor(data, reads, name, steps = name, values = [], parts = blank) {
     this.#data = data;
     this.#reads = reads;
     this.#table = data.table(name);
-    this.#parts = parts ?? { select: null, equal: [], among: null, other: [], order: [], limit: null, offset: null, joins: [] };
+    this.#steps = steps;
+    this.#values = values;
+    this.#parts = parts;
   }
 
-  #with(change) {
-    return new Query(this.#data, this.#reads, this.#table.name, { ...this.#parts, ...change });
+  // A step adds its name to the steps, its values to the values, and what
+  // it said to the parts.
+  #step(name, values, change) {
+    return new Query(this.#data, this.#reads, this.#table.name, this.#steps + "\n" + name, values.length === 0 ? this.#values : [...this.#values, ...values], { ...this.#parts, ...change });
   }
 
   #column(name, where) {
@@ -177,9 +185,9 @@ export class Query {
   // the ones it shows keeps it from being computed for nothing.
   select(...columns) {
     const names = columns.flat();
-    if (names.length === 0) throw new Error("select() takes the names of columns: select(\"id\", \"title\")");
+    if (names.length === 0) throw new Error('select() takes the names of columns: select("id", "title")');
     for (const name of names) this.#column(name, "select");
-    return this.#with({ select: [...new Set(names)] });
+    return this.#step("select " + names.join(","), [], { select: [...new Set(names)] });
   }
 
   // where narrows the rows: where({ category: "c9", available: true }) for
@@ -188,48 +196,60 @@ export class Query {
   where(column, comparison, value) {
     if (column !== null && typeof column === "object" && arguments.length === 1) {
       let next = this;
-      for (const [name, wanted] of Object.entries(column)) next = wanted === null ? next.where(name, "=", null) : next.where(name, "=", wanted);
+      for (const name in column) next = next.where(name, "=", column[name]);
       return next;
     }
     if (arguments.length !== 3) throw new Error('where() takes an object of equal values, where({ category: "c9" }), or a column, a comparison and a value: where("price", "<", 1000)');
     this.#column(column, "where");
-    if (typeof comparison !== "string" || !comparisons.has(comparison.toLowerCase())) {
+    if (typeof comparison !== "string" || !comparisons.has((comparison = comparison.toLowerCase()))) {
       throw new Error(`where("${column}", ${JSON.stringify(comparison)}, …): the comparisons are ${[...comparisons].join(", ")}`);
     }
-    comparison = comparison.toLowerCase();
+    const parts = this.#parts;
+    const at = this.#values.length;
     if (value === null || value === undefined) {
       if (comparison !== "=" && comparison !== "!=") throw new Error(`where("${column}", "${comparison}", ${value}): only = and != compare with null`);
-      return this.#with({ other: [...this.#parts.other, [column, comparison === "=" ? "IS NULL" : "IS NOT NULL"]] });
+      const test = comparison === "=" ? "IS NULL" : "IS NOT NULL";
+      return this.#step(`where ${column} ${test}`, [], { other: [...parts.other, { column, test, values: [] }] });
     }
     if (comparison === "in") {
       if (!Array.isArray(value)) throw new TypeError(`where("${column}", "in", …) takes a list of values, got ${describe(value)}`);
-      const values = [...new Set(value.map((one) => fit(this.#table, column, one)))];
+      const list = [...new Set(value.map((one) => fit(this.#table, column, one)))];
+      const places = list.map((_, i) => at + i);
       // The rows with one of several values are found by each value, like
-      // rows with one value. One such list is enough for most queries.
-      if (this.#parts.among === null) return this.#with({ among: [column, values] });
-      return this.#with({ other: [...this.#parts.other, [column, `IN (${values.map(() => "?").join(", ")})`, ...values]] });
+      // rows with one value. One such list is enough for most queries; the
+      // next one only narrows what the first finds.
+      if (parts.among === null && !parts.equal.some((one) => one.column === column)) {
+        return this.#step(`where ${column} in ${list.length}`, list, { among: { column, values: places } });
+      }
+      return this.#step(`where ${column} in ${list.length} more`, list, { other: [...parts.other, { column, test: `IN (${list.map(() => "?").join(", ")})`, values: places }] });
     }
     value = fit(this.#table, column, value);
-    if (comparison === "=") return this.#with({ equal: [...this.#parts.equal.filter(([name]) => name !== column), [column, value]] });
-    return this.#with({ other: [...this.#parts.other, [column, `${comparison === "like" ? "LIKE" : comparison} ?`, value]] });
+    if (comparison === "=") {
+      if (parts.equal.some((one) => one.column === column) || parts.among?.column === column) {
+        throw new Error(`where: ${this.#table.name}.${column} is already compared with a value in this query`);
+      }
+      return this.#step(`where ${column} =`, [value], { equal: [...parts.equal, { column, value: at }] });
+    }
+    return this.#step(`where ${column} ${comparison}`, [value], { other: [...parts.other, { column, test: `${comparison === "like" ? "LIKE" : comparison} ?`, values: [at] }] });
   }
 
   // order sorts the rows by a column; order("price", "desc") from the
-  // greatest. Rows that are equal there come in the order of their keys.
+  // greatest. Rows that are equal there, and all rows without an order, come
+  // as the database finds them: name what tells them apart where it matters.
   order(column, direction = "asc") {
     this.#column(column, "order");
     if (direction !== "asc" && direction !== "desc") throw new Error(`order("${column}", ${JSON.stringify(direction)}): the direction is "asc" or "desc"`);
-    return this.#with({ order: [...this.#parts.order, [column, direction]] });
+    return this.#step(`order ${column} ${direction}`, [], { order: [...this.#parts.order, { column, direction }] });
   }
 
   limit(count) {
     if (!Number.isInteger(count) || count < 0) throw new TypeError(`limit() takes a whole number that is not negative, got ${describe(count)}`);
-    return this.#with({ limit: count });
+    return this.#step("limit", [count], { limit: this.#values.length });
   }
 
   offset(count) {
     if (!Number.isInteger(count) || count < 0) throw new TypeError(`offset() takes a whole number that is not negative, got ${describe(count)}`);
-    return this.#with({ offset: count });
+    return this.#step("offset", [count], { offset: this.#values.length });
   }
 
   // join puts into every row the row of another table that its column
@@ -250,18 +270,19 @@ export class Query {
     if (this.#table.columns.has(as) || this.#parts.joins.some((join) => join.as === as)) {
       throw new Error(`join("${name}", "${column}"): a row already has ${JSON.stringify(as)}; give the joined row another name: { as: "…" }`);
     }
-    return this.#with({ joins: [...this.#parts.joins, { table: other, column, on, select: select ?? [...other.columns.keys()], as }] });
+    select ??= [...other.columns.keys()];
+    return this.#step(`join ${name} ${column} ${on} ${as} ${select.join(",")}`, [], { joins: [...this.#parts.joins, { table: other, column, on, select, as }] });
   }
 
   // all returns the rows as objects. The key of the table is among the
   // columns of every row, named or not.
   all() {
-    return this.#run(this.#parts.limit, this.#parts.offset);
+    return this.#rows(this.#plan("all"));
   }
 
   // first returns the first row, or null if there is none.
   first() {
-    return this.#run(1, this.#parts.offset)[0] ?? null;
+    return this.#rows(this.#plan("first"))[0] ?? null;
   }
 
   // get returns the row with the given key, or null.
@@ -271,65 +292,18 @@ export class Query {
 
   // count tells how many rows there are, whatever the order, limit and offset.
   count() {
-    const filter = this.#filter();
-    const found = this.#data.statement(`SELECT count(*) AS count FROM ${quote(this.#table.name)}${filter.sql}`).get(...filter.values);
-    this.#found(filter, filter.matters, null, false);
+    const plan = this.#plan("count");
+    const values = this.#values;
+    const found = plan.statement.get(...plan.places.map((at) => values[at]));
+    this.#read(plan, null);
     return found.count;
   }
 
-  // The filter as SQL with its values, and what a reading of it holds: the
-  // columns that rows are found by with a key of their values (one key for
-  // every value of a list), and the columns that decide which rows it finds.
-  #filter() {
-    const { equal, among, other } = this.#parts;
-    const sorted = [...equal].sort(([a], [b]) => (a < b ? -1 : 1));
-    const terms = sorted.map(([column]) => `${quote(column)} COLLATE BINARY = ?`);
-    const values = sorted.map(([, value]) => value);
-    let by = sorted.map(([column]) => column);
-    let keys = [values.slice()];
-    if (among !== null) {
-      const [column, list] = among;
-      terms.push(`${quote(column)} COLLATE BINARY IN (${list.map(() => "?").join(", ")})`);
-      // The column of the list takes its place among the columns of the key.
-      const at = by.filter((one) => one < column).length;
-      by = by.toSpliced(at, 0, column);
-      keys = list.map((one) => keys[0].toSpliced(at, 0, one));
-      values.push(...list);
-    }
-    for (const [column, comparison, ...rest] of other) {
-      terms.push(`${quote(column)} ${comparison}`);
-      values.push(...rest);
-    }
-    const matters = new Set([...by, ...other.map(([column]) => column)]);
-    return { sql: terms.length === 0 ? "" : " WHERE " + terms.join(" AND "), values, by, keys, matters };
-  }
-
-  // The columns a query takes from its table: the ones it names or all of
-  // them, the key, and the ones its joins find rows by.
-  #taken() {
-    const table = this.#table;
-    const named = this.#parts.select ?? [...table.columns.keys()];
-    return [...new Set([...named, table.key, ...this.#parts.joins.map((join) => join.column)])];
-  }
-
-  #run(limit, offset) {
-    const table = this.#table;
-    const { order, joins } = this.#parts;
-    const filter = this.#filter();
-    const values = filter.values;
-    // Rows come in one order every time: by the key where nothing else tells.
-    const sorted = order.map(([column, direction]) => `${quote(column)}${direction === "desc" ? " DESC" : ""}`);
-    if (!order.some(([column]) => column === table.key)) sorted.push(quote(table.key));
-    let text = `SELECT ${this.#taken().map(quote).join(", ")} FROM ${quote(table.name)}${filter.sql} ORDER BY ${sorted.join(", ")}`;
-    const cut = limit !== null || offset !== null;
-    if (cut) {
-      text += " LIMIT ? OFFSET ?";
-      values.push(limit ?? -1, offset ?? 0);
-    }
-    const rows = this.#data.statement(text).all(...values);
-
-    for (const join of joins) {
-      const find = this.#data.statement(`SELECT ${[...new Set([...join.select, join.on])].map(quote).join(", ")} FROM ${quote(join.table.name)} WHERE ${quote(join.on)} COLLATE BINARY = ?`);
+  // rows asks the question and leaves the readings.
+  #rows(plan) {
+    const values = this.#values;
+    const rows = plan.statement.all(...plan.places.map((at) => values[at]));
+    for (const join of plan.joins) {
       const found = new Map();
       for (const row of rows) {
         const value = row[join.column];
@@ -337,44 +311,115 @@ export class Query {
           row[join.as] = null;
           continue;
         }
-        if (!found.has(value)) found.set(value, find.get(fit(join.table, join.on, value)) ?? null);
+        if (!found.has(value)) found.set(value, join.statement.get(fit(join.table, join.on, value)) ?? null);
         row[join.as] = found.get(value);
       }
     }
-
-    const matters = filter.matters;
-    for (const [column] of order) matters.add(column);
-    this.#found(filter, matters, rows, cut);
+    this.#read(plan, rows);
     return rows;
   }
 
-  // found leaves the readings of a query that has run. matters are the
-  // columns that decide which rows it finds and in which order; rows are
-  // the rows it returned, or null for a query that takes no columns; cut
-  // tells that a limit or an offset left some of the rows out.
-  #found(filter, matters, rows, cut) {
-    const data = this.#data;
-    const table = this.#table;
-    let taken = rows === null ? [] : this.#taken().filter((column) => column !== table.key && !matters.has(column));
-    // A query that returns every row its values find reads those rows whole:
-    // the columns it took belong to the same reading. So does one that looks
-    // for a value no two rows share. Otherwise rows with those values may
-    // change unseen behind the limit, and every row returned is a reading of
-    // its own, found by its key.
-    if (!cut || filter.by.some((column) => table.unique.has(column))) {
-      for (const column of taken) matters.add(column);
-      taken = [];
-    }
-    const shape = data.shape(table.name, filter.by, [...matters].sort());
-    for (const key of filter.keys) this.#reads.note(shape, key);
-    if (taken.length > 0) {
-      const one = data.shape(table.name, [table.key], taken.sort());
-      for (const row of rows) this.#reads.note(one, [row[table.key]]);
+  // read leaves the readings of a question that was asked: the rows that
+  // hold its values, each row returned where the plan says so, and the rows
+  // its joins looked for.
+  #read(plan, rows) {
+    const values = this.#values;
+    const list = this.#reads.list;
+    if (plan.among === null) {
+      list.push(plan.shape);
+      for (const at of plan.key) list.push(values[at]);
+    } else {
+      // One reading for every value of the list, the value at its place
+      // among the others.
+      for (const one of plan.among.values) {
+        list.push(plan.shape);
+        for (const at of plan.key) list.push(values[at === -1 ? one : at]);
+      }
     }
     if (rows === null) return;
-    for (const join of this.#parts.joins) {
-      const joined = data.shape(join.table.name, [join.on], join.select.filter((column) => column !== join.on).sort());
-      for (const row of rows) if (row[join.column] != null) this.#reads.note(joined, [row[join.column]]);
+    if (plan.each !== -1) for (const row of rows) list.push(plan.each, row[plan.id]);
+    for (const join of plan.joins) for (const row of rows) if (row[join.column] != null) list.push(join.shape, row[join.column]);
+  }
+
+  // plan works out how to ask the question in one of its ways, and what it
+  // reads, once for all questions with these steps.
+  #plan(way) {
+    const name = this.#steps + "\n" + way;
+    let plan = this.#data.plans.get(name);
+    if (plan !== undefined) return plan;
+
+    const data = this.#data;
+    const table = this.#table;
+    const { select, equal, among, other, order, limit, offset, joins } = this.#parts;
+    // The rows are found by the columns that are compared with one value or
+    // with a list of them, in the order of their names: that is the key of
+    // the reading. The value of a list stands at -1.
+    const found = [...equal, ...(among === null ? [] : [{ column: among.column, value: -1 }])].sort((a, b) => (a.column < b.column ? -1 : 1));
+    const by = found.map((one) => one.column);
+    const terms = [];
+    const places = [];
+    for (const one of found) {
+      if (one.value === -1) {
+        terms.push(`${quote(one.column)} COLLATE BINARY IN (${among.values.map(() => "?").join(", ")})`);
+        places.push(...among.values);
+      } else {
+        terms.push(`${quote(one.column)} COLLATE BINARY = ?`);
+        places.push(one.value);
+      }
     }
+    for (const one of other) {
+      terms.push(`${quote(one.column)} ${one.test}`);
+      places.push(...one.values);
+    }
+    const filter = terms.length === 0 ? "" : " WHERE " + terms.join(" AND ");
+    // What decides which rows are found, and in which order.
+    const matters = new Set([...by, ...other.map((one) => one.column)]);
+
+    plan = { statement: null, places, key: found.map((one) => one.value), among, shape: -1, each: -1, id: table.key, joins: [] };
+    if (way === "count") {
+      plan.statement = data.prepare(`SELECT count(*) AS count FROM ${quote(table.name)}${filter}`);
+      plan.shape = data.shape(table.name, by, [...matters].sort());
+      data.plans.set(name, plan);
+      return plan;
+    }
+
+    // The columns to take: the ones named or all, the key, and the ones
+    // the joins find rows by.
+    const taken = [...new Set([...(select ?? table.columns.keys()), table.key, ...joins.map((join) => join.column)])];
+    const sorted = order.map((one) => `${quote(one.column)}${one.direction === "desc" ? " DESC" : ""}`);
+    for (const one of order) matters.add(one.column);
+    let text = `SELECT ${taken.map(quote).join(", ")} FROM ${quote(table.name)}${filter}${sorted.length === 0 ? "" : " ORDER BY " + sorted.join(", ")}`;
+    const cut = way === "first" || limit !== -1 || offset !== -1;
+    if (cut) {
+      text += way === "first" ? " LIMIT 1" : limit === -1 ? " LIMIT -1" : " LIMIT ?";
+      if (way !== "first" && limit !== -1) places.push(limit);
+      if (offset !== -1) {
+        text += " OFFSET ?";
+        places.push(offset);
+      }
+    }
+    plan.statement = data.prepare(text);
+
+    // A question that returns every row its values find reads those rows
+    // whole: the columns it took belong to the same reading. So does one that
+    // looks for a value no two rows share. Otherwise rows with those values
+    // may change unseen behind the limit, and every row returned is a reading
+    // of its own, found by its key.
+    let each = taken.filter((column) => column !== table.key && !matters.has(column));
+    if (!cut || by.some((column) => table.unique.has(column))) {
+      for (const column of each) matters.add(column);
+      each = [];
+    }
+    plan.shape = data.shape(table.name, by, [...matters].sort());
+    if (each.length > 0) plan.each = data.shape(table.name, [table.key], each.sort());
+    for (const join of joins) {
+      plan.joins.push({
+        ...join,
+        statement: data.prepare(`SELECT ${[...new Set([...join.select, join.on])].map(quote).join(", ")} FROM ${quote(join.table.name)} WHERE ${quote(join.on)} COLLATE BINARY = ?`),
+        shape: data.shape(join.table.name, [join.on], join.select.filter((column) => column !== join.on).sort()),
+      });
+    }
+    data.plans.set(name, plan);
+    return plan;
   }
 }

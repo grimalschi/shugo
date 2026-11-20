@@ -381,11 +381,11 @@ func relist(w *worker, k *keeper, routes []int, pages map[string]int) error {
 
 		var next []int
 		for _, route := range queue {
-			var before []string
-			if err := k.update.RoutePages(route, func(path string) { before = append(before, path) }); err != nil {
+			before := map[string]struct{}{}
+			if err := k.update.RoutePages(route, func(path string) { before[path] = struct{}{} }); err != nil {
 				return err
 			}
-			for _, path := range before {
+			for path := range before {
 				if _, still := given[route][path]; still {
 					continue
 				}
@@ -402,6 +402,9 @@ func relist(w *worker, k *keeper, routes []int, pages map[string]int) error {
 				}
 			}
 			for path := range given[route] {
+				if _, had := before[path]; had {
+					continue
+				}
 				kept, known, err := k.update.PageKept(path)
 				switch {
 				case err != nil:

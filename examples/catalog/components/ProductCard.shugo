@@ -1,11 +1,13 @@
 ---
-import { finalPrice, price, product } from "../lib/catalog"
+import { finalPrice, price } from "../lib/catalog"
 
 // The card takes the number of a product, not the product: called with a
 // plain value, it is computed and kept once for every product, however many
-// pages show it.
+// pages show it. It reads its product itself, so a product that changes has
+// its card computed, and none of the pages that show the card.
 const { id } = Shugo.props as { id: string }
-const item = product(id)
+const item = Shugo.query("products").select("slug", "title", "price", "discount").get(id)
+if (!item) throw new Error(`there is no product ${id}`)
 ---
 <a class="card" href={`/products/${item.slug}`}>
   <b>{item.title}</b>

@@ -220,8 +220,8 @@ func (r reading) before(other reading) bool {
 }
 
 // read takes what a reader read while it was computed, as the project's
-// code sent it: a JSON list of readings, each the number of its shape and
-// the values of its key. It returns the readings as the store keeps them
+// code sent it: a JSON list of readings, each the number of its shape
+// followed by the values of its key. It returns the readings as the store keeps them
 // with the reader, and whether they differ from the ones it has, kept. The
 // difference is noted for the store. No text means that the reader read
 // nothing, or is gone.
@@ -233,21 +233,21 @@ func (k *keeper) read(reader string, kept []byte, text []byte) (encoded []byte, 
 		}
 		decoder := json.NewDecoder(bytes.NewReader(text))
 		decoder.UseNumber()
-		var list [][]any
+		var list []any
 		if err := decoder.Decode(&list); err != nil {
 			return nil, false, errorf("damaged readings: %w", err)
 		}
-		for _, one := range list {
-			var number json.Number
-			if len(one) > 0 {
-				number, _ = one[0].(json.Number)
-			}
+		// One reading after another: the number of its shape, then a value
+		// for every column the shape finds rows by.
+		for len(list) > 0 {
+			number, _ := list[0].(json.Number)
 			at, err := number.Int64()
 			shape := k.shapes.told[int(at)]
-			if err != nil || shape == nil || len(one)-1 != len(shape.by) {
+			if err != nil || shape == nil || len(list)-1 < len(shape.by) {
 				return nil, false, errorf("a reading of a shape it has not told")
 			}
-			now = append(now, reading{shape.id, string(data.Key(one[1:]))})
+			now = append(now, reading{shape.id, string(data.Key(list[1 : 1+len(shape.by)]))})
+			list = list[1+len(shape.by):]
 		}
 		sort.Slice(now, func(a, b int) bool { return now[a].before(now[b]) })
 		now = uniq(now)
