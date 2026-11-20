@@ -34,6 +34,9 @@ const usage = `shugo builds a static site and shows it.
 The folder is the project; without it, the current one. Options:
 
   -json          print the report of build, update and export as JSON
+  -check         with update: compute every page, whatever has changed, and
+                 tell which pages came out different although no row of the
+                 data database that they read has changed
   -runtime NAME  what runs the JavaScript of the project: bun or node
                  (default: the "runtime" of shugo.json, else bun if installed)
   -addr ADDRESS  where serve and dev listen (default localhost:4321)
@@ -53,6 +56,7 @@ func Main(arguments []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet(arguments[0], flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.BoolVar(&c.json, "json", false, "")
+	flags.BoolVar(&c.check, "check", false, "")
 	flags.StringVar(&c.addr, "addr", "localhost:4321", "")
 	flags.StringVar(&c.out, "out", "", "")
 	flags.StringVar(&c.runtime, "runtime", "", "")
@@ -101,7 +105,7 @@ func Main(arguments []string, stdout, stderr io.Writer) int {
 type command struct {
 	stdout, stderr io.Writer
 	project        *project.Project
-	json           bool
+	json, check    bool
 	addr, out      string
 	runtime        string
 }
@@ -167,11 +171,21 @@ func (c *command) renew(st *store.Store) error {
 	if err != nil {
 		return err
 	}
-	report, err := evaluate.Run(c.project, compiled, st, evaluate.Options{Log: c.stderr})
+	report, err := evaluate.Run(c.project, compiled, st, evaluate.Options{Log: c.stderr, Check: c.check})
 	if err != nil {
 		return err
 	}
-	return c.print(report, func() string { return summary("updated", report) })
+	if err := c.print(report, func() string { return summary("updated", report) }); err != nil {
+		return err
+	}
+	if len(report.Unseen) > 0 {
+		// The store is right now: everything was computed. But the next
+		// plain update would again leave such a page as it is.
+		return fmt.Errorf("%d pages or shared blocks came out different although no row they read has changed; the first: %s.\n"+
+			"They read data past the data database — a file, the network, something another page left in a module — or a package does so for them. "+
+			"Put that data into the database and ask for it with Shugo.query; until then only `shugo build` reads it again", len(report.Unseen), report.Unseen[0])
+	}
+	return nil
 }
 
 // print writes a report: as JSON for programs, in words for people.
@@ -211,6 +225,9 @@ func summary(verb string, r *evaluate.Report) string {
 	line("shared blocks", r.Shared)
 	if r.Render > r.Pages.Added+r.Pages.Changed {
 		fmt.Fprintf(&out, "\n  the HTML differs on %d pages: they show a shared block that has changed", r.Render)
+	}
+	if r.Checked && r.Data != nil && !r.Data.Whole && len(r.Unseen) == 0 {
+		out.WriteString("\n  checked: everything was computed, and every page that came out different had read a row that has changed")
 	}
 	if r.Pages.Added+r.Pages.Changed+r.Pages.Removed+r.Shared.Added+r.Shared.Changed+r.Shared.Removed == 0 {
 		out.WriteString("\n  nothing has changed")

@@ -2,12 +2,25 @@
 //
 // A query is built step by step and run by all(), first(), get() or count():
 //
-//   Shugo.query("products").select("title", "price").where({ category: "c9" }).order("position").limit(24).all()
+//   Shugo.query("products").where({ category: "c9" }).order("position").limit(24).all()
 //
 // Every query that runs leaves readings with the page or shared block that
 // made it: which rows of which table it looked for, and which of their
-// columns it took. The Go side keeps the readings, and when a row of the
+// columns were read. The Go side keeps the readings, and when a row of the
 // database changes it computes again exactly those who read it.
+//
+// Which columns were read is not what the query took but what was done with
+// the rows afterwards. A row notes every column that is read of it, by
+// whoever reads it while the page or shared block that asked for it is
+// computed: its script, its template, the functions they call, the
+// components the template gives the row to. So a reader depends on those
+// columns and on no others, and a query need not name the columns it takes.
+//
+// This is sound for the reason signals are: a computation that reads the
+// same values takes the same path and gives the same result. While nothing
+// that was read has changed, computing again would read the same and show
+// the same; and whatever makes it take another path — into the other branch
+// of a condition, once more round a loop — is something it has read.
 //
 // A reading is the rows of one table that hold given values in given
 // columns. Readings come in shapes: a shape names the table, those columns,
@@ -16,6 +29,8 @@
 // its number and the values.
 //
 // Runs on Bun and on Node: each has SQLite built in.
+
+import { AsyncLocalStorage } from "node:async_hooks";
 
 // open opens the database at path for reading. Everything read through it
 // belongs to one state of the data, however long the run takes.
@@ -30,15 +45,20 @@ export async function open(path, declare) {
     const { DatabaseSync } = await import("node:sqlite");
     const db = new DatabaseSync(path, { readOnly: true });
     db.exec("BEGIN");
-    // Node gives rows without the methods every object has; templates may
-    // count on them, so rows are made the objects they are on Bun.
+    // Node gives rows without the methods every object has; a script or a
+    // template may count on them, so rows are given them, as on Bun.
+    const usual = (row) => Object.setPrototypeOf(row, Object.prototype);
     prepare = (sql) => {
       const statement = db.prepare(sql);
       return {
-        all: (...values) => statement.all(...values).map((row) => ({ ...row })),
-        get: (...values) => {
+        all(...values) {
+          const rows = statement.all(...values);
+          rows.forEach(usual);
+          return rows;
+        },
+        get(...values) {
           const row = statement.get(...values);
-          return row === undefined ? undefined : { ...row };
+          return row === undefined ? undefined : usual(row);
         },
       };
     };
@@ -137,18 +157,164 @@ const quote = (name) => `"${name.replaceAll('"', '""')}"`;
 
 const comparisons = new Set(["=", "!=", "<", "<=", ">", ">=", "like", "in"]);
 
-// Reads collects the readings of one page or shared block while it is
-// computed: the number of a shape, then the values of its key, one reading
-// after another. The shape tells how many values a key has.
+// Reads collects what one page, shared block or list of pages asked of the
+// data while it was computed.
 export class Reads {
   constructor() {
-    this.list = [];
+    this.asked = [];
+    // Once the readings are told, a column read of these rows would be read
+    // unseen. closed tells the rows to refuse it; handed tells that the rows
+    // went on to others with every column counted, and stay readable.
+    this.closed = false;
+    this.handed = false;
   }
 
-  // text is what goes to the Go side: the readings as a JSON list.
-  text() {
-    return this.list.length === 0 ? "" : JSON.stringify(this.list);
+  // text settles the readings and writes them for the Go side: a JSON list
+  // of the number of a shape and the values of its key, one reading after
+  // another; the shape tells how many values a key has.
+  //
+  // It is asked for when the page or shared block is fully computed, and
+  // from then on its rows are closed. whole tells that the rows went on to
+  // others who may read anything of them — a list of pages hands them to
+  // its pages — and counts every column as read.
+  text(whole = false) {
+    this.closed = !whole;
+    this.handed = whole;
+    if (this.asked.length === 0) return "";
+    const list = [];
+    for (const one of this.asked) one.settle(list, whole);
+    return JSON.stringify(list);
   }
+}
+
+// Who is being computed right now: the Reads of the page, shared block or
+// list of pages, through every await of its script and template.
+const computing = new AsyncLocalStorage();
+
+// during runs compute as the computation that reads asked its rows for.
+export function during(reads, compute) {
+  return computing.run(reads, compute);
+}
+
+// everything is noted among the columns read of a row when the row was
+// taken as a whole: its keys were listed, as spreading it or writing it as
+// JSON does.
+const everything = "*";
+
+// Watcher stands between a row of a table and whoever reads it, and notes in
+// seen the columns that are read. The row itself is a plain object and
+// stays one. reads is what the row was asked for.
+//
+// Only columns count. Whatever else is asked of a row — a method every
+// object has, then, a symbol — tells nothing of the data.
+class Watcher {
+  constructor(reads, table, seen) {
+    this.reads = reads;
+    this.table = table;
+    this.seen = seen;
+  }
+
+  // note notes a column that is read. A row belongs to the computation that
+  // asked for it: read by another one, or after its own is over, it would be
+  // read with nobody depending on it.
+  note(name) {
+    const reads = this.reads;
+    if (reads.handed) return;
+    if (reads.closed || computing.getStore() !== reads) {
+      throw new Error(
+        `a row of the table ${this.table.name} is read ${reads.closed ? "when the page, shared block or list of pages that asked for it is already computed" : "by another page, shared block or list of pages than the one that asked for it"}, ` +
+          "so whoever reads it now would not be computed again when the row changes. " +
+          "A row is for the script that asked for it: do not keep it in a variable of a module for others, let every script ask for the rows it uses",
+      );
+    }
+    this.seen.add(name);
+  }
+
+  get(row, name) {
+    if (this.table.columns.has(name)) this.note(name);
+    return row[name];
+  }
+
+  has(row, name) {
+    if (this.table.columns.has(name)) this.note(name);
+    return name in row;
+  }
+
+  ownKeys(row) {
+    this.note(everything);
+    return Reflect.ownKeys(row);
+  }
+
+  getOwnPropertyDescriptor(row, name) {
+    if (this.table.columns.has(name)) this.note(name);
+    return Reflect.getOwnPropertyDescriptor(row, name);
+  }
+}
+
+// Asked is one question that was asked, with what was read of its answer.
+class Asked {
+  constructor(plan, values) {
+    this.plan = plan;
+    this.values = values;
+    this.seen = null; // the columns read of the rows, where they count together
+    this.rows = null; // [key, columns read] of every row, where each row counts alone
+    this.joined = null; // [join, value, columns read] of every row a join looked for
+  }
+
+  // settle adds the readings of the question to list: the rows that hold
+  // its values, each row returned where rows count alone, and the rows its
+  // joins looked for.
+  settle(list, whole) {
+    const { plan, values } = this;
+    const shape = this.seen === null ? plan.shape : plan.together(this.seen, whole);
+    if (plan.among === null) {
+      list.push(shape);
+      for (const at of plan.key) list.push(values[at]);
+    } else {
+      // One reading for every value of the list, the value at its place
+      // among the others.
+      for (const one of plan.among.values) {
+        list.push(shape);
+        for (const at of plan.key) list.push(values[at === -1 ? one : at]);
+      }
+    }
+    if (this.rows !== null) {
+      for (const [key, seen] of this.rows) {
+        const each = plan.each(seen, whole);
+        if (each !== -1) list.push(each, key);
+      }
+    }
+    if (this.joined !== null) {
+      for (const [join, value, seen] of this.joined) list.push(join.shapeOf(seen, whole), value);
+    }
+  }
+}
+
+// shaper returns what tells the shape of a reading from the columns that
+// were read of its rows. The rows are found by the columns of by; taken are
+// the columns they were asked with. always are the columns that count
+// whatever was read; without them (null) a reading of nothing has no shape,
+// -1. covered are columns that another reading of the same question
+// accounts for already.
+//
+// A script reads the same few sets of columns of row after row, so the
+// shape of each set is worked out once.
+function shaper(data, table, by, taken, always, covered = []) {
+  const counted = taken.filter((column) => column !== table.key && !by.includes(column) && !covered.includes(column));
+  const known = new Map();
+  return (seen, whole) => {
+    const all = whole || seen.has(everything);
+    let read = "";
+    for (let i = 0; i < counted.length; i++) if (all || seen.has(counted[i])) read += i + ",";
+    let shape = known.get(read);
+    if (shape === undefined) {
+      const columns = new Set(always ?? []);
+      for (const column of counted) if (all || seen.has(column)) columns.add(column);
+      shape = columns.size === 0 && always === null ? -1 : data.shape(table.name, by, [...columns].sort());
+      known.set(read, shape);
+    }
+    return shape;
+  };
 }
 
 const blank = { select: null, equal: [], among: null, other: [], order: [], limit: -1, offset: -1, joins: [] };
@@ -191,9 +357,9 @@ export class Query {
     return name;
   }
 
-  // select names the columns to take. Without it a query takes all of them;
-  // a page is computed again only when a column it took changes, so naming
-  // the ones it shows keeps it from being computed for nothing.
+  // select names the columns to take. Without it a query takes all of them.
+  // It is a way to fetch less and no more than that: what a reader depends
+  // on is the columns that are read of the rows, named here or not.
   select(...columns) {
     const names = columns.flat();
     if (names.length === 0) throw new Error('select() takes the names of columns: select("id", "title")');
@@ -306,50 +472,53 @@ export class Query {
     const plan = this.#plan("count");
     const values = this.#values;
     const found = plan.statement.get(...plan.places.map((at) => values[at]));
-    this.#read(plan, null);
+    this.#reads.asked.push(new Asked(plan, values));
     return found.count;
   }
 
-  // rows asks the question and leaves the readings.
+  // rows asks the question and returns its rows, each of them noting what
+  // is read of it from now on.
   #rows(plan) {
     const values = this.#values;
+    const reads = this.#reads;
     const rows = plan.statement.all(...plan.places.map((at) => values[at]));
+    const asked = new Asked(plan, values);
     for (const join of plan.joins) {
+      // Rows that point at the same row get the same one.
       const found = new Map();
+      asked.joined ??= [];
       for (const row of rows) {
         const value = row[join.column];
         if (value == null) {
           row[join.as] = null;
           continue;
         }
-        if (!found.has(value)) found.set(value, join.statement.get(fit(join.table, join.on, value)) ?? null);
+        if (!found.has(value)) {
+          const other = join.statement.get(fit(join.table, join.on, value));
+          const seen = new Set();
+          // A row that is not there is read too: it is missed until it comes.
+          asked.joined.push([join, value, seen]);
+          found.set(value, other == null ? null : new Proxy(other, new Watcher(reads, join.table, seen)));
+        }
         row[join.as] = found.get(value);
       }
     }
-    this.#read(plan, rows);
-    return rows;
-  }
-
-  // read leaves the readings of a question that was asked: the rows that
-  // hold its values, each row returned where the plan says so, and the rows
-  // its joins looked for.
-  #read(plan, rows) {
-    const values = this.#values;
-    const list = this.#reads.list;
-    if (plan.among === null) {
-      list.push(plan.shape);
-      for (const at of plan.key) list.push(values[at]);
-    } else {
-      // One reading for every value of the list, the value at its place
-      // among the others.
-      for (const one of plan.among.values) {
-        list.push(plan.shape);
-        for (const at of plan.key) list.push(values[at === -1 ? one : at]);
+    // The column a join finds its row by is read of every row: by the join.
+    const table = this.#table;
+    if (plan.alone) {
+      asked.rows = [];
+      for (let i = 0; i < rows.length; i++) {
+        const seen = new Set(plan.pointers);
+        asked.rows.push([rows[i][table.key], seen]);
+        rows[i] = new Proxy(rows[i], new Watcher(reads, table, seen));
       }
+    } else {
+      asked.seen = new Set(plan.pointers);
+      const watcher = new Watcher(reads, table, asked.seen);
+      for (let i = 0; i < rows.length; i++) rows[i] = new Proxy(rows[i], watcher);
     }
-    if (rows === null) return;
-    if (plan.each !== -1) for (const row of rows) list.push(plan.each, row[plan.id]);
-    for (const join of plan.joins) for (const row of rows) if (row[join.column] != null) list.push(join.shape, row[join.column]);
+    reads.asked.push(asked);
+    return rows;
   }
 
   // plan works out how to ask the question in one of its ways, and what it
@@ -386,10 +555,14 @@ export class Query {
     // What decides which rows are found, and in which order.
     const matters = new Set([...by, ...other.map((one) => one.column)]);
 
-    plan = { statement: null, places, key: found.map((one) => one.value), among, shape: -1, each: -1, id: table.key, joins: [] };
+    // A plan of a question is what stays the same whatever its values: how
+    // to ask it, where its values stand, and how to tell the shapes of its
+    // readings from the columns that are read of its rows.
+    plan = { statement: null, places, key: found.map((one) => one.value), among, shape: -1, alone: false, together: null, each: null, joins: [], pointers: joins.map((join) => join.column) };
+    const decides = (columns) => [...columns].filter((column) => !by.includes(column)).sort();
     if (way === "count") {
       plan.statement = data.prepare(`SELECT count(*) AS count FROM ${quote(table.name)}${filter}`);
-      plan.shape = data.shape(table.name, by, [...matters].sort());
+      plan.shape = data.shape(table.name, by, decides(matters));
       data.plans.set(name, plan);
       return plan;
     }
@@ -412,22 +585,26 @@ export class Query {
     plan.statement = data.prepare(text);
 
     // A question that returns every row its values find reads those rows
-    // whole: the columns it took belong to the same reading. So does one that
-    // looks for a value no two rows share. Otherwise rows with those values
-    // may change unseen behind the limit, and every row returned is a reading
-    // of its own, found by its key.
-    let each = taken.filter((column) => column !== table.key && !matters.has(column));
-    if (!cut || by.some((column) => table.unique.has(column))) {
-      for (const column of each) matters.add(column);
-      each = [];
+    // together: what is read of any of them belongs to the one reading. So
+    // does one that looks for a value no two rows share. Otherwise rows with
+    // those values may change unseen behind the limit, and every row returned
+    // counts alone: it is a reading of its own, found by its key, of the
+    // columns read of it that do not already decide which rows are found.
+    plan.alone = cut && !by.some((column) => table.unique.has(column));
+    if (plan.alone) {
+      plan.shape = data.shape(table.name, by, decides(matters));
+      plan.each = shaper(data, table, [table.key], taken, null, [...matters]);
+    } else {
+      plan.together = shaper(data, table, by, taken, decides(matters));
     }
-    plan.shape = data.shape(table.name, by, [...matters].sort());
-    if (each.length > 0) plan.each = data.shape(table.name, [table.key], each.sort());
     for (const join of joins) {
+      // A row that a join looks for is a reading whatever is read of it: it
+      // may come, or go.
+      const columns = [...new Set([...join.select, join.on])];
       plan.joins.push({
         ...join,
-        statement: data.prepare(`SELECT ${[...new Set([...join.select, join.on])].map(quote).join(", ")} FROM ${quote(join.table.name)} WHERE ${quote(join.on)} COLLATE BINARY = ?`),
-        shape: data.shape(join.table.name, [join.on], join.select.filter((column) => column !== join.on).sort()),
+        statement: data.prepare(`SELECT ${columns.map(quote).join(", ")} FROM ${quote(join.table.name)} WHERE ${quote(join.on)} COLLATE BINARY = ?`),
+        shapeOf: shaper(data, join.table, [join.on], columns, []),
       });
     }
     data.plans.set(name, plan);

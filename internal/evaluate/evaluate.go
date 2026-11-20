@@ -64,6 +64,12 @@ type Report struct {
 	// Shadowed counts addresses that a dynamic page gave and a more exact
 	// page had already taken.
 	Shadowed int `json:"shadowed"`
+	// Checked tells that everything was computed to check what a plain
+	// update would have done. Unseen are the pages and shared blocks whose
+	// record came out different although no row they read has changed: they
+	// show something that Shugo does not see them read.
+	Checked bool     `json:"checked,omitempty"`
+	Unseen  []string `json:"unseen,omitempty"`
 	// Time is how long every step took, in milliseconds.
 	Time map[string]float64 `json:"time"`
 }
@@ -108,6 +114,9 @@ type Options struct {
 	// Whole has everything computed, whatever the data database says has
 	// changed: what a page reads from elsewhere is read again.
 	Whole bool
+	// Check computes every page and shared block too, and reports those
+	// that came out different although no row they read has changed.
+	Check bool
 }
 
 // Run brings the store up to date with the project. If it fails, the store
@@ -154,6 +163,7 @@ func Run(p *project.Project, compiled *compile.Result, st *store.Store, options 
 	}
 	took("open")
 
+	k.check, report.Checked = options.Check, options.Check
 	w := &worker{project: p, log: options.Log}
 	defer w.stop()
 	if path := p.Data(); path == "" {
@@ -288,13 +298,42 @@ func tracked(w *worker, k *keeper, path string, whole bool, took func(string)) e
 		var readers map[string]struct{}
 		if readers, err = k.shapes.reached(changes); err == nil {
 			took("data")
-			err = part(w, k, readers, took)
+			if k.check {
+				err = checked(w, k, readers, took)
+			} else {
+				err = part(w, k, readers, took)
+			}
 		}
 	}
 	if err != nil {
 		return err
 	}
 	return k.update.SetData(fmt.Sprintf("%s %d", source.ID, now))
+}
+
+// checked computes everything where the journal told to compute only the
+// readers given, and has the keeper note what came out different without
+// having been told: a page that reads its data past the database, or takes
+// it from what another page left in a module.
+func checked(w *worker, k *keeper, readers map[string]struct{}, took func(string)) error {
+	k.reached = map[string]struct{}{}
+	for reader := range readers {
+		route, is := store.ReaderRoute(reader)
+		if !is {
+			k.reached[reader] = struct{}{}
+			continue
+		}
+		// A list of pages that is read again has its new pages computed,
+		// and all of them if the route gives its pages more than addresses.
+		props, _, _, err := k.update.Route(route)
+		if err != nil {
+			return err
+		}
+		if props {
+			k.reached[reader] = struct{}{}
+		}
+	}
+	return everything(w, k, took)
 }
 
 // part computes the readers that a change of the data has reached: pages,

@@ -28,6 +28,13 @@ type keeper struct {
 	// again tells whether a shared block that a record of this run shows is
 	// to be computed in this run too. known says that the store has it.
 	again func(name string, known bool) bool
+	// check tells that the run computes everything to see whether an
+	// update that follows the journal would have been right: a record that
+	// differs although nothing told so is noted in the report. reached are
+	// those that the journal told to compute: pages and shared blocks as the
+	// users they are, and the lists of pages of routes.
+	check   bool
+	reached map[string]struct{}
 	// strict tells that a shared block which fails ends the run at once. It
 	// does where everything is computed: what was asked for is shown.
 	strict bool
@@ -291,6 +298,9 @@ func (k *keeper) put(data []byte) error {
 		}
 		return nil
 	}
+	if known && k.check && !k.foreseen(user, route, u.shared) {
+		k.report.Unseen = append(k.report.Unseen, u.String())
+	}
 
 	var old []byte
 	if u.shared {
@@ -307,7 +317,7 @@ func (k *keeper) put(data []byte) error {
 			return err
 		}
 	}
-	if err := k.check(rec, values); err != nil {
+	if err := k.fits(rec, values); err != nil {
 		return fmt.Errorf("%s: %w", u, err)
 	}
 	if err := k.change(user, old, rec, values); err != nil {
@@ -322,6 +332,20 @@ func (k *keeper) put(data []byte) error {
 	k.touched[u.name] = true
 	k.noted(&k.report.Pages, u.name, known)
 	return k.update.PutPage(u.name, hash, encoded, route, reads)
+}
+
+// foreseen tells whether a plain update would have computed a page or a
+// shared block: the journal reached it, or, for a page, reached a list of
+// pages that gives its pages more than their addresses.
+func (k *keeper) foreseen(user string, route int, shared bool) bool {
+	if k.reached == nil {
+		return true
+	}
+	if _, reached := k.reached[user]; reached || shared {
+		return reached
+	}
+	_, reached := k.reached[store.RouteReader(route)]
+	return reached
 }
 
 // noted counts one page or shared block that is new or not what it was.
@@ -402,9 +426,9 @@ func numbers(list []byte) ([]int, error) {
 	return out, nil
 }
 
-// check tells whether a record can be shown: its blocks make one tree, and
+// fits tells whether a record can be shown: its blocks make one tree, and
 // the values of every block fit its template.
-func (k *keeper) check(rec *record.Record, values [][]byte) error {
+func (k *keeper) fits(rec *record.Record, values [][]byte) error {
 	if err := rec.Check(); err != nil {
 		return err
 	}

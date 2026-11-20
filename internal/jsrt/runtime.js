@@ -12,7 +12,7 @@
 
 import { readFileSync, readSync, writeSync } from "node:fs";
 
-import { open, Query, Reads } from "shugo:query";
+import { during, open, Query, Reads } from "shugo:query";
 
 // The data database of the project, once it is open; null if it has none.
 let data = null;
@@ -30,7 +30,9 @@ class Record {
     this.route = route; // the route of a page, by its place among the routes
     this.blocks = [];
     this.top = 0;
-    this.reads = new Reads(); // what was read from the data database on the way
+    // What was asked of the data database on the way. The rows it gave note
+    // what is read of them until the record is complete: see encode.
+    this.reads = new Reads();
   }
 
   // A block is one template being shown: a page, a layout, a component, or
@@ -301,7 +303,7 @@ class Run {
       const reads = new Reads();
       let props = false;
       try {
-        for (const entry of await entries(route, this.modules.get(route.file), reads)) {
+        for (const entry of await during(reads, () => entries(route, this.modules.get(route.file), reads))) {
           const path = address(route, entry.params);
           const taken = this.pages.get(path);
           if (taken !== undefined && taken.index === index) throw new Error(`getStaticPaths of ${route.pattern} returned the address ${path} twice`);
@@ -319,7 +321,9 @@ class Run {
       } catch (error) {
         throw placed(error, `getStaticPaths of ${this.site.files[route.file].path}`);
       }
-      this.send("G", index + "\x02" + (props ? 1 : 0) + "\x02" + reads.text());
+      // Rows that the list gives to its pages are read by the pages later,
+      // so every column of what the list asked for counts as read.
+      this.send("G", index + "\x02" + (props ? 1 : 0) + "\x02" + reads.text(props));
     }
     if (lines.length > 0) this.send("P", lines.join("\x03"));
     return { shadowed };
@@ -381,23 +385,32 @@ class Run {
     // Inside a shared block only the names of the slots matter: what fills
     // them belongs to the place the block is used at.
     const inner = { page: null, slots, provided: null, reads: record.reads };
-    await target.render(new Writer(this, record, block, inner), new Context(target, props, inner));
+    await during(record.reads, () => target.render(new Writer(this, record, block, inner), new Context(target, props, inner)));
     this.emit(record);
   }
 
   // page computes one page of a route: the page itself, then every layout
   // around it, from the innermost. A page of a route that was listed in this
-  // run is computed with what the list gave it; of another page only the
-  // address is known, and its parameters are read from it.
+  // run gets what the list gave it beside its address.
+  //
+  // The parameters are always read from the address. A page is computed now
+  // from a list, now from its address alone, and must come out the same:
+  // what getStaticPaths wrote as a number is a text in the address.
   async page(path, index) {
     const route = this.site.routes[index];
     if (route === undefined) throw new Error(`the page ${path} was asked for under route ${index}, which this project's compiled code does not have: build the project again`);
     const listed = this.pages.get(path);
-    const entry = listed !== undefined && listed.index === index ? listed.entry : { params: parameters(route, path) };
+    const props = listed !== undefined && listed.index === index ? listed.entry.props ?? {} : {};
     const record = new Record("p", path, index);
-    const params = Object.freeze({ ...entry.params });
+    const params = Object.freeze(parameters(route, path));
     const scope = { page: { params, path, route, origin: this.site.origin, url: undefined }, slots: null, provided: new Map(), reads: record.reads };
-    let top = await this.show(record, this.modules.get(route.file).default, entry.props ?? {}, null, scope);
+    await during(record.reads, () => this.around(record, route, props, scope));
+    this.emit(record);
+  }
+
+  // around computes a page with its layouts into the record.
+  async around(record, route, props, scope) {
+    let top = await this.show(record, this.modules.get(route.file).default, props, null, scope);
     for (let i = route.layouts.length - 1; i >= 0; i--) {
       // A layout shows the page in its default slot. What the page, or a
       // layout inside this one, gave for a slot goes to the nearest layout
@@ -413,9 +426,10 @@ class Run {
       top = await this.show(record, layout, {}, slots, scope);
     }
     record.top = top;
-    this.emit(record);
   }
 
+  // emit hands a complete record to the Go side. Writing it settles what the
+  // record read: from here on nothing may read its rows.
   emit(record) {
     const text = encode(record);
     this.batch.push(text);
