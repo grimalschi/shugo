@@ -146,17 +146,22 @@ const orderSite = `
 const titles = (query) => query.all().map((row) => row.title)
 console.log("a")
 ---
-<p>{titles(Shugo.query("products").where({ category: "c1" }))}</p><p>{titles(Shugo.query("products").order("price"))} {titles(Shugo.query("products").order("price", "desc"))} {titles(Shugo.query("products").order("price").limit(2))}</p><p>{titles(Shugo.query("tags").where({ kind: "x" }))} {titles(Shugo.query("odd").where({ kind: "x" }))}</p>
+<p>{titles(Shugo.query("products").where({ category: "c1" }))}</p><p>{titles(Shugo.query("products").order("price"))} {titles(Shugo.query("products").order("price", "desc"))} {titles(Shugo.query("products").order("price").limit(2))}</p><p>{titles(Shugo.query("tags").where({ kind: "x" }))} {titles(Shugo.query("odd").where({ kind: "x" }))}</p><p>{titles(Shugo.query("products").where({ note: "" }))} {titles(Shugo.query("products").order("slug"))} {titles(Shugo.query("products").order("alias"))}</p>
 -- pages/b.shugo --
 <p>{Shugo.query("products").where({ category: "c1" }).order("title").all().map((row) => row.title)}</p><p>{Shugo.query("products").order("price").order("title", "desc").all().map((row) => row.title)}</p>
 `
 
 // Three products cost the same, and were put into their table in another
-// order than that of their keys. One table keeps its rows by a key of
-// text, one by a key of whole numbers.
+// order than that of their keys. An address tells any two products apart;
+// a second name does not, for three have none; and a note may not repeat
+// only where there is one. One table keeps its rows by a key of text, one
+// by a key of whole numbers.
 const orderRows = `
-CREATE TABLE products (id TEXT PRIMARY KEY, title TEXT, price INTEGER, note TEXT, category TEXT);
-INSERT INTO products VALUES ('p3', 'Tray', 5, '', 'c1'), ('p1', 'Jug', 5, '', 'c1'), ('p4', 'Vase', 9, '', 'c2'), ('p2', 'Cup', 5, '', 'c1');
+CREATE TABLE products (id TEXT PRIMARY KEY, slug TEXT NOT NULL UNIQUE, alias TEXT UNIQUE, title TEXT, price INTEGER, note TEXT, category TEXT, stock INTEGER);
+INSERT INTO products VALUES
+  ('p3', 'tray', NULL, 'Tray', 5, '', 'c1', 1), ('p1', 'jug', NULL, 'Jug', 5, '', 'c1', 1),
+  ('p4', 'vase', 'urn', 'Vase', 9, '', 'c2', 1), ('p2', 'cup', NULL, 'Cup', 5, '', 'c1', 1);
+CREATE UNIQUE INDEX one_note ON products (note) WHERE note <> '';
 CREATE TABLE tags (title TEXT PRIMARY KEY, kind TEXT) WITHOUT ROWID;
 INSERT INTO tags VALUES ('new', 'x'), ('big', 'x'), ('old', 'y');
 CREATE TABLE odd (id INTEGER PRIMARY KEY, title TEXT, kind TEXT);
@@ -169,15 +174,18 @@ INSERT INTO odd VALUES (2, 'second', 'x'), (1, 'first', 'x');
 // is made for another page, and after a row is removed and put back as it
 // was; and the same as a site built anew.
 func TestRowsComeInTheOrderOfTheirKeys(t *testing.T) {
-	const want = `<p>JugCupTray</p><p>JugCupTrayVase VaseTrayCupJug JugCup</p><p>bignew firstsecond</p>`
+	const want = `<p>JugCupTray</p><p>JugCupTrayVase VaseTrayCupJug JugCup</p><p>bignew firstsecond</p><p>JugCupTrayVase CupJugTrayVase JugCupTrayVase</p>`
 	s := newSite(t, orderSite)
 	s.sql(orderRows)
 	s.build()
 	s.computed()
 	expect(t, s.page("/a"), want)
 	expect(t, s.page("/b"), `<p>CupJugTray</p><p>TrayJugCupVase</p>`)
+	// An order by the address needs no index beside the one the table has:
+	// no two rows are the same in it. An order by the second name does.
 	if got, want := s.indexes(), []string{
-		"_shugo_odd_kind", "_shugo_products_category_id", "_shugo_products_category_title_id", "_shugo_products_price_id", "_shugo_products_price_title_id", "_shugo_tags_kind",
+		"_shugo_odd_kind", "_shugo_products_alias_id", "_shugo_products_category_id", "_shugo_products_category_title_id",
+		"_shugo_products_note_id", "_shugo_products_price_id", "_shugo_products_price_title_id", "_shugo_tags_kind",
 	}; !reflect.DeepEqual(got, want) {
 		t.Errorf("indexes: %q\n    want: %q", got, want)
 	}
@@ -186,8 +194,8 @@ func TestRowsComeInTheOrderOfTheirKeys(t *testing.T) {
 	// A row is removed and put back as it was, and one is written over
 	// with what no page reads of it: both lie at the end of the table now,
 	// and nothing has changed for the pages.
-	s.changed(`DELETE FROM products WHERE id = 'p1'; INSERT INTO products VALUES ('p1', 'Jug', 5, '', 'c1')`)
-	s.changed(`INSERT OR REPLACE INTO products VALUES ('p3', 'Tray', 5, 'checked', 'c1')`)
+	s.changed(`DELETE FROM products WHERE id = 'p1'; INSERT INTO products VALUES ('p1', 'jug', NULL, 'Jug', 5, '', 'c1', 1)`)
+	s.changed(`INSERT OR REPLACE INTO products VALUES ('p3', 'tray', NULL, 'Tray', 5, '', 'c1', 2)`)
 	expect(t, s.page("/a"), want)
 	s.sameAsBuilt()
 
