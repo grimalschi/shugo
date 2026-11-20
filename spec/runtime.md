@@ -14,6 +14,7 @@ Rantime is a server on Go that collects HTML pages from storage.
 - Everything that runs Go is safe and can work outside containers.
 - The stored values for the runtime are untrusted data: each is screened at the insertion location.
 - Development mode is needed: reassembly when changing files and updating the page in the browser.
+- The server does not keep the site in memory: for each request it gets from SQLite what the page needs. Requests to the storage should be optimized. The 20 November 2026 is solved.
 
 ## Made in the first version, waiting for approval
 
@@ -66,7 +67,7 @@ Memory, same store, after the server has collected all 104,202 pages:
 
 The copy of the records itself is 37 MB: 104,202 page records and 100,009 shared blocks, about 180 bytes per record. The rest are values, 304,300 pieces; they are held in both ways, and their volume is limited by the setting, now 256 MB. While the server rereads the entire copy, two copies are stored in the memory for a while.
 
-Second way suggested. Not done.
+The author of the project chose the first way: there is no copy, the server reads the necessary from SQLite for each request, and requests to the storage are optimized. Not done.
 
 ### What Rantime Doesn't Trust
 
