@@ -4,8 +4,8 @@ The project is being built in stages. Each stage has its own entrance and its ow
 
 ## Decisions
 
-- Compilation, calculation and assembly of pages are separate stages with a clear boundary.
-- At first, there were four stages: data loading and expression execution were separate, Go compared the data between them. The author of the project allowed their unification if the separation does not give a win.
+- The work is divided into stages with a clear boundary: compilation of the project, work with data and expressions, assembly of pages in rantime.
+- At first, there were four stages: data loading and expression execution were separate, Go compared the data between them. The author of the project allowed their unification if the separation does not give a win. The unification itself has not yet been approved.
 - When the project is changed, the entire chain starts from scratch. When data is changed, the update is point-by-point.
 - For now, with each update, the JS process starts again and loads all the data; after that, the result is compared to the past.
 - Expressions and data code perform one JS process, not a page-to-page process: starting a process is more expensive than calculating a page.
