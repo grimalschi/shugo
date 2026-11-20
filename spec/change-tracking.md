@@ -187,6 +187,34 @@ What is weak:
 - The template can read something past the database again file, network, time, module variable. Finds it only `-check`.
 - The weak one from the 2 option remains: a small query constructor and a route that is listed as a whole when the entry is added or deleted.
 
+### Small changes and one entry on many pages
+
+Stand: 100,000 pages of goods; each shows the name of its brand and the currency of the site. Brands of different sizes: 1, 10, 100, 1,000, 5,000 and 20,000 products. The site is assembled in two forms: the page reads the brand and currency itself, or shows them as a component with a key, that is, a common block. Each change is repeated by 3–5 times; time is the entire command of `shugo update`, Bun. Variants 2, 4 and 5 showed the same thing with a few milliseconds difference; below is a variant of 5. After each run, the site, updated in steps, coincided with the build from scratch. Stand: `research/change-tracking/fanout`.
+
+| What changed | The page reads itself | Through the common block |
+| --- | ---: | ---: |
+| Nothing, or a column that no one reads | 6–8 ms | 6–8 ms |
+| Name of one product: one page | 22 ms | 23 ms |
+| Brand Name on 100 pages | 53 ms | 21 ms |
+| ... on 1,000 pages | 0.15 s | 24 ms |
+| ... on 5,000 pages | 0.50 s | 25 ms |
+| ... on 20,000 pages | 1.65 s | 37–49 ms |
+| Currency on all 100,000 pages | 7.5 s | 0.11 s |
+| 20,000 items titles together, each on its page | 1.9 s | 1.9 s |
+| Product added or deleted | 0.21–0.24 s | 0.22–0.23 s |
+
+What follows:
+
+- **The time of a small change is the number of pages to be calculated.** One entry on 20,000 pages that read it themselves costs as much as 20,000 changed entries on the same pages: 1.65 s and 1.9 s. The difference is the log reading, about 16 µs on the changed line.
+- **The shared block makes this recording cheap.** One block is calculated; pages link to it, and the runtime collects them from it. It remains to count pages with the new HTML: about 0.8 µs per page.
+- **One page costs 20–24 ms, and almost all of it is the launch of JS.** Page calculation is tens of microseconds. On Node, the launch is longer: one page costs 80–90 ms on the store stand.
+- **Add or Remove Item — 0.2 s**: the route re-enumerates 100,000 addresses.
+
+Found on the go:
+
+- **More questions for storage.** When many pages are affected, Go asks the storage for each of its route, and then again about the settings of this route - the same. If you ask about the route once, 20,000 pages are updated for 1.4 s instead of 1.65 s, 100,000 - for 6.2 s instead of 7.5 s; checked. The code is taken from the 2 variant and is available in all three base variants. Not corrected.
+- **The server re-reads the entire site after each update.** The first request after updating to 100,000 products is waiting for 0.2 s, the following - 0.2–0.4 ms. This time grows with the site, not with the change. Fixed by the fact that the server takes from the storage only records that have changed from the previous version. Not fixed.
+
 ## Proposal, pending approval
 
 ### Essence
