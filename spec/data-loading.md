@@ -18,6 +18,8 @@ Data code and template expressions are executed in one process ([1](decisions.md
 
 In Go, only the ready expression values are left text.
 
+According to [proposal for Analysis of Changes](change-tracking.md), data does not leave JS either, but the template sees a copy of it: it will not see the function declared in the data code.
+
 ### Where to download
 
 | What you need | Where to download |
@@ -44,7 +46,7 @@ You can import the file: `import posts from "../data/posts.json"`. Then it becom
 
 ## Open questions
 
-- Approve the combination of downloads and expressions.
+- Approve [proposal for analysis of changes](change-tracking.md). Calculate everything and compare the result, as in the first version, the author refused.
 - Partial Reboot: [proposal](partial-reload.md).
 - Memory between calculations for expensive requests to strangers API.
 - Time and random numbers in the data code: each update will give a new value, and the page will be considered changed.

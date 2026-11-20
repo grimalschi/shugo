@@ -4,7 +4,7 @@ The list is compiled during the first version. Questions are arranged according 
 
 ## Change the device
 
-1. **Combining data and expression loading in one step.** Made in the first version: Go compares results, not inputs. The update counts everything and writes a difference. Approve or return to separation. — [1](decisions.md#1-data-loading-and-expression-are-counted-together-go-compares-the-result)
+1. **Analysis of data changes.** The first version calculates everything and compares the result; the author rejected it. Offer: dependent tree prints, comparison on Go, calculation only changed. Approve the mechanism and three rules for the authors of the site. — [Change tracking](change-tracking.md)
 2. **Import components in code like Astro.** This is a departure from the first wish to keep the components connected in a template. — [6](decisions.md#6-components-and-functions-are-imported-in-data-code-as-in-astro)
 3. **The rule of common blocks.** The component is general if it does not read the page and is called with simple parameters. Is this enough, or an explicit mark is needed. — [3](decisions.md#3-which-blocks-are-shared)
 4. **Key in `<g-for>`.** Not entered: it does not give anything in the new scheme. — [4](decisions.md#4-the-key-in-g-for-is-not-entered)
@@ -12,7 +12,7 @@ The list is compiled during the first version. Questions are arranged according 
 
 ## Next steps
 
-6. **Update speed on large sites.** Multiple processes of JS, then tags. — [Partial data reboot](partial-reload.md)
+6. **Update without downloading all data.** After analyzing the changes, the main expense is downloading the data with the project code. Signals from sources and several processes of JS. — [Partial data reboot](partial-reload.md)
 7. **Internationalization.** One page for all languages and strings in JSON. — [proposal](i18n.md)
 8. **Pictures.** libvips, address type, other people's pictures. — [proposal](images.md)
 9. **The scripts.** TypeScript and assembly of `<script>`. — [Page scripts](scripts.md)

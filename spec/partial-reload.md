@@ -1,6 +1,8 @@
 # Partial data reboot
 
-Now each update calculates the entire site anew and records differences. On 100,000 pages, this is 3.2–3.7 s, no matter how much it changes. This document is a suggestion as to how to update only a part when the data source can say what exactly has changed.
+This document is about the step after [data Change Analysis](change-tracking.md). The change analysis only calculates the change, but the data loads everything. Here is a suggestion on how not to load everything when the data source can say what exactly has changed.
+
+The document is written before the proposal for the analysis of changes. The options below remain valid, the order of steps at the end is corrected.
 
 ## Decisions
 
@@ -67,10 +69,9 @@ Signal "changed products7» exactly finds the records. This is what was investig
 
 ## What I offer
 
-1. **Now** is a complete update as done.
-2. **First step** — several processes of JS (option A). This speeds everything up and does not risk anything.
-3. **Second Step** — tags (option B) when a site appears that is short of the 2 step. The full update remains insurance.
-4. Option B only if the labels are too unreliable in the hands of agents.
+1. **First** - [analysis of data changes](change-tracking.md): downloads everything, only the changed is calculated.
+2. **Then**, if all data is loaded at the main expense, are signals: tags (option B) or a data layer (option B). Fingerprints make it safe: any part of the data code can be re-executed and compared.
+3. Several JS processes (option A) speed up the calculation and first assembly and require nothing from the author of the site. The template code does not store data after separation, so it is easy to distribute to processes.
 
 ## Open questions
 

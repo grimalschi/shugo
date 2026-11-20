@@ -5,7 +5,7 @@ The project is being built in stages. Each stage has its own entrance and its ow
 ## Decisions
 
 - The work is divided into stages with a clear boundary: compilation of the project, work with data and expressions, assembly of pages in rantime.
-- At first, there were four stages: data loading and expression execution were separate, Go compared the data between them. The author of the project allowed their unification if the separation does not give a win. The unification itself has not yet been approved.
+- Between loading data and calculating expressions is the analysis of changes: expressions are calculated only for changed areas. Analysis is mandatory for any device stages. The choice is only in who compares: Go between two stages on TS or TS itself.
 - When the project is changed, the entire chain starts from scratch. When data is changed, the update is point-by-point.
 - For now, with each update, the JS process starts again and loads all the data; after that, the result is compared to the past.
 - Expressions and data code perform one JS process, not a page-to-page process: starting a process is more expensive than calculating a page.
@@ -14,6 +14,8 @@ The project is being built in stages. Each stage has its own entrance and its ow
 - The results are stored in SQLite.
 
 ## Made in the first version, waiting for approval
+
+**The author of the project rejected this device 20 November 2026 year:** first version calculates everything and compares the result, but you need to compare the data and calculate only the changed. In return - [proposal](change-tracking.md). Below is described how the first version works now.
 
 Stage three ([1](decisions.md#1-data-loading-and-expression-are-counted-together-go-compares-the-result)).
 
@@ -61,7 +63,7 @@ Update time does not depend on what has changed: everything is calculated, only 
 
 ## Open questions
 
-- Approve the integration of data and expressions loading in one stage.
+- Approve [proposal for analysis of changes](change-tracking.md): Dependency tree prints, comparison on Go, calculation only changed.
 - Several JS processes for large sites: pages are divided between processes, time falls almost in proportion to the number of cores.
 - Update on signals from sources, without counting everything: [proposal](partial-reload.md).
 - Sandbox for stage JS: who sets it up and what it is allowed to do.

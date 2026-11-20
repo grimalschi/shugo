@@ -6,6 +6,8 @@ The solutions are from the most important to the small.
 
 ## 1. Data loading and expression are counted together, Go compares the result
 
+**Rejected by the author of the project 20 November 2026 year.** Data change analysis is mandatory: expressions are calculated only for the changed one. The author’s doubt was only about who was comparing the dataGo or TSrather than whether a comparison was needed. The argument for “saving almost nothing” is not complete below: it takes into account expressions, but not the code of components and templates, which can be expensive. In return, [proposal](change-tracking.md). It is described in the first version.
+
 **What's done.** Stages three, not four: compilation, computation, runtime. At the computation stage, one JS process executes the data code of the pages and components and immediately counts the expression of the templates. Go gets the values ready, compares them with the saved ones and records only the differences.
 
 **Why not.**

@@ -45,6 +45,8 @@ Tapes are stored according to their content: the same tapes of different blocks 
 
 Everything is calculated, only the difference ([1](decisions.md#1-data-loading-and-expression-are-counted-together-go-compares-the-result)) is recorded.
 
+The author of the project rejected the full calculation of 20 on November 2026 of the year: only the changed one should be calculated. How to do this is in [offer](change-tracking.md).
+
 ### Effects of data changes
 
 Shop on 100,000 products: 104,202 pages, 100,009 common blocks, 1.2 million blocks, 304,300 different tapes. Each update took 3.2–3.7 s. Full table and run in [README booth](../examples/catalog/README.md).
@@ -82,6 +84,8 @@ Now the header loads its data itself and is calculated once. The page stores its
 
 ### What is no longer a prototype
 
+The author of the project did not agree with this: the dependency tree returns. In what form it is in [offer](change-tracking.md). The table describes the first version.
+
 | It was in the prototype. | Why removed |
 | --- | --- |
 | Dependency tree: what data fields each block reads | compare results, not input |
@@ -96,7 +100,7 @@ After each update, we know: how many pages and common blocks are added, changed 
 
 ## Open questions
 
-- Approve comparison of results instead of comparing input data.
+- Comparison of results instead of input data the author rejected. Approve [proposal for analysis of changes](change-tracking.md).
 - The key in `<g-for>`: is it needed for something else.
 - Update on signals, without recalculating the entire site: [proposal](partial-reload.md).
 - Memory for a common block with an object in parameters: now only calls with simple parameters are considered common.
