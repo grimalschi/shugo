@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"testing"
 
 	"github.com/grimalschi/shugo/internal/evaluate"
@@ -80,10 +81,12 @@ func TestIndexesAreMade(t *testing.T) {
 	if got := s.indexes(); !reflect.DeepEqual(got, want) {
 		t.Errorf("indexes: %q\n    want: %q", got, want)
 	}
-	// The report names what was made. The index of the note alone was made
-	// for the count, or was not, as the pages came; if it was, it went when
-	// the longer one came.
-	if made := report.Data.Indexes; len(made) < len(want) || len(made) > len(want)+1 {
+	// The report names what was made and is there. The index of the note
+	// alone was made for the count, or was not, as the pages came; if it
+	// was, it went when the longer one came.
+	made := append([]string{}, report.Data.Indexes...)
+	sort.Strings(made)
+	if !reflect.DeepEqual(made, want) {
 		t.Errorf("the report names %q", made)
 	}
 	expect(t, s.page("/ordered"), `<p>VaseTrayCupJug</p>`)

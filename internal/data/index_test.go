@@ -42,7 +42,7 @@ func (l *lab) made() []string {
 // index asks for an index and returns the name of the one that was made.
 func (l *lab) index(table string, columns ...string) string {
 	l.t.Helper()
-	name, err := l.db.Index(table, columns)
+	name, _, err := l.db.Index(table, columns)
 	if err != nil {
 		l.t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func TestIndexRejects(t *testing.T) {
 		"a column twice":               {"products", "title", "title"},
 		"something that is not a name": {"products", `title"); DROP TABLE products; --`},
 	} {
-		if made, err := l.db.Index(ask[0], ask[1:]); err == nil {
+		if made, _, err := l.db.Index(ask[0], ask[1:]); err == nil {
 			t.Errorf("%s: made %q", name, made)
 		}
 	}

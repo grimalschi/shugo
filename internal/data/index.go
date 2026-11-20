@@ -24,46 +24,52 @@ type index struct {
 // The project's code asks for the indexes its questions need, so the author
 // of a project does not have to think of them; what it names is checked.
 //
-// An index of Shugo's that the new one starts with is dropped: the longer
-// one serves whoever the shorter one served.
-func (d *DB) Index(table string, columns []string) (made string, err error) {
+// An index of Shugo's that the new one starts with is dropped, and named in
+// dropped: the longer one serves whoever the shorter one served.
+func (d *DB) Index(table string, columns []string) (made string, dropped []string, err error) {
 	t, found := d.tables[table]
 	if !found {
-		return "", fmt.Errorf("the project's code asked for an index of the table %s, which the data database does not have", table)
+		return "", nil, fmt.Errorf("the project's code asked for an index of the table %s, which the data database does not have", table)
 	}
 	if len(columns) == 0 {
-		return "", fmt.Errorf("the project's code asked for an index of the table %s over no columns", table)
+		return "", nil, fmt.Errorf("the project's code asked for an index of the table %s over no columns", table)
 	}
 	for i, column := range columns {
 		if _, known := t.Column(column); !known || slices.Contains(columns[:i], column) {
-			return "", fmt.Errorf("the project's code asked for an index of the table %s over %s, which cannot be", table, strings.Join(columns, ", "))
+			return "", nil, fmt.Errorf("the project's code asked for an index of the table %s over %s, which cannot be", table, strings.Join(columns, ", "))
 		}
 	}
 	if !t.listed {
 		if t.indexes, err = d.indexes(t); err != nil {
-			return "", err
+			return "", nil, err
 		}
 		t.listed = true
 	}
 	for _, one := range t.indexes {
 		if len(one.columns) >= len(columns) && slices.Equal(one.columns[:len(columns)], columns) {
-			return "", nil
+			return "", nil, nil
 		}
 	}
+	made, dropped, err = d.make(t, columns)
+	return made, dropped, err
+}
 
+// make makes an index of a table over columns that have none.
+func (d *DB) make(t *Table, columns []string) (name string, dropped []string, err error) {
+	table := t.Name
 	tx, err := d.db.Begin()
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	defer tx.Rollback()
 	// The name tells what the index is of. Two tables may come to the same
 	// name; the later one gets a number.
 	plain := reserved + table + "_" + strings.Join(columns, "_")
-	name := plain
+	name = plain
 	for n := 2; ; n++ {
 		var taken int
 		if err := tx.QueryRow("SELECT count(*) FROM sqlite_master WHERE name = ?", name).Scan(&taken); err != nil {
-			return "", err
+			return "", nil, err
 		}
 		if taken == 0 {
 			break
@@ -75,23 +81,24 @@ func (d *DB) Index(table string, columns []string) (made string, err error) {
 		quoted[i] = quote(column)
 	}
 	if _, err := tx.Exec("CREATE INDEX " + quote(name) + " ON " + quote(t.Name) + " (" + strings.Join(quoted, ", ") + ")"); err != nil {
-		return "", fmt.Errorf("cannot make an index of the table %s over %s: %w", table, strings.Join(columns, ", "), err)
+		return "", nil, fmt.Errorf("cannot make an index of the table %s over %s: %w", table, strings.Join(columns, ", "), err)
 	}
-	kept := t.indexes[:0]
+	var kept []index
 	for _, one := range t.indexes {
 		if one.ours && len(one.columns) < len(columns) && slices.Equal(one.columns, columns[:len(one.columns)]) {
 			if _, err := tx.Exec("DROP INDEX " + quote(one.name)); err != nil {
-				return "", err
+				return "", nil, err
 			}
+			dropped = append(dropped, one.name)
 			continue
 		}
 		kept = append(kept, one)
 	}
 	if err := tx.Commit(); err != nil {
-		return "", err
+		return "", nil, err
 	}
 	t.indexes = append(kept, index{name, columns, true})
-	return name, nil
+	return name, dropped, nil
 }
 
 // indexes reads the indexes of a table that rows can be found by through
