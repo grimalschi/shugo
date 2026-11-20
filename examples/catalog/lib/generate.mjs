@@ -1,7 +1,37 @@
 // Makes the data of a shop: `node lib/generate.mjs 1000` writes
-// data/catalog.json with that many products. The same number always gives
+// data/catalog.db with that many products. The same number always gives
 // the same shop.
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+import { open } from "./db.mjs";
+
+// The tables of the shop. Every table has a key of one column: by it Shugo
+// tells its rows apart. The order of products, variants, badges and related
+// products is a column of its own.
+export const tables = `
+CREATE TABLE shop (id INTEGER PRIMARY KEY, name TEXT NOT NULL, phone TEXT NOT NULL, featured TEXT);
+CREATE TABLE categories (id TEXT PRIMARY KEY, title TEXT NOT NULL, position INTEGER NOT NULL);
+CREATE TABLE products (
+  id TEXT PRIMARY KEY, slug TEXT NOT NULL UNIQUE, title TEXT NOT NULL, price INTEGER NOT NULL,
+  discount INTEGER, discount_until TEXT, available INTEGER NOT NULL, arrival TEXT NOT NULL,
+  description TEXT NOT NULL, category TEXT NOT NULL, note TEXT NOT NULL, position INTEGER NOT NULL
+);
+CREATE TABLE variants (sku TEXT PRIMARY KEY, product TEXT NOT NULL, title TEXT NOT NULL, stock INTEGER NOT NULL, position INTEGER NOT NULL, shelf TEXT NOT NULL);
+CREATE TABLE reviews (id INTEGER PRIMARY KEY, product TEXT NOT NULL, author TEXT NOT NULL, text TEXT NOT NULL, approved INTEGER NOT NULL);
+CREATE TABLE badges (id INTEGER PRIMARY KEY, product TEXT NOT NULL, text TEXT NOT NULL, position INTEGER NOT NULL);
+CREATE TABLE related (id INTEGER PRIMARY KEY, product TEXT NOT NULL, other TEXT NOT NULL, position INTEGER NOT NULL);
+`;
+
+const indexes = `
+CREATE INDEX products_category ON products (category, position);
+CREATE INDEX products_position ON products (position);
+CREATE INDEX variants_product ON variants (product, position);
+CREATE INDEX reviews_product ON reviews (product, approved);
+CREATE INDEX badges_product ON badges (product, position);
+CREATE INDEX related_product ON related (product, position);
+CREATE INDEX related_other ON related (other);
+`;
 
 export function generate(count) {
   // A small generator of numbers that repeats itself for the same seed.
@@ -49,9 +79,33 @@ export function generate(count) {
   };
 }
 
+// write makes the data database of a shop anew.
+export async function write(path, shop) {
+  for (const suffix of ["", "-wal", "-shm"]) rmSync(path + suffix, { force: true });
+  const db = await open(path);
+  db.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = OFF; BEGIN;" + tables);
+  db.prepare("INSERT INTO shop VALUES (1, ?, ?, ?)").run(shop.shop.name, shop.shop.phone, shop.shop.featured);
+  const category = db.prepare("INSERT INTO categories VALUES (?, ?, ?)");
+  shop.categories.forEach((c, i) => category.run(c.id, c.title, i + 1));
+  const product = db.prepare("INSERT INTO products VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  const variant = db.prepare("INSERT INTO variants VALUES (?, ?, ?, ?, ?, ?)");
+  const review = db.prepare("INSERT INTO reviews (product, author, text, approved) VALUES (?, ?, ?, ?)");
+  const badge = db.prepare("INSERT INTO badges (product, text, position) VALUES (?, ?, ?)");
+  const related = db.prepare("INSERT INTO related (product, other, position) VALUES (?, ?, ?)");
+  shop.products.forEach((p, i) => {
+    product.run(p.id, p.slug, p.title, p.price, p.discount?.percent ?? null, p.discount?.until ?? null, p.available ? 1 : 0, p.arrival, p.description, p.category, p.note, i + 1);
+    p.variants.forEach((v, at) => variant.run(v.sku, p.id, v.title, v.stock, at + 1, "A1"));
+    p.reviews.forEach((r) => review.run(p.id, r.author, r.text, r.approved ? 1 : 0));
+    p.badges.forEach((text, at) => badge.run(p.id, text, at + 1));
+    p.related.forEach((other, at) => related.run(p.id, other, at + 1));
+  });
+  db.exec(indexes + "COMMIT;");
+  db.close();
+}
+
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop())) {
   const count = Number(process.argv[2] ?? 1000);
   mkdirSync(new URL("../data/", import.meta.url), { recursive: true });
-  writeFileSync(new URL("../data/catalog.json", import.meta.url), JSON.stringify(generate(count)));
-  console.log(`data/catalog.json: ${count} products`);
+  await write(fileURLToPath(new URL("../data/catalog.db", import.meta.url)), generate(count));
+  console.log(`data/catalog.db: ${count} products`);
 }

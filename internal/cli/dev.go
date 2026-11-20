@@ -11,33 +11,49 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 
+	"github.com/grimalschi/shugo/internal/data"
 	"github.com/grimalschi/shugo/internal/project"
 	"github.com/grimalschi/shugo/internal/server"
 )
 
 // dev builds the project, shows it, and builds it again whenever a file of
-// the project changes. Pages open in a browser reload themselves.
+// the project changes. When only the data database has changed, the site is
+// brought up to date the way `shugo update` does it. Pages open in a
+// browser reload themselves.
 func (c *command) dev() error {
 	st, err := c.open()
 	if err != nil {
 		return err
 	}
 	defer st.Close()
+	// SQLite removes the files it keeps beside a database when its last
+	// connection closes, and makes them again for the next one. Every update
+	// would then look like a change of the data and set off another. One
+	// connection held open keeps the files where they are.
+	if path := c.project.Data(); path != "" {
+		if held, err := data.Open(path); err == nil {
+			defer held.Close()
+		}
+	}
 	live := &server.Live{}
 	pages := server.NewPages(st)
 	pages.Mounts = map[string]string{"body": server.LiveScript}
 
 	// A mistake in the project is not the end of development: it is
 	// printed, and the last good site stays up until the next change.
-	build := func() {
-		if err := c.rebuild(st); err != nil {
+	build := func(sources bool) {
+		renew := c.renew
+		if sources {
+			renew = c.rebuild
+		}
+		if err := renew(st); err != nil {
 			c.report(err)
 			return
 		}
 		pages.Refresh()
 		live.Reload()
 	}
-	build()
+	build(true)
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -50,6 +66,7 @@ func (c *command) dev() error {
 	go func() {
 		// Editors write a file in several steps; wait until they are done.
 		var settle <-chan time.Time
+		sources := false
 		for {
 			select {
 			case event, open := <-watcher.Events:
@@ -62,10 +79,12 @@ func (c *command) dev() error {
 				if event.Has(fsnotify.Create) {
 					watch(watcher, event.Name) // a new folder
 				}
+				sources = sources || !c.isData(event.Name)
 				settle = time.After(80 * time.Millisecond)
 			case <-settle:
 				settle = nil
-				build()
+				build(sources)
+				sources = false
 			case err, open := <-watcher.Errors:
 				if !open {
 					return
@@ -75,6 +94,21 @@ func (c *command) dev() error {
 		}
 	}()
 	return c.listen(&server.Server{Pages: pages, Live: live})
+}
+
+// isData tells whether a file is the data database of the project, or one
+// of the files SQLite keeps beside it.
+func (c *command) isData(path string) bool {
+	database := c.project.Data()
+	if database == "" {
+		return false
+	}
+	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
+		if path == database+suffix {
+			return true
+		}
+	}
+	return false
 }
 
 // writesTo tells whether the command itself writes to the file: its output

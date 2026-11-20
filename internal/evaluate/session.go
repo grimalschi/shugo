@@ -17,24 +17,29 @@ import (
 )
 
 // wire is the conversation with the JavaScript of the project. The project's
-// code answers requests one at a time: which pages there are, and what the
-// records of the pages and shared blocks named to it are.
+// code answers requests one at a time: which pages there are, what the
+// fingerprints of pages and shared blocks are, and what the records of those
+// named to it are.
 //
 // A message in either direction is a length in four bytes, a letter that
 // says what the message is, and its body.
 //
 //	to the project's code           from it
-//	L  list the pages               P  pages: route \x02 address, split by \x03
-//	F  run the scripts of units     F  fingerprints: eight bytes for every unit,
-//	   and tell their fingerprints     in the order they were named
-//	C  compute the records of units X  the script of a shared block failed: its
-//	Q  nothing more                    place among the units \x02 the failure
-//	                                R  records, split by \x03
+//	L  list the pages of routes,    P  pages: route \x02 address, split by \x03
+//	   split by commas; of all      G  a route is listed: route \x02 whether its
+//	   routes if none is named         pages get more than an address \x02 what
+//	F  run the scripts of units        the listing read from the data
+//	   and tell their fingerprints  F  fingerprints: eight bytes for every unit,
+//	C  compute the records of units    in the order they were named
+//	Q  nothing more                 R  records, split by \x03
+//	                                X  the script of a shared block failed:
+//	                                   its name \x02 the failure
+//	                                S  a shape of readings: number \x02 what it is
 //	                                E  it failed: { message, stack, place }
 //	                                D  the request is done: what it has to add
 //
-// Units are split by \x03; a unit is p or s, \x02, and the address of a
-// page or the name of a shared block.
+// Units are split by \x03; a unit is p \x02 the address of a page \x02 its
+// route, or s \x02 the name of a shared block.
 type wire struct {
 	asks    io.Writer
 	answers *bufio.Reader
@@ -66,7 +71,7 @@ func (w *wire) send(kind byte, body []byte) error {
 
 // ask sends one request and hands every message of the answer to got. It
 // returns what the project's code added when it was done.
-func (w *wire) ask(kind byte, body []byte, got func(kind byte, body []byte) error) (done []byte, err error) {
+func (w *wire) ask(kind byte, body []byte, k *keeper, got func(kind byte, body []byte) error) (done []byte, err error) {
 	if err := w.send(kind, body); err != nil {
 		return nil, err
 	}
@@ -79,17 +84,47 @@ func (w *wire) ask(kind byte, body []byte, got func(kind byte, body []byte) erro
 		case 'D':
 			return body, nil
 		case 'E':
-			failure := &ScriptError{}
-			if err := json.Unmarshal(body, failure); err != nil {
-				return nil, fmt.Errorf("the project's code failed, and its report cannot be read: %w", err)
+			failure, err := failed(body)
+			if err != nil {
+				return nil, err
 			}
 			return nil, failure
+		case 'S':
+			// A shape may be told at any moment before a reading of it.
+			number, spec, found := bytes.Cut(body, []byte{2})
+			at, err := strconv.Atoi(string(number))
+			if !found || err != nil || k.shapes == nil {
+				return nil, errorf("a damaged shape of readings")
+			}
+			if err := k.shapes.tell(at, string(spec)); err != nil {
+				return nil, err
+			}
+		case 'X':
+			// A shared block may fail without failing the request: only the
+			// keeper knows whether anything still shows it.
+			name, report, _ := bytes.Cut(body, []byte{2})
+			failure, err := failed(report)
+			if err != nil {
+				return nil, err
+			}
+			if err := k.fail(string(name), failure); err != nil {
+				return nil, err
+			}
 		default:
 			if err := got(kind, body); err != nil {
 				return nil, err
 			}
 		}
 	}
+}
+
+// failed reads a failure as the project's code reports it.
+func failed(body []byte) (*ScriptError, error) {
+	failure := &ScriptError{}
+	if err := json.Unmarshal(body, failure); err != nil {
+		return nil, fmt.Errorf("the project's code failed, and its report cannot be read: %w", err)
+	}
+	return failure, nil
 }
 
 // read takes one message of the project's code.
@@ -118,25 +153,45 @@ type listed struct {
 	path  string
 }
 
-// list asks which pages the project has.
-func (w *wire) list(report *Report) ([]listed, error) {
-	var pages []listed
-	done, err := w.ask('L', nil, func(kind byte, body []byte) error {
-		if kind != 'P' {
-			return errorf("a message of the kind %q where the pages were asked for", kind)
+// list asks which pages the routes have: the ones named, or all of them.
+// What the project's code says of every route goes to the keeper.
+func (w *wire) list(routes []int, k *keeper) ([]listed, error) {
+	var request []byte
+	for i, route := range routes {
+		if i > 0 {
+			request = append(request, ',')
 		}
-		for len(body) > 0 {
-			var one []byte
-			one, body, _ = bytes.Cut(body, []byte{3})
-			number, path, found := bytes.Cut(one, []byte{2})
-			route, err := strconv.Atoi(string(number))
-			if !found || err != nil || route < 0 {
-				return errorf("a damaged list of pages")
+		request = strconv.AppendInt(request, int64(route), 10)
+	}
+	var pages []listed
+	done, err := w.ask('L', request, k, func(kind byte, body []byte) error {
+		switch kind {
+		case 'P':
+			for len(body) > 0 {
+				var one []byte
+				one, body, _ = bytes.Cut(body, []byte{3})
+				number, path, found := bytes.Cut(one, []byte{2})
+				route, err := strconv.Atoi(string(number))
+				if !found || err != nil || route < 0 || route >= len(k.site.Routes) {
+					return errorf("a damaged list of pages")
+				}
+				if !validPath(string(path)) {
+					return errorf("a page with the address %q", path)
+				}
+				pages = append(pages, listed{route, string(path)})
 			}
-			if !validPath(string(path)) {
-				return errorf("a page with the address %q", path)
+		case 'G':
+			fields := bytes.SplitN(body, []byte{2}, 3)
+			if len(fields) != 3 {
+				return errorf("a damaged note of a route")
 			}
-			pages = append(pages, listed{route, string(path)})
+			route, err := strconv.Atoi(string(fields[0]))
+			if err != nil {
+				return errorf("a damaged note of a route")
+			}
+			return k.route(route, string(fields[1]) == "1", fields[2])
+		default:
+			return errorf("a message of the kind %q where the pages were asked for", kind)
 		}
 		return nil
 	})
@@ -147,7 +202,7 @@ func (w *wire) list(report *Report) ([]listed, error) {
 	if err := json.Unmarshal(done, &counts); err != nil {
 		return nil, fmt.Errorf("the project's code sent a damaged summary: %w", err)
 	}
-	report.Shadowed = counts.Shadowed
+	k.report.Shadowed += counts.Shadowed
 	return pages, nil
 }
 
@@ -158,48 +213,36 @@ func named(units []unit) []byte {
 		if i > 0 {
 			out = append(out, 3)
 		}
-		kind := byte('p')
 		if u.shared {
-			kind = 's'
+			out = append(append(out, 's', 2), u.name...)
+		} else {
+			out = append(append(append(out, 'p', 2), u.name...), 2)
+			out = strconv.AppendInt(out, int64(u.route), 10)
 		}
-		out = append(append(append(out, kind), 2), u.name...)
 	}
 	return out
 }
 
 // prints has the scripts of units run and hands the fingerprint of each to
-// got. The script of a shared block may fail without failing the request:
-// then got is given the failure.
-func (w *wire) prints(units []unit, got func(u unit, print uint64, failure *ScriptError) error) error {
+// got. A shared block whose script failed has none: its failure went to the
+// keeper.
+func (w *wire) prints(units []unit, k *keeper, got func(u unit, print uint64) error) error {
 	if len(units) == 0 {
 		return nil
 	}
-	failures := map[int]*ScriptError{}
 	answered := false
-	_, err := w.ask('F', named(units), func(kind byte, body []byte) error {
-		switch kind {
-		case 'X':
-			number, report, found := bytes.Cut(body, []byte{2})
-			at, err := strconv.Atoi(string(number))
-			if !found || err != nil || at < 0 || at >= len(units) || !units[at].shared {
-				return errorf("a damaged failure of a script")
+	_, err := w.ask('F', named(units), k, func(kind byte, body []byte) error {
+		if kind != 'F' || len(body) != len(units)*8 || answered {
+			return errorf("a message of the kind %q and %d bytes where the fingerprints of %d pages and shared blocks were asked for", kind, len(body), len(units))
+		}
+		answered = true
+		for i, u := range units {
+			if u.shared && k.hasFailed(u.name) {
+				continue
 			}
-			failures[at] = &ScriptError{}
-			if err := json.Unmarshal(report, failures[at]); err != nil {
-				return fmt.Errorf("the script of %s failed, and its report cannot be read: %w", units[at], err)
+			if err := got(u, binary.LittleEndian.Uint64(body[i*8:])); err != nil {
+				return err
 			}
-		case 'F':
-			if len(body) != len(units)*8 || answered {
-				return errorf("fingerprints of %d bytes for %d pages and shared blocks", len(body), len(units))
-			}
-			answered = true
-			for i, u := range units {
-				if err := got(u, binary.LittleEndian.Uint64(body[i*8:]), failures[i]); err != nil {
-					return err
-				}
-			}
-		default:
-			return errorf("a message of the kind %q where fingerprints were asked for", kind)
 		}
 		return nil
 	})
@@ -210,13 +253,13 @@ func (w *wire) prints(units []unit, got func(u unit, print uint64, failure *Scri
 }
 
 // compute asks for the records of units and hands them to the keeper. Every
-// unit asked for must come back.
+// unit asked for must come back, or be told to have failed.
 func (w *wire) compute(units []unit, k *keeper) error {
 	if len(units) == 0 {
 		return nil
 	}
 	before := k.count()
-	_, err := w.ask('C', named(units), func(kind byte, body []byte) error {
+	_, err := w.ask('C', named(units), k, func(kind byte, body []byte) error {
 		if kind != 'R' {
 			return errorf("a message of the kind %q where records were asked for", kind)
 		}
@@ -269,7 +312,7 @@ func start(p *project.Project, log io.Writer) (*session, error) {
 	// Requests and answers go through pipes of their own, so that whatever
 	// the project prints or reads cannot get mixed into them.
 	command.ExtraFiles = []*os.File{answersIn, asksOut}
-	command.Env = append(os.Environ(), "SHUGO_OUT=3", "SHUGO_IN=4")
+	command.Env = append(os.Environ(), "SHUGO_OUT=3", "SHUGO_IN=4", "SHUGO_DATA="+p.Data())
 	err = command.Start()
 	answersIn.Close()
 	asksOut.Close()
@@ -302,24 +345,6 @@ func (s *session) told(err error) error {
 	return err
 }
 
-func (s *session) list(report *Report) ([]listed, error) {
-	pages, err := s.wire.list(report)
-	return pages, s.told(err)
-}
-
-func (s *session) prints(units []unit, got func(u unit, print uint64, failure *ScriptError) error) error {
-	return s.told(s.wire.prints(units, func(u unit, print uint64, failure *ScriptError) error {
-		if failure != nil {
-			failure.locate(s.project)
-		}
-		return got(u, print, failure)
-	}))
-}
-
-func (s *session) compute(units []unit, k *keeper) error {
-	return s.told(s.wire.compute(units, k))
-}
-
 // end lets the project's code finish.
 func (s *session) end() error {
 	if err := s.send('Q', nil); err != nil {
@@ -341,6 +366,65 @@ func (s *session) stop() {
 	}
 	for _, pipe := range s.pipes {
 		pipe.Close()
+	}
+}
+
+// worker is the JavaScript of the project, started when it is first asked
+// for something: an update that finds nothing to compute never starts it.
+type worker struct {
+	project *project.Project
+	log     io.Writer
+	session *session
+}
+
+func (w *worker) ready() error {
+	if w.session != nil {
+		return nil
+	}
+	var err error
+	w.session, err = start(w.project, w.log)
+	return err
+}
+
+func (w *worker) list(routes []int, k *keeper) ([]listed, error) {
+	if err := w.ready(); err != nil {
+		return nil, err
+	}
+	pages, err := w.session.wire.list(routes, k)
+	return pages, w.session.told(err)
+}
+
+func (w *worker) prints(units []unit, k *keeper, got func(u unit, print uint64) error) error {
+	if len(units) == 0 {
+		return nil
+	}
+	if err := w.ready(); err != nil {
+		return err
+	}
+	return w.session.told(w.session.wire.prints(units, k, got))
+}
+
+func (w *worker) compute(units []unit, k *keeper) error {
+	if len(units) == 0 {
+		return nil
+	}
+	if err := w.ready(); err != nil {
+		return err
+	}
+	return w.session.told(w.session.wire.compute(units, k))
+}
+
+// end lets the project's code finish, if it was started.
+func (w *worker) end() error {
+	if w.session == nil {
+		return nil
+	}
+	return w.session.end()
+}
+
+func (w *worker) stop() {
+	if w.session != nil {
+		w.session.stop()
 	}
 }
 

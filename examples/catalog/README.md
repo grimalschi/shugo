@@ -2,7 +2,7 @@
 
 A shop with a configurable number of products, a page for each product, category listings of 24 products per page, a header with navigation and a featured product, and recommendations.
 
-The benchmark checks that a data change reevaluates and updates only the parts of the site that display that data.
+Variant 2 stores the shop data in SQLite, and pages read it through `Shugo.query`. The benchmark checks that a change reevaluates only the readers of the changed records. See the [design and decisions](../../VARIANT.md).
 
 ## Run the benchmark
 
@@ -13,9 +13,9 @@ node examples/catalog/stand.mjs --size 10000         # or use Bun. Pass --runtim
 
 The benchmark runs the following steps.
 
-1. Generates shop data for `--size` products. The same size always produces the same shop.
+1. Generates `data/catalog.db` for `--size` products. The same size always produces the same shop.
 2. Builds the site with `shugo build`.
-3. Changes the data 21 times and runs `shugo update` after each change. It checks the update report against the expected evaluations.
+3. Changes the data 20 times using SQL and runs `shugo update` after each change. It checks the report against the expected evaluations and changes.
 4. Rebuilds the site from the same data in another directory and compares the resulting files.
 
 To view the site, run `node examples/catalog/lib/generate.mjs 1000`, then `bin/shugo dev examples/catalog`.
@@ -24,17 +24,14 @@ To view the site, run `node examples/catalog/lib/generate.mjs 1000`, then `bin/s
 
 | File | What it shows |
 | --- | --- |
-| `lib/catalog.ts` | Shop data. The module reads a file and only the data-loading code imports it. |
-| `lib/money.ts` | Price helpers available to templates without loading data. |
-| `components/Header.shugo` | Shared block with no parameters. It loads its own data and runs once for the site, even though it appears on every page. |
-| `components/ProductCard.shugo` | Shared block with one product ID parameter. It fetches its own product and runs again when the displayed data changes. |
-| `components/Variant.shugo` | Regular component that displays an input object in a block owned by its page. |
-| `pages/products/[slug].shugo` | One file produces 100,000 pages. All page data arrives in a single list. |
-| `pages/categories/[category]/[...page].shugo` | Pagination with `paginate`. |
-| `pages/+layout.shugo` | Layout with a `head` slot for the page title. |
+| `lib/generate.mjs` | Shop tables. Each has a single-column key and a separate ordering column. |
+| `components/Header.shugo` | Shared block with no parameters. It reads its own configuration, navigation, and category counts. |
+| `components/ProductCard.shugo` | Shared block that takes a product ID and reads the product. A product edit reevaluates the card on its own. |
+| `components/Variant.shugo` | Regular component that displays a row read by the page. |
+| `pages/products/[slug].shugo` | The route lists URLs, and each page queries its own product, variants, reviews, badges, and recommendations. |
+| `pages/categories/[category]/[...page].shugo` | The route uses `paginate` with a product count. The page uses `Shugo.paginate` with a query. |
+| `lib/catalog.ts` | Price helpers that load no data. |
 
 ## Results
 
-This branch tests dependency-tree fingerprinting. [Variant notes](../../VARIANT.md) show what each update evaluates and how long it takes.
-
-With 100,000 products, a price edit evaluates one page and one card out of 204,000 pages and shared blocks. An edit to a field the site never displays triggers no evaluations. In preliminary Bun measurements, an update took 1.2–1.4 s, down from 3.2–3.7 s in the first version.
+The [results](../../VARIANT.md#results) have tables for every size, initial build times, and analysis. With 100,000 products and 104,202 pages, changing one price evaluates one page and one card, and the full `shugo update` command takes 38 ms. A change that no page reads triggers no evaluations. The initial build takes 13–15 s.

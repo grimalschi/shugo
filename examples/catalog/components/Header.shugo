@@ -1,14 +1,14 @@
 ---
-import { categories, inCategory, product, shop } from "../lib/catalog"
 import ProductCard from "./ProductCard.shugo"
 
+const shop = Shugo.query("shop").get(1)
 // The menu shows how many products every category has.
-const menu = categories.slice(0, 8).map((category) => ({
+const menu = Shugo.query("categories").order("position").limit(8).all().map((category) => ({
   href: `/categories/${category.id}`,
   title: category.title,
-  count: inCategory(category.id).length,
+  count: Shugo.query("products").where({ category: category.id }).count(),
 }))
-const featured = shop.featured ? product(shop.featured) : null
+const featured = shop.featured ? Shugo.query("products").get(shop.featured) : null
 ---
 <header>
   <a class="brand" href="/">{shop.name}</a>

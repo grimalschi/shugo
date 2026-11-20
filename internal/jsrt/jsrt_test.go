@@ -58,15 +58,20 @@ func TestMurmurHash3(t *testing.T) {
 // The script prints what is wrong, one line for each thing.
 func TestLoadSide(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "load.js"), []byte(Load), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	script, err := os.ReadFile("load_test.mjs")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "test.mjs"), script, 0o644); err != nil {
-		t.Fatal(err)
+	// In a project the bundler finds the module of the data database by its
+	// name; here the libraries stand side by side as files.
+	for name, content := range map[string]string{
+		"load.js":  strings.Replace(Load, `"shugo:query"`, `"./query.js"`, 1),
+		"query.js": Query,
+		"test.mjs": string(script),
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	ran := false
 	for _, runtime := range []string{"bun", "node"} {

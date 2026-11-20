@@ -93,7 +93,7 @@ func (b *builder) bundle(s side, routes []program.Route) (*bundled, error) {
 			return api.OnResolveResult{Path: args.Path, Namespace: "shugo"}, nil
 		})
 		build.OnLoad(api.OnLoadOptions{Filter: `.*`, Namespace: "shugo"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
-			contents, known := map[string]string{"shugo:entry": entry, "shugo:load": jsrt.Load, "shugo:render": jsrt.Render}[args.Path]
+			contents, known := map[string]string{"shugo:entry": entry, "shugo:load": jsrt.Load, "shugo:query": jsrt.Query, "shugo:render": jsrt.Render}[args.Path]
 			if !known {
 				return api.OnLoadResult{}, fmt.Errorf("there is no %s", args.Path)
 			}
@@ -134,6 +134,7 @@ func (b *builder) bundle(s side, routes []program.Route) (*bundled, error) {
 	if s == loadSide {
 		options.Format = api.FormatESModule
 		options.Outfile = filepath.Join(root, project.Output, LoadBundle)
+		options.External = []string{"bun:sqlite"} // built into Bun; Node has node:sqlite
 	} else {
 		// A format that cannot wait at the top of a module: the bundler
 		// itself refuses a module of the render side that waits for data.
@@ -307,6 +308,8 @@ func (b *builder) sort(meta *metafile) {
 		if id, known := b.ids[name]; known {
 			u := b.units[id]
 			switch {
+			case u.names.asks:
+				cause[name] = "asks the data database (Shugo.query)"
 			case u.names.waits:
 				cause[name] = "waits for data (await)"
 			case u.names.now:

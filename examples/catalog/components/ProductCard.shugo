@@ -1,15 +1,17 @@
 ---
-import { product } from "../lib/catalog"
 import { finalPrice, price } from "../lib/money"
 
 // The card takes the number of a product, not the product: called with a
 // plain value, it is computed and kept once for every product, however many
-// pages show it. It finds the product itself, so it is computed again only
-// when what it shows of the product has changed.
+// pages show it. It asks for its product itself, so a product that changes
+// has its card computed, and none of the pages that show the card.
+//
+// The query names no columns. The card depends on the ones that are read
+// here and in the template: the address, the title, the price and the
+// discount. A change of any other column of the product does not reach it.
 const { id } = Shugo.props as { id: string }
-const item = product(id)
-// The price is worked out here, so that the template reads one number and
-// not the whole product.
+const item = Shugo.query("products").get(id)
+if (!item) throw new Error(`there is no product ${id}`)
 const cost = finalPrice(item)
 ---
 <a class="card" href={`/products/${item.slug}`}>

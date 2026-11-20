@@ -129,7 +129,7 @@ func Build(p *project.Project) (*Result, error) {
 			return nil, err
 		}
 	}
-	return &Result{Site: site, ID: digest(data, loaded.code, rendered.code), Warnings: append(loaded.warnings, rendered.warnings...)}, nil
+	return &Result{Site: site, ID: identity(p, data, loaded.code, rendered.code), Warnings: append(loaded.warnings, rendered.warnings...)}, nil
 }
 
 // Load reads a project that Build has compiled before.
@@ -152,7 +152,15 @@ func Load(p *project.Project) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Result{Site: site, ID: digest(data, load, render)}, nil
+	return &Result{Site: site, ID: identity(p, data, load, render)}, nil
+}
+
+// identity names a compiled project: its program and its two bundles, and
+// which data database it reads. A project that is pointed at another
+// database, or at none, is followed in another way, and what the store
+// keeps to follow it says nothing any more.
+func identity(p *project.Project, site, load, render []byte) string {
+	return digest(site, load, render, []byte(p.Config.Data))
 }
 
 // sources is the list of what a project was compiled from: its templates,

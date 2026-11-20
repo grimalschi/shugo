@@ -174,6 +174,17 @@ class Context {
     return (page.url ??= new URL(encodeURI(page.path), page.origin));
   }
 
+  // The data database is asked on the load side, by the script of a page, a
+  // layout or a shared block. The compiler sends there every script that
+  // asks; what comes here is a template, or a call the compiler did not see.
+  query() {
+    throw new Error("Shugo.query is called in a template, or in code that a template calls. A template shows what its script gives it and loads nothing itself: ask in the script and show the variable");
+  }
+
+  paginate() {
+    throw new Error("Shugo.paginate is called in a template, or in code that a template calls. A template shows what its script gives it and loads nothing itself: ask in the script and show the variable");
+  }
+
   #page(what) {
     if (this.#scope.page === null) {
       throw new Error(`Shugo.${what} was read inside a block that is computed once for all pages. This should not happen: please report it`);
@@ -298,10 +309,11 @@ function unnamed(name) {
 
 // On the wire a record is its header and its blocks, split by \x01; fields
 // are split by \x02, and every value of a block follows a \x00. A block that
-// stands for a shared block carries its name. The header ends with the
-// fingerprint of what the record was computed from.
-function encode(record, print) {
-  const lines = [record.kind + "\x02" + record.key + "\x02" + record.route + "\x02" + record.top + "\x02" + print];
+// stands for a shared block carries its name. The header ends with what the
+// load side knows of the record: the fingerprint of what it was computed
+// from, and what was read from the data database on the way.
+function encode(record, print, reads) {
+  const lines = [record.kind + "\x02" + record.key + "\x02" + record.route + "\x02" + record.top + "\x02" + print + "\x02" + reads];
   for (const block of record.blocks) {
     lines.push(
       block.shared !== null
@@ -372,7 +384,7 @@ class Renderer {
 
   // block computes a shared block from its name: the name holds the file,
   // the parameters and the names of the slots.
-  block(name, part, print) {
+  block(name, part, print, reads) {
     const { path, props, slots } = unnamed(name);
     const target = this.modules.get(this.files.get(path))?.default;
     if (target === undefined) throw new Error(`there is no file ${path} to compute the shared block from`);
@@ -382,13 +394,13 @@ class Renderer {
     // them belongs to the place the block is used at.
     const scope = { page: null, slots, provided: null, parts: null };
     this.fill(target, new Writer(this, record, block, scope), new Context(target, props, scope), part, props);
-    return encode(record, print);
+    return encode(record, print, reads);
   }
 
   // page computes one page: the page itself, then every layout around it,
   // from the innermost. parts holds what the template of the page is given,
   // and the same for every layout that is computed with the page.
-  page(path, index, params, parts, print) {
+  page(path, index, params, parts, print, reads) {
     const route = this.site.routes[index];
     const record = new Record("p", path, index);
     const scope = { page: { params, path, origin: this.site.origin, url: undefined }, slots: null, provided: new Map(), parts };
@@ -408,7 +420,7 @@ class Renderer {
       top = this.show(record, layout, {}, slots, scope);
     }
     record.top = top;
-    return encode(record, print);
+    return encode(record, print, reads);
   }
 }
 

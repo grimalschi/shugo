@@ -29,6 +29,9 @@ type Config struct {
 	Runtime string `json:"runtime"`
 	// Redirects sends one path to another: {"/old": "/new"}.
 	Redirects map[string]string `json:"redirects"`
+	// Data is the SQLite database the pages read through Shugo.query:
+	// "data/site.db". An update computes only what a change in it reaches.
+	Data string `json:"data"`
 }
 
 // Project is a folder with a site in it.
@@ -64,6 +67,15 @@ func Open(dir string) (*Project, error) {
 // Path returns the absolute path of a file of the project.
 func (p *Project) Path(parts ...string) string {
 	return filepath.Join(append([]string{p.Root}, parts...)...)
+}
+
+// Data returns the path of the data database of the project, or nothing
+// if it has none.
+func (p *Project) Data() string {
+	if p.Config.Data == "" {
+		return ""
+	}
+	return p.Path(filepath.FromSlash(p.Config.Data))
 }
 
 // Templates returns the .shugo files of the project, sorted. The paths are

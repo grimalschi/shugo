@@ -1,23 +1,32 @@
 // The load side of Shugo's JavaScript. It runs the scripts of pages, layouts
 // and shared blocks with the data of the project, and it answers the Go
-// side, which leads: which pages there are, what the fingerprint of every
-// page and shared block is, and what the records of those named to it are.
+// side, which leads: which pages there are, and what the records of the
+// pages and shared blocks named to it are.
 //
-// The fingerprint of a page is made of exactly what its template reads of
-// the variables of its script. The compiler has worked that out from the
-// expressions of the template and written it next to the script as a list of
-// shapes; this side walks the live variables along those shapes. A page
-// whose fingerprint is what it was needs no computing: its template would
-// be given the same and would show the same.
+// The compiler has worked out from the expressions of every template what
+// the template reads of the variables of its script, and written that next
+// to the script as a list of shapes. This side walks the live variables
+// along those shapes and copies what they name. A template is computed on
+// the render side, which is another bundle with modules of its own, and that
+// copy is all it is given: a template cannot depend on anything else.
 //
-// A template is computed on the render side, which is another bundle with
-// modules of its own. What it is given is a copy, made by the same walk, so
-// a template cannot depend on anything that its fingerprint does not cover.
+// The walk is also how this side knows what a page depends on. A project
+// with a data database reads it through Shugo.query, and a row notes every
+// column that is read of it: by the script, and by this walk. Those are the
+// readings of the page, and nothing but a change of them has it computed
+// again. A project without a database is told by fingerprints instead: the
+// same walk makes one of exactly what the template reads, and a page whose
+// fingerprint is what it was would show the same.
 //
 // Runs on Bun and on Node.
 
 import { readFileSync, readSync, writeSync } from "node:fs";
 import { createRequire } from "node:module";
+
+import { open, Query, Reads } from "shugo:query";
+
+// The data database of the project, once it is open; null if it has none.
+let data = null;
 
 // ---------------------------------------------------------------------------
 // Fingerprints
@@ -227,28 +236,28 @@ function mix(h) {
 // ---------------------------------------------------------------------------
 // What a template reads
 
-// copy copies data with everything in it. It takes what Hasher.value takes;
-// the fingerprint of a value is always made before the value is copied, so
-// data that contains itself never comes this far.
-function copy(v) {
+// copy copies data with everything in it. It takes what Hasher.value takes,
+// and like it gives up on data that contains itself.
+function copy(v, depth = 0) {
   if (v === null || typeof v !== "object") {
     if (typeof v === "function" || typeof v === "symbol") throw new NotData(v);
     return v;
   }
+  if (depth++ > deepest) throw new NotData(v);
   if (Array.isArray(v)) {
     const out = new Array(v.length);
-    for (let i = 0; i < v.length; i++) out[i] = copy(v[i]);
+    for (let i = 0; i < v.length; i++) out[i] = copy(v[i], depth);
     return out;
   }
   const kind = Object.getPrototypeOf(v);
   if (kind === Object.prototype || kind === null) {
     const out = kind === null ? Object.create(null) : {};
-    for (const key in v) out[key] = copy(v[key]);
+    for (const key in v) out[key] = copy(v[key], depth);
     return out;
   }
   if (v instanceof Date) return new Date(v.getTime());
-  if (v instanceof Map) return new Map(Array.from(v, ([key, value]) => [copy(key), copy(value)]));
-  if (v instanceof Set) return new Set(Array.from(v, (value) => copy(value)));
+  if (v instanceof Map) return new Map(Array.from(v, ([key, value]) => [copy(key, depth), copy(value, depth)]));
+  if (v instanceof Set) return new Set(Array.from(v, (value) => copy(value, depth)));
   // A component is code: the render side has its own. It is told which.
   if (v instanceof Loader) return { shugoComponent: v.file };
   throw new NotData(v);
@@ -265,7 +274,7 @@ function copy(v) {
 
 const whole = {
   print: (h, v) => h.value(v),
-  part: copy,
+  part: (v) => copy(v),
 };
 
 // Of a value that is only asked whether it is there, the template gets
@@ -392,13 +401,16 @@ export function loader(file, load, names, shapes) {
 class Context {
   #page;
   #slots;
+  #reads;
 
   // page is the page being computed: { params, url }; null for a shared
   // block. slots are the names of the slots the caller filled, or null.
-  constructor(props, page, slots) {
+  // reads is where the queries of the script leave what they read.
+  constructor(props, page, slots, reads) {
     this.props = props;
     this.#page = page;
     this.#slots = slots;
+    this.#reads = reads;
   }
 
   get slots() {
@@ -415,12 +427,40 @@ class Context {
     return (page.url ??= new URL(encodeURI(page.path), page.origin));
   }
 
+  // query starts a question to a table of the data database. What it reads
+  // is noted for the page or the shared block being computed.
+  query(table) {
+    return query(this.#reads, table);
+  }
+
+  // paginate cuts the rows of a query into pages and returns the page whose
+  // number stands in the address, the way getStaticPaths({ paginate }) gives
+  // it in Astro: { data, total, currentPage, lastPage, url: { prev, next, … } }.
+  paginate(rows, { pageSize = 10 } = {}) {
+    if (!(rows instanceof Query)) throw new TypeError(`Shugo.paginate() takes a query: Shugo.paginate(Shugo.query("posts").order("date", "desc"), { pageSize: 10 })`);
+    const { route, params } = this.#of("paginate");
+    const segment = pageSegment(route);
+    const total = rows.count();
+    const current = params.page === undefined ? 1 : Number(params.page);
+    const start = (current - 1) * pageSize;
+    const found = rows.limit(pageSize).offset(start).all();
+    return paged(route, segment, params, found, start, pageSize, total, current);
+  }
+
   #of(what) {
     if (this.#page === null) {
       throw new Error(`Shugo.${what} was read inside a block that is computed once for all pages. This should not happen: please report it`);
     }
     return this.#page;
   }
+}
+
+// query starts a question to the data database for one reader.
+function query(reads, table) {
+  if (data === null) {
+    throw new Error('Shugo.query reads the data database of the project, and this project names none. Name it in shugo.json: { "data": "data/site.db" }');
+  }
+  return new Query(data, reads, table);
 }
 
 function describe(value) {
@@ -460,40 +500,74 @@ function address(route, params) {
   return "/" + parts.join("/");
 }
 
+// parameters reads the parameters of a page from its address: what address()
+// does, backwards. The route is known, so the address fits it.
+function parameters(route, path) {
+  const parts = path === "/" ? [] : path.slice(1).split("/");
+  const params = {};
+  let at = 0;
+  for (const segment of route.segments) {
+    if (segment.text !== undefined) at++;
+    else if (segment.param !== undefined) params[segment.param] = parts[at++];
+    else {
+      const rest = parts.slice(at, parts.length - (route.segments.length - route.segments.indexOf(segment) - 1));
+      params[segment.rest] = rest.length === 0 ? undefined : rest.join("/");
+      at += rest.length;
+    }
+  }
+  return params;
+}
+
+// A list is cut into pages by a [page] or [...page] parameter of the route.
+function pageSegment(route) {
+  const segment = route.segments.find((s) => (s.param ?? s.rest) === "page");
+  if (segment === undefined) throw new Error(`paginate() needs a [page] or [...page] parameter in the name of the page file, and ${route.pattern} has none`);
+  return segment;
+}
+
+// With [...page] the first page has no number in its address.
+const pageNumber = (segment, page) => (segment.rest !== undefined && page === 1 ? undefined : String(page));
+
+// paged describes one page of a list the way Astro does.
+function paged(route, segment, params, rows, start, size, total, current) {
+  const last = Math.max(1, Math.ceil(total / size));
+  const link = (page) => (page < 1 || page > last ? undefined : address(route, { ...params, page: pageNumber(segment, page) }));
+  return {
+    data: rows, start, end: Math.min(start + size, total) - 1, size, total,
+    currentPage: current, lastPage: last,
+    url: { current: link(current), prev: link(current - 1), next: link(current + 1), first: current > 1 ? link(1) : undefined, last: current < last ? link(last) : undefined },
+  };
+}
+
 // paginate is what getStaticPaths({ paginate }) receives: it cuts a list into
-// pages the way Astro does. The route must have a [page] or [...page] parameter.
+// pages the way Astro does. Given the list, every page gets its part of it.
+// Given only how many items there are, the pages get their addresses alone,
+// and each asks for its part itself: Shugo.paginate(query, { pageSize }).
 function paginator(route) {
-  return (data, { pageSize = 10, params = {}, props = {} } = {}) => {
-    const segment = route.segments.find((s) => (s.param ?? s.rest) === "page");
-    if (segment === undefined) throw new Error(`paginate() needs a [page] or [...page] parameter in the name of the page file, and ${route.pattern} has none`);
-    const last = Math.max(1, Math.ceil(data.length / pageSize));
-    // With [...page] the first page has no number in its address.
-    const number = (page) => (segment.rest !== undefined && page === 1 ? undefined : String(page));
-    const link = (page) => (page < 1 || page > last ? undefined : address(route, { ...params, page: number(page) }));
+  return (list, { pageSize = 10, params = {}, props = {} } = {}) => {
+    const segment = pageSegment(route);
+    const total = typeof list === "number" ? list : list.length;
+    const last = Math.max(1, Math.ceil(total / pageSize));
     return Array.from({ length: last }, (_, i) => {
-      const start = i * pageSize;
-      const end = Math.min(start + pageSize, data.length);
-      return {
-        params: { ...params, page: number(i + 1) },
-        props: {
-          ...props,
-          page: {
-            data: data.slice(start, end), start, end: end - 1, size: pageSize, total: data.length,
-            currentPage: i + 1, lastPage: last,
-            url: { current: link(i + 1), prev: link(i), next: link(i + 2), first: i > 0 ? link(1) : undefined, last: i + 1 < last ? link(last) : undefined },
-          },
-        },
-      };
+      const entry = { params: { ...params, page: pageNumber(segment, i + 1) } };
+      if (typeof list !== "number") {
+        const start = i * pageSize;
+        entry.props = { ...props, page: paged(route, segment, params, list.slice(start, start + pageSize), start, pageSize, total, i + 1) };
+      } else if (Object.keys(props).length > 0) {
+        entry.props = { ...props };
+      }
+      return entry;
     });
   };
 }
 
 // entries returns the pages of a route: one for a page without parameters,
-// and what getStaticPaths says for the others.
-async function entries(route, module) {
-  if (!route.segments.some((segment) => segment.text === undefined)) return [{ params: {}, props: {} }];
+// and what getStaticPaths says for the others. reads is where its queries
+// leave what they read.
+async function entries(route, module, reads) {
+  if (!route.segments.some((segment) => segment.text === undefined)) return [{ params: {} }];
   if (typeof module.getStaticPaths !== "function") throw new Error(`${route.pattern} has parameters, so its script must export getStaticPaths`);
-  const list = await module.getStaticPaths({ paginate: paginator(route) });
+  const list = await module.getStaticPaths({ paginate: paginator(route), query: (table) => query(reads, table) });
   if (!Array.isArray(list)) throw new Error(`getStaticPaths of ${route.pattern} must return a list of { params, props }, got ${describe(list)}`);
   for (const entry of list) {
     if (entry === null || typeof entry !== "object" || entry.params === null || typeof entry.params !== "object") {
@@ -523,8 +597,19 @@ function placed(error, place) {
   return failure;
 }
 
+// failure writes an error for the Go side.
+function failure(error) {
+  return JSON.stringify({ message: String(error?.message ?? error), stack: String(error?.stack ?? ""), place: error?.place ?? "" });
+}
+
 // A unit is what is computed as one: a page or a shared block. On the wire
-// it is "p" or "s", \x02, and the address of the page or the name of the block.
+// it is "p", the address of a page and its route, or "s" and the name of a
+// shared block, split by \x02.
+function unit(text) {
+  const [kind, name, route] = text.split("\x02");
+  return { text, page: kind === "p", name, route: Number(route) };
+}
+
 class Run {
   constructor(site, modules, render, send) {
     this.site = site;
@@ -532,10 +617,10 @@ class Run {
     this.render = render; // the render side: it computes a page or a block from what it is given
     this.send = send;
     this.files = new Map(site.files.map((file, number) => [file.path, number]));
-    // address → { index, route, entry }, once the pages are listed; then
-    // also loaded: what the scripts of the page gave, until it is computed.
-    this.pages = new Map();
-    this.blocks = new Map(); // name → the same for a shared block
+    this.pages = new Map(); // address → { index, route, entry }, of the routes that were listed
+    // What the scripts of a unit gave, from when its fingerprint is asked
+    // for until it is computed: by the unit as it is written on the wire.
+    this.loaded = new Map();
     this.given = new Map(); // route → the slots every layout of it is given
     // The layouts that are computed with the pages of every route: those
     // that read the page. The others are shared blocks.
@@ -546,27 +631,33 @@ class Run {
   }
 
   place(unit) {
-    const name = unit.slice(2);
-    return unit[0] === "p" ? `the page ${name} (${this.site.files[this.pages.get(name)?.route.file]?.path})` : `the shared block ${name}`;
+    return unit.page ? `the page ${unit.name} (${this.site.files[this.site.routes[unit.route]?.file]?.path})` : `the shared block ${unit.name}`;
   }
 
-  // list finds the pages of the site: every route says which pages it has. A
-  // route that names more of an address comes earlier and takes it.
-  async list() {
-    this.pages.clear();
+  // list finds the pages of routes: of the ones named, or of all. Every
+  // route says which pages it has, and what it read from the data to know.
+  // Among the routes listed together, a route that names more of an address
+  // comes earlier and takes it.
+  async list(wanted) {
+    const routes = wanted.length > 0 ? wanted : this.site.routes.map((_, index) => index);
+    for (const [path, page] of this.pages) if (routes.includes(page.index)) this.pages.delete(path);
     let shadowed = 0;
     let lines = [];
-    for (const [index, route] of this.site.routes.entries()) {
-      const place = `getStaticPaths of ${this.site.files[route.file].path}`;
+    for (const index of routes) {
+      const route = this.site.routes[index];
+      if (route === undefined) throw new Error(`the shugo command asked for the pages of route ${index}, which this project's compiled code does not have: build the project again`);
+      const reads = new Reads();
+      let props = false;
       try {
-        for (const entry of await entries(route, this.modules.get(route.file))) {
+        for (const entry of await entries(route, this.modules.get(route.file), reads)) {
           const path = address(route, entry.params);
           const taken = this.pages.get(path);
           if (taken !== undefined && taken.index === index) throw new Error(`getStaticPaths of ${route.pattern} returned the address ${path} twice`);
-          if (taken !== undefined) {
+          if (taken !== undefined && taken.index < index) {
             shadowed++;
             continue;
           }
+          props ||= entry.props != null && Object.keys(entry.props).length > 0;
           this.pages.set(path, { index, route, entry });
           if (lines.push(index + "\x02" + path) === 4096) {
             this.send("P", lines.join("\x03"));
@@ -574,8 +665,11 @@ class Run {
           }
         }
       } catch (error) {
-        throw placed(error, place);
+        throw placed(error, `getStaticPaths of ${this.site.files[route.file].path}`);
       }
+      // Rows that the list hands to its pages are read there, after the list
+      // has told what it read: so all of them count as read whole.
+      this.send("G", index + "\x02" + (props ? 1 : 0) + "\x02" + reads.text(props));
     }
     if (lines.length > 0) this.send("P", lines.join("\x03"));
     return { shadowed };
@@ -583,8 +677,20 @@ class Run {
 
   // each runs work for every unit, several at a time where work waits. work
   // is given the unit and its place among the units.
+  //
+  // A page that fails ends the run. A shared block that fails is told to
+  // the Go side, and the run goes on: the store may know a block that
+  // nothing shows any more and whose data is gone, and only the Go side
+  // knows whether that is so.
   async each(units, work) {
     let next = 0;
+    const failed = (unit, error) => {
+      if (unit.page) {
+        next = units.length; // the others stop after the unit they are at
+        throw placed(error, this.place(unit));
+      }
+      this.send("X", unit.name + "\x02" + failure(placed(error, this.place(unit))));
+    };
     const worker = async () => {
       while (next < units.length) {
         const unit = units[next++];
@@ -592,8 +698,7 @@ class Run {
           const done = work(unit, next - 1);
           if (done instanceof Promise) await done;
         } catch (error) {
-          next = units.length; // the others stop after the unit they are at
-          throw placed(error, this.place(unit));
+          failed(unit, error);
         }
       }
     };
@@ -601,44 +706,29 @@ class Run {
   }
 
   // prints runs the scripts of the units and sends their fingerprints: eight
-  // bytes for every unit, in the order of the units. A shared block whose
-  // script fails is sent with its failure, by its place among the units: the
-  // store may know a block that nothing shows any more, and whose data is gone.
+  // bytes for every unit, in the order of the units. What the scripts gave
+  // is kept until the unit is computed.
   async prints(units) {
     const out = Buffer.alloc(units.length * 8);
-    const done = (place, loaded) => {
-      out.writeInt32LE(loaded.a, place * 8 + 4);
-      out.writeInt32LE(loaded.b, place * 8);
-    };
-    const failed = (unit, place, error) => {
-      if (unit[0] !== "s") throw error;
-      this.send("X", place + "\x02" + JSON.stringify({ message: String(error?.message ?? error), stack: String(error?.stack ?? ""), place: this.place(unit) }));
-    };
-    await this.each(units, (unit, place) => {
-      let loaded;
-      try {
-        loaded = this.load(unit);
-      } catch (error) {
-        return failed(unit, place, error);
-      }
-      if (loaded instanceof Promise) return loaded.then((loaded) => done(place, loaded), (error) => failed(unit, place, error));
-      done(place, loaded);
-    });
+    await this.each(units, (unit, place) =>
+      after(this.load(unit), (loaded) => {
+        this.loaded.set(unit.text, loaded);
+        out.writeInt32LE(loaded.a, place * 8 + 4);
+        out.writeInt32LE(loaded.b, place * 8);
+      }),
+    );
     this.send("F", out);
   }
 
-  // compute sends the records of the units. A unit that the Go side has not
-  // asked the fingerprint of — a shared block met for the first time — is
-  // loaded here.
+  // compute sends the records of the units. A unit whose fingerprint was not
+  // asked for is loaded here: every unit of a project with a data database,
+  // and elsewhere a shared block met for the first time.
   async compute(units) {
     await this.each(units, (unit) => {
-      const name = unit.slice(2);
-      const page = unit[0] === "p";
-      const kept = page ? this.pages.get(name)?.loaded : this.blocks.get(name);
+      const kept = this.loaded.get(unit.text);
       return after(kept ?? this.load(unit), (loaded) => {
         // What the scripts gave is not needed once the unit is computed.
-        if (page) this.pages.get(name).loaded = undefined;
-        else this.blocks.delete(name);
+        this.loaded.delete(unit.text);
         // The template is given what its script left, and that must be
         // what the fingerprint was made of: other scripts have run since.
         if (kept !== undefined && loaded.values !== null) {
@@ -650,52 +740,55 @@ class Run {
         }
         const parts = this.parts(loaded.values);
         const print = hex(loaded.a, loaded.b);
-        this.emit(page ? this.render.page(name, loaded.index, loaded.params, parts, print) : this.render.block(name, parts?.get(loaded.values[0][0]), print));
+        // Nothing reads the rows of the unit any more: its templates have
+        // their copies. What was read of them is what the unit depends on.
+        const reads = loaded.reads === null ? "" : loaded.reads.text();
+        this.emit(unit.page ? this.render.page(unit.name, loaded.index, loaded.params, parts, print, reads) : this.render.block(unit.name, parts?.get(loaded.values[0][0]), print, reads));
       });
     });
     this.flush();
   }
 
-  // load runs the scripts of a unit and makes the fingerprint of what its
-  // templates read of them. What the scripts gave is kept until the unit
-  // is computed.
+  // load runs the scripts of a unit, and makes the fingerprint of what its
+  // templates read of them where fingerprints tell what to compute.
   load(unit) {
-    return unit.charCodeAt(0) === 112 ? this.loadPage(unit.slice(2)) : this.loadBlock(unit.slice(2));
+    return unit.page ? this.loadPage(unit.name, unit.route) : this.loadBlock(unit.name);
   }
 
-  loadPage(path) {
+  // A page of a route that was listed in this run is loaded with what the
+  // list gave it; of another page only the address is known, and its
+  // parameters are read from it.
+  loadPage(path, index) {
+    const route = this.site.routes[index];
+    if (route === undefined) throw new Error(`the page ${path} was asked for under route ${index}, which this project's compiled code does not have: build the project again`);
     const listed = this.pages.get(path);
-    if (listed === undefined) throw new Error(`the page ${path} was asked for, and the project does not have it`);
-    const { index, route, entry } = listed;
+    const entry = listed !== undefined && listed.index === index ? listed.entry : { params: parameters(route, path) };
     const params = Object.freeze({ ...entry.params });
-    const page = { params, path, origin: this.site.origin, url: undefined };
-    const own = this.script(route.file, new Context(entry.props ?? {}, page, null));
+    const page = { params, path, route, origin: this.site.origin, url: undefined };
+    const reads = new Reads();
+    const own = this.script(route.file, new Context(entry.props ?? {}, page, null, reads));
     // Most pages are computed alone. Some have layouts that are computed
     // with them: those that read the page. The other layouts are shared blocks.
-    if (this.own[index].length === 0) return after(own, (got) => (listed.loaded = this.printed({ index, params, values: [[route.file, got]] })));
-    return this.withLayouts(listed, params, page, own);
+    if (this.own[index].length === 0) return after(own, (got) => this.printed({ index, params, reads, values: [[route.file, got]] }));
+    return this.withLayouts(index, route, params, page, reads, own);
   }
 
-  async withLayouts(listed, params, page, own) {
-    const { index, route } = listed;
+  async withLayouts(index, route, params, page, reads, own) {
     const values = [[route.file, await own]];
-    for (const layout of this.own[index]) values.push([layout, await this.script(layout, new Context({}, page, this.slots(index, layout)))]);
-    return (listed.loaded = this.printed({ index, params, values }));
+    for (const layout of this.own[index]) values.push([layout, await this.script(layout, new Context({}, page, this.slots(index, layout), reads))]);
+    return this.printed({ index, params, reads, values });
   }
 
   loadBlock(name) {
     const { path, props, slots } = this.render.unnamed(name);
     const file = this.files.get(path);
     if (file === undefined) throw new Error(`there is no file ${path} to compute the shared block from`);
-    const keep = (loaded) => {
-      this.blocks.set(name, loaded);
-      return loaded;
-    };
     // A component that only shows what it is given has nothing to load: its
     // name says all that it shows, and its fingerprint is that of nothing.
-    if (!this.site.files[file].loads) return keep({ values: null, a: 0, b: 0 });
-    const own = this.script(file, new Context(props, null, slots === null ? null : new Set(slots.keys())));
-    return after(own, (got) => keep(this.printed({ values: [[file, got]] })));
+    if (!this.site.files[file].loads) return { values: null, reads: null, a: 0, b: 0 };
+    const reads = new Reads();
+    const own = this.script(file, new Context(props, null, slots === null ? null : new Set(slots.keys()), reads));
+    return after(own, (got) => this.printed({ reads, values: [[file, got]] }));
   }
 
   // script runs the script of a file. It returns the variables the template
@@ -703,7 +796,6 @@ class Run {
   script(file, context) {
     return this.modules.get(file).default.load(context);
   }
-
 
   // slots returns the names of the slots that a layout of a route is given:
   // the page in the default one, and what the page or a layout inside gave
@@ -729,8 +821,15 @@ class Run {
   }
 
   // printed makes the fingerprint of what the templates of a unit read of
-  // what its scripts gave, and leaves its two halves in a and b.
+  // what its scripts gave, and leaves its two halves in a and b. A project
+  // with a data database is told by the database what to compute, and makes
+  // no fingerprints: reading the variables here would count as the template
+  // reading them, and the copy for the template reads them anyway.
   printed(loaded) {
+    if (data !== null) {
+      loaded.a = loaded.b = 0;
+      return loaded;
+    }
     const h = this.hasher;
     h.reset();
     for (const [file, got] of loaded.values) {
@@ -829,22 +928,24 @@ export async function run(modules) {
 
   try {
     const site = JSON.parse(readFileSync(new URL("./site.json", import.meta.url), "utf8"));
+    // A shape of readings is told to the Go side when it is first met.
+    if (process.env.SHUGO_DATA) data = await open(process.env.SHUGO_DATA, (number, spec) => send("S", number + "\x02" + spec));
     // The render side is a bundle of its own, with its own copy of every
     // module: nothing that a script has loaded can be reached from it.
     const render = createRequire(import.meta.url)("./render.cjs").default(site);
     const run = new Run(site, new Map(modules), render, send);
     for (let request = receive(); request !== null && request.kind !== "Q"; request = receive()) {
-      const units = request.text === "" ? [] : request.text.split("\x03");
+      const named = request.text === "" ? [] : request.text.split(request.kind === "L" ? "," : "\x03");
       switch (request.kind) {
         case "L":
-          send("D", JSON.stringify(await run.list()));
+          send("D", JSON.stringify(await run.list(named.map(Number))));
           break;
         case "F":
-          await run.prints(units);
+          await run.prints(named.map(unit));
           send("D", "{}");
           break;
         case "C":
-          await run.compute(units);
+          await run.compute(named.map(unit));
           send("D", "{}");
           break;
         default:
@@ -852,7 +953,7 @@ export async function run(modules) {
       }
     }
   } catch (error) {
-    send("E", JSON.stringify({ message: String(error?.message ?? error), stack: String(error?.stack ?? ""), place: error?.place ?? "" }));
+    send("E", failure(error));
     process.exit(1);
   }
 }

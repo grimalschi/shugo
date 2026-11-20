@@ -291,13 +291,8 @@ func (a *analyzer) chain(e js.IExpr) (s *shape, followed bool) {
 		}
 		return a.named(name), true
 	case *js.DotExpr:
-		var member string
-		switch y := n.Y.(type) {
-		case js.LiteralExpr:
-			member = string(y.Data)
-		case *js.LiteralExpr:
-			member = string(y.Data)
-		default:
+		member, named := memberOf(n)
+		if !named {
 			return nil, false
 		}
 		if name, isFree := freeName(n.X); isFree && name == "Shugo" && !a.isBound(name) {
@@ -452,6 +447,10 @@ func (a *analyzer) call(callee js.IExpr) {
 			a.read(n, asValue)
 		}
 	case *js.DotExpr:
+		if asksTheData(n) && !a.isBound("Shugo") {
+			a.errorf("a template cannot ask the data database: it shows what its script gives it. Ask in the script — const rows = Shugo.query(…).all() — and show the variable")
+			return
+		}
 		if name, isFree := freeName(n.X); isFree && a.imported(name) && !a.isBound(name) {
 			a.called[name] = true
 			return

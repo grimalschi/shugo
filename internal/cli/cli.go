@@ -24,8 +24,9 @@ import (
 const usage = `shugo builds a static site and shows it.
 
   shugo build  [folder]   compile the project and compute every page
-  shugo update [folder]   compute the pages again after the data has changed;
-                          only what differs is written
+  shugo update [folder]   bring the site up to date after the data has changed:
+                          with a data database, only what read a changed row
+                          is computed; without one, everything is
   shugo serve  [folder]   show the site, building every page on request
   shugo export [folder]   write the site as files for any web server
   shugo dev    [folder]   build, show, and build again whenever a file changes
@@ -137,7 +138,9 @@ func (c *command) rebuild(st *store.Store) error {
 		fmt.Fprintln(c.stderr, "warning:", warning)
 	}
 	compiledIn := time.Since(started)
-	report, err := evaluate.Run(c.project, compiled, st, evaluate.Options{Log: c.stderr})
+	// A build computes everything: what the pages read from elsewhere than
+	// the data database is read again.
+	report, err := evaluate.Run(c.project, compiled, st, evaluate.Options{Log: c.stderr, Whole: true})
 	if err != nil {
 		return err
 	}
@@ -154,6 +157,10 @@ func (c *command) update() error {
 		return err
 	}
 	defer st.Close()
+	return c.renew(st)
+}
+
+func (c *command) renew(st *store.Store) error {
 	if changed, err := compile.Changed(c.project); err != nil {
 		return err
 	} else if changed {
@@ -194,8 +201,17 @@ func (c *command) print(report any, words func() string) error {
 func summary(verb string, r *evaluate.Report) string {
 	var out strings.Builder
 	fmt.Fprintf(&out, "%s in %.0f ms: %d pages, %d shared blocks, %d values", verb, r.Time["total"], r.Pages.Total, r.Shared.Total, r.Values.Total)
-	fmt.Fprintf(&out, "\n  ran the scripts of %d pages and %d shared blocks; computed %d pages and %d shared blocks, %d blocks in all",
-		r.Loaded.Pages, r.Loaded.Shared, r.Computed.Pages, r.Computed.Shared, r.Blocks)
+	if r.Data == nil {
+		// Without a data database the scripts of all pages run, and their
+		// fingerprints tell which of them to compute.
+		fmt.Fprintf(&out, "\n  ran the scripts of %d pages and %d shared blocks; computed %d pages and %d shared blocks, %d blocks in all",
+			r.Loaded.Pages, r.Loaded.Shared, r.Computed.Pages, r.Computed.Shared, r.Blocks)
+	} else {
+		fmt.Fprintf(&out, "\n  computed %d pages and %d shared blocks, %d blocks in all", r.Computed.Pages, r.Computed.Shared, r.Blocks)
+		if !r.Data.Whole {
+			fmt.Fprintf(&out, "\n  %d rows of the data have changed", r.Data.Rows)
+		}
+	}
 	if r.Rebuilt {
 		out.WriteString("\n  the project was compiled anew, so everything was computed from scratch")
 	}

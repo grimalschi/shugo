@@ -13,6 +13,10 @@
 // update that computed a part of the site can therefore say on which pages
 // the HTML differs and drop what nothing shows any more, without reading
 // the rest.
+//
+// And it knows who read what from the data database of the project: see
+// Read. A row of the data that has changed finds there the pages and shared
+// blocks to compute again.
 package store
 
 import (
@@ -32,15 +36,22 @@ import (
 
 // layout names the set of tables below. A store laid out in another way is
 // emptied: it holds nothing that a build cannot make again.
-const layout = "5"
+const layout = "6"
 
 const schema = `
 CREATE TABLE meta   (name TEXT PRIMARY KEY, value BLOB NOT NULL) WITHOUT ROWID;
-CREATE TABLE page   (path TEXT PRIMARY KEY, hash BLOB NOT NULL, record BLOB NOT NULL) WITHOUT ROWID;
-CREATE TABLE shared (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, hash BLOB NOT NULL, record BLOB NOT NULL);
+CREATE TABLE page   (path TEXT PRIMARY KEY, hash BLOB NOT NULL, record BLOB NOT NULL, route INTEGER NOT NULL, reads BLOB NOT NULL) WITHOUT ROWID;
+CREATE TABLE shared (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, hash BLOB NOT NULL, record BLOB NOT NULL, reads BLOB NOT NULL);
 CREATE TABLE value  (hash BLOB PRIMARY KEY, data BLOB NOT NULL, uses INTEGER NOT NULL) WITHOUT ROWID;
 CREATE TABLE shows  (shared INTEGER NOT NULL, user TEXT NOT NULL, PRIMARY KEY (shared, user)) WITHOUT ROWID;
+CREATE TABLE route  (id INTEGER PRIMARY KEY, props INTEGER NOT NULL, reads BLOB NOT NULL);
+CREATE TABLE shape  (id INTEGER PRIMARY KEY, spec TEXT NOT NULL UNIQUE);
+CREATE TABLE reads  (shape INTEGER NOT NULL, key BLOB NOT NULL, reader TEXT NOT NULL, PRIMARY KEY (shape, key, reader)) WITHOUT ROWID;
+CREATE INDEX page_route ON page (route);
 `
+
+// tables are the tables of the schema.
+var tables = []string{"meta", "page", "shared", "value", "shows", "route", "shape", "reads"}
 
 // Store is an open store.
 type Store struct {
@@ -53,14 +64,16 @@ type Store struct {
 }
 
 // queries are the statements that read one thing by its key.
-type queries struct{ meta, page, shared, value *sql.Stmt }
+type queries struct{ meta, page, shared, value, users, readers *sql.Stmt }
 
 func prepare(db *sql.DB) (q queries, err error) {
 	for statement, query := range map[**sql.Stmt]string{
-		&q.meta:   "SELECT value FROM meta WHERE name = ?",
-		&q.page:   "SELECT record FROM page WHERE path = ?",
-		&q.shared: "SELECT record FROM shared WHERE id = ?",
-		&q.value:  "SELECT data FROM value WHERE hash = ?",
+		&q.meta:    "SELECT value FROM meta WHERE name = ?",
+		&q.page:    "SELECT record FROM page WHERE path = ?",
+		&q.shared:  "SELECT record FROM shared WHERE id = ?",
+		&q.value:   "SELECT data FROM value WHERE hash = ?",
+		&q.users:   "SELECT user FROM shows WHERE shared = ?",
+		&q.readers: "SELECT reader FROM reads WHERE shape = ? AND key = ?",
 	} {
 		if *statement, err = db.Prepare(query); err != nil {
 			return q, err
@@ -105,11 +118,11 @@ func lay(db *sql.DB) error {
 		return err
 	}
 	defer tx.Rollback()
-	var tables int
-	if err := tx.QueryRow("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'meta'").Scan(&tables); err != nil {
+	var laid int
+	if err := tx.QueryRow("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'meta'").Scan(&laid); err != nil {
 		return err
 	}
-	if tables == 1 {
+	if laid == 1 {
 		var kept []byte
 		switch err := tx.QueryRow("SELECT value FROM meta WHERE name = ?", metaLayout).Scan(&kept); {
 		case err == nil && string(kept) == layout:
@@ -117,8 +130,10 @@ func lay(db *sql.DB) error {
 		case err != nil && !errors.Is(err, sql.ErrNoRows):
 			return err
 		}
-		if _, err := tx.Exec("DROP TABLE IF EXISTS meta; DROP TABLE IF EXISTS page; DROP TABLE IF EXISTS shared; DROP TABLE IF EXISTS value; DROP TABLE IF EXISTS shows"); err != nil {
-			return err
+		for _, table := range tables {
+			if _, err := tx.Exec("DROP TABLE IF EXISTS " + table); err != nil {
+				return err
+			}
 		}
 	}
 	if _, err := tx.Exec(schema); err != nil {
@@ -142,6 +157,7 @@ const (
 	metaSite    = "site"    // the program of that project
 	metaVersion = "version" // grows with every update
 	metaTotals  = "totals"  // how many pages, shared blocks and values there are
+	metaData    = "data"    // which state of the data database the records were computed from
 )
 
 // What the fingerprints are of: the names of their values in meta start so.
@@ -257,9 +273,26 @@ func UserShared(user string) (id int64, shared bool) {
 	return id, err == nil
 }
 
+// A reader is who read something from the data database: a page or a
+// shared block, named as a user is, or the list of pages of a route.
+
+// RouteReader names the list of pages of a route as a reader of data.
+func RouteReader(route int) string { return "@" + strconv.Itoa(route) }
+
+// ReaderRoute tells whether a reader is the list of pages of a route, and
+// of which.
+func ReaderRoute(reader string) (route int, is bool) {
+	number, is := strings.CutPrefix(reader, "@")
+	if !is {
+		return 0, false
+	}
+	route, err := strconv.Atoi(number)
+	return route, err == nil
+}
+
 // Users calls visit with everyone who shows a shared block.
 func (r *reader) Users(shared int64, visit func(user string)) error {
-	rows, err := r.tx.Query("SELECT user FROM shows WHERE shared = ?", shared)
+	rows, err := r.users.Query(shared)
 	if err != nil {
 		return err
 	}
@@ -272,6 +305,65 @@ func (r *reader) Users(shared int64, visit func(user string)) error {
 		visit(user)
 	}
 	return rows.Err()
+}
+
+// Readers calls visit with everyone who made a reading: see Read.
+func (r *reader) Readers(shape int64, key []byte, visit func(reader string)) error {
+	rows, err := r.readers.Query(shape, orEmpty(key))
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var reader string
+		if err := rows.Scan(&reader); err != nil {
+			return err
+		}
+		visit(reader)
+	}
+	return rows.Err()
+}
+
+// Shapes calls visit with every shape of readings the store knows: see Read.
+func (r *reader) Shapes(visit func(id int64, spec string)) error {
+	rows, err := r.tx.Query("SELECT id, spec FROM shape")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var spec string
+		if err := rows.Scan(&id, &spec); err != nil {
+			return err
+		}
+		visit(id, spec)
+	}
+	return rows.Err()
+}
+
+// RoutePages calls visit with the address of every page a route gave.
+func (r *reader) RoutePages(route int, visit func(path string)) error {
+	rows, err := r.tx.Query("SELECT path FROM page WHERE route = ?", route)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return err
+		}
+		visit(path)
+	}
+	return rows.Err()
+}
+
+// Data returns what an update noted about the state of the data database
+// its records were computed from; nothing, if none did.
+func (r *reader) Data() (string, error) {
+	state, _, err := r.blob(r.meta, metaData)
+	return string(state), err
 }
 
 // Totals counts what the store holds.
@@ -395,7 +487,7 @@ func (r *reader) Prints(of string) (*Prints, error) {
 
 // within returns statements that run inside a transaction.
 func (q queries) within(tx *sql.Tx) reader {
-	return reader{tx, queries{tx.Stmt(q.meta), tx.Stmt(q.page), tx.Stmt(q.shared), tx.Stmt(q.value)}}
+	return reader{tx, queries{tx.Stmt(q.meta), tx.Stmt(q.page), tx.Stmt(q.shared), tx.Stmt(q.value), tx.Stmt(q.users), tx.Stmt(q.readers)}}
 }
 
 // Version returns the number of the latest update, as of now.
@@ -427,9 +519,10 @@ func (s *Store) View(read func(*View) error) error {
 // anyone else until Commit, and nothing remains of it after Rollback.
 type Update struct {
 	reader
-	hashPage, named, putPage, putShared    *sql.Stmt
-	show, unshow, shown                    *sql.Stmt
-	useKept, newValues, dropUses, dropKept *sql.Stmt
+	keptPage, named, name, putPage, putShared *sql.Stmt
+	show, unshow, shown                       *sql.Stmt
+	useKept, newValues, dropUses, dropKept    *sql.Stmt
+	read, unread                              *sql.Stmt
 }
 
 // Update starts a change. It waits for an update that is under way.
@@ -440,10 +533,13 @@ func (s *Store) Update() (*Update, error) {
 	}
 	u := &Update{reader: s.reads[1].within(tx)}
 	for statement, query := range map[**sql.Stmt]string{
-		&u.hashPage:  "SELECT hash FROM page WHERE path = ?",
-		&u.named:     "SELECT id, hash FROM shared WHERE name = ?",
-		&u.putPage:   "INSERT INTO page (path, hash, record) VALUES (?, ?, ?) ON CONFLICT (path) DO UPDATE SET hash = excluded.hash, record = excluded.record",
-		&u.putShared: "UPDATE shared SET hash = ?, record = ? WHERE id = ?",
+		&u.keptPage:  "SELECT hash, route, reads FROM page WHERE path = ?",
+		&u.named:     "SELECT id, hash, reads FROM shared WHERE name = ?",
+		&u.name:      "SELECT name FROM shared WHERE id = ?",
+		&u.putPage:   "INSERT INTO page (path, hash, record, route, reads) VALUES (?, ?, ?, ?, ?) ON CONFLICT (path) DO UPDATE SET hash = excluded.hash, record = excluded.record, route = excluded.route, reads = excluded.reads",
+		&u.putShared: "UPDATE shared SET hash = ?, record = ?, reads = ? WHERE id = ?",
+		&u.read:      "INSERT OR IGNORE INTO reads (shape, key, reader) VALUES (?, ?, ?)",
+		&u.unread:    "DELETE FROM reads WHERE shape = ? AND key = ? AND reader = ?",
 		&u.show:      "INSERT OR IGNORE INTO shows (shared, user) VALUES (?, ?)",
 		&u.unshow:    "DELETE FROM shows WHERE shared = ? AND user = ?",
 		&u.shown:     "SELECT 1 FROM shows WHERE shared = ? LIMIT 1",
@@ -460,49 +556,50 @@ func (s *Store) Update() (*Update, error) {
 	return u, nil
 }
 
-// Kept is a record as the store has it: under which number, for a shared
-// block, and with which content.
+// Kept is a record as the store has it: with which content, and what it
+// read from the data to come to it. A shared block has a number, a page the
+// route that gave it.
 type Kept struct {
-	ID   int64
-	Hash record.Hash
+	ID    int64
+	Route int
+	Hash  record.Hash
+	Reads []byte
 }
 
-// KeptPages returns the content of the record of every page. It reads the
-// whole table: an update that computes a few pages asks PageHash instead.
-func (u *Update) KeptPages() (map[string]record.Hash, error) {
-	out := map[string]record.Hash{}
-	err := u.each("SELECT path, 0, hash FROM page", func(path string, _ int64, hash record.Hash) { out[path] = hash })
-	return out, err
+// KeptPages returns what the store has of every page. It reads the whole
+// table: an update that computes a few pages asks PageKept instead.
+func (u *Update) KeptPages() (map[string]Kept, error) {
+	return u.each("SELECT path, route, hash, reads FROM page")
 }
 
-// KeptShared returns the number and the content of every shared block by
-// its name. It reads the whole table: see SharedNamed.
+// KeptShared returns what the store has of every shared block by its name.
+// It reads the whole table: see SharedNamed.
 func (u *Update) KeptShared() (map[string]Kept, error) {
-	out := map[string]Kept{}
-	err := u.each("SELECT name, id, hash FROM shared", func(name string, id int64, hash record.Hash) { out[name] = Kept{id, hash} })
-	return out, err
+	return u.each("SELECT name, id, hash, reads FROM shared")
 }
 
-func (u *Update) each(query string, visit func(name string, id int64, hash record.Hash)) error {
+func (u *Update) each(query string) (map[string]Kept, error) {
 	rows, err := u.tx.Query(query)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer rows.Close()
+	out := map[string]Kept{}
 	for rows.Next() {
 		var name string
-		var id int64
+		var kept Kept
 		var hash []byte
-		if err := rows.Scan(&name, &id, &hash); err != nil {
-			return err
+		if err := rows.Scan(&name, &kept.ID, &hash, &kept.Reads); err != nil {
+			return nil, err
 		}
-		kept, err := hashOf(hash)
-		if err != nil {
-			return err
+		if kept.Hash, err = hashOf(hash); err != nil {
+			return nil, err
 		}
-		visit(name, id, kept)
+		// Of a page the number is its route.
+		kept.Route = int(kept.ID)
+		out[name] = kept
 	}
-	return rows.Err()
+	return out, rows.Err()
 }
 
 // hashOf reads the content of a record as the store keeps it. A shared
@@ -515,22 +612,10 @@ func hashOf(kept []byte) (hash record.Hash, err error) {
 	return hash, nil
 }
 
-// PageHash returns the content of the record of one page.
-func (u *Update) PageHash(path string) (hash record.Hash, found bool, err error) {
-	var kept []byte
-	if err := u.hashPage.QueryRow(path).Scan(&kept); errors.Is(err, sql.ErrNoRows) {
-		return hash, false, nil
-	} else if err != nil {
-		return hash, false, err
-	}
-	hash, err = hashOf(kept)
-	return hash, err == nil, err
-}
-
-// SharedNamed returns the number and the content of one shared block.
-func (u *Update) SharedNamed(name string) (kept Kept, found bool, err error) {
+// PageKept returns what the store has of one page.
+func (u *Update) PageKept(path string) (kept Kept, found bool, err error) {
 	var hash []byte
-	if err := u.named.QueryRow(name).Scan(&kept.ID, &hash); errors.Is(err, sql.ErrNoRows) {
+	if err := u.keptPage.QueryRow(path).Scan(&hash, &kept.Route, &kept.Reads); errors.Is(err, sql.ErrNoRows) {
 		return kept, false, nil
 	} else if err != nil {
 		return kept, false, err
@@ -539,31 +624,122 @@ func (u *Update) SharedNamed(name string) (kept Kept, found bool, err error) {
 	return kept, err == nil, err
 }
 
-// SharedName returns the name of a shared block.
+// SharedNamed returns what the store has of one shared block.
+func (u *Update) SharedNamed(name string) (kept Kept, found bool, err error) {
+	var hash []byte
+	if err := u.named.QueryRow(name).Scan(&kept.ID, &hash, &kept.Reads); errors.Is(err, sql.ErrNoRows) {
+		return kept, false, nil
+	} else if err != nil {
+		return kept, false, err
+	}
+	kept.Hash, err = hashOf(hash)
+	return kept, err == nil, err
+}
+
+// SharedName returns the name of a shared block, and SharedReads what it
+// read from the data.
 func (u *Update) SharedName(id int64) (name string, err error) {
-	err = u.tx.QueryRow("SELECT name FROM shared WHERE id = ?", id).Scan(&name)
+	err = u.name.QueryRow(id).Scan(&name)
 	return name, err
 }
 
-// PutPage keeps the record of a page in place of the one it had.
-func (u *Update) PutPage(path string, hash record.Hash, data []byte) error {
-	_, err := u.putPage.Exec(path, hash[:], data)
+func (u *Update) SharedReads(id int64) (reads []byte, err error) {
+	err = u.tx.QueryRow("SELECT reads FROM shared WHERE id = ?", id).Scan(&reads)
+	return reads, err
+}
+
+// PutPage keeps the record of a page in place of the one it had, with the
+// route that gave the page and what it read from the data.
+func (u *Update) PutPage(path string, hash record.Hash, data []byte, route int, reads []byte) error {
+	_, err := u.putPage.Exec(path, hash[:], data, route, orEmpty(reads))
 	return err
+}
+
+// SetPageReads keeps what a page read and which route gave it, when its
+// record is what it was.
+func (u *Update) SetPageReads(path string, route int, reads []byte) error {
+	_, err := u.tx.Exec("UPDATE page SET route = ?, reads = ? WHERE path = ?", route, orEmpty(reads), path)
+	return err
+}
+
+// orEmpty gives a column that takes no NULL an empty value for none.
+func orEmpty(data []byte) []byte {
+	if data == nil {
+		return []byte{}
+	}
+	return data
 }
 
 // NewShared gives a number to a shared block that the store has not had.
 // Its record follows with PutShared.
 func (u *Update) NewShared(name string) (int64, error) {
-	result, err := u.tx.Exec("INSERT INTO shared (name, hash, record) VALUES (?, x'', x'')", name)
+	result, err := u.tx.Exec("INSERT INTO shared (name, hash, record, reads) VALUES (?, x'', x'', x'')", name)
 	if err != nil {
 		return 0, err
 	}
 	return result.LastInsertId()
 }
 
-// PutShared keeps the record of a shared block in place of the one it had.
-func (u *Update) PutShared(id int64, hash record.Hash, data []byte) error {
-	_, err := u.putShared.Exec(hash[:], data, id)
+// PutShared keeps the record of a shared block in place of the one it had,
+// with what it read from the data.
+func (u *Update) PutShared(id int64, hash record.Hash, data []byte, reads []byte) error {
+	_, err := u.putShared.Exec(hash[:], data, orEmpty(reads), id)
+	return err
+}
+
+// SetSharedReads keeps what a shared block read, when its record is what it was.
+func (u *Update) SetSharedReads(id int64, reads []byte) error {
+	_, err := u.tx.Exec("UPDATE shared SET reads = ? WHERE id = ?", orEmpty(reads), id)
+	return err
+}
+
+// Route returns what the store has of the list of pages of a route: whether
+// the route gave its pages more than their addresses, and what the listing
+// read from the data.
+func (u *Update) Route(route int) (props bool, reads []byte, found bool, err error) {
+	err = u.tx.QueryRow("SELECT props, reads FROM route WHERE id = ?", route).Scan(&props, &reads)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil, false, nil
+	}
+	return props, reads, err == nil, err
+}
+
+// PutRoute keeps the same of a route.
+func (u *Update) PutRoute(route int, props bool, reads []byte) error {
+	_, err := u.tx.Exec("INSERT INTO route (id, props, reads) VALUES (?, ?, ?) ON CONFLICT (id) DO UPDATE SET props = excluded.props, reads = excluded.reads", route, props, orEmpty(reads))
+	return err
+}
+
+// A reading is what a reader took from the data database: the rows of a
+// table found by given values of given columns. Its shape says which table
+// and columns, and which columns of those rows matter to the reader; its key
+// holds the values. Readings of one shape differ in their keys alone, so a
+// row that has changed finds its readers with one lookup for every shape of
+// its table.
+
+// NewShape gives a number to a shape the store has not had.
+func (u *Update) NewShape(spec string) (int64, error) {
+	result, err := u.tx.Exec("INSERT INTO shape (spec) VALUES (?)", spec)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+// Read notes a reading of a reader; Unread, that the reader no longer makes it.
+func (u *Update) Read(shape int64, key []byte, reader string) error {
+	_, err := u.read.Exec(shape, orEmpty(key), reader)
+	return err
+}
+
+func (u *Update) Unread(shape int64, key []byte, reader string) error {
+	_, err := u.unread.Exec(shape, orEmpty(key), reader)
+	return err
+}
+
+// SetData notes the state of the data database the records were computed from.
+func (u *Update) SetData(state string) error {
+	_, err := u.tx.Exec(put, metaData, []byte(state))
 	return err
 }
 
@@ -634,12 +810,13 @@ func (u *Update) DropValues(hash record.Hash, fewer int) (gone bool, err error) 
 	return dropped > 0, err
 }
 
-// ClearRecords drops the records of all pages and shared blocks: those
-// computed by another compiled project say nothing to this one. Values
-// stay, used by nothing: most of them will be computed again as they were.
-// SweepValues drops the rest once the records are back.
+// ClearRecords drops the records of all pages and shared blocks with what
+// they read and with their fingerprints: those computed by another compiled
+// project say nothing to this one. Values stay, used by nothing: most of
+// them will be computed again as they were. SweepValues drops the rest once
+// the records are back.
 func (u *Update) ClearRecords() error {
-	if _, err := u.tx.Exec("DELETE FROM page; DELETE FROM shared; DELETE FROM shows; UPDATE value SET uses = 0"); err != nil {
+	if _, err := u.tx.Exec("DELETE FROM page; DELETE FROM shared; DELETE FROM shows; DELETE FROM route; DELETE FROM shape; DELETE FROM reads; UPDATE value SET uses = 0"); err != nil {
 		return err
 	}
 	_, err := u.tx.Exec("DELETE FROM meta WHERE name >= ? AND name < ?", "prints ", "prints \xff")

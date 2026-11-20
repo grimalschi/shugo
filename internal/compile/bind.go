@@ -17,8 +17,9 @@ type bindings struct {
 	vars    map[string]bool   // the variables the script declares, exported ones too
 	funcs   map[string]bool   // those of them declared as a function or a class
 	// waits tells that the script waits for something: it has await outside
-	// of the functions it declares. now tells that it asks what time it is.
-	waits, now bool
+	// of the functions it declares. now tells that it asks what time it is,
+	// asks that it reads the data database: Shugo.query, Shugo.paginate.
+	waits, now, asks bool
 }
 
 // bind reads the script that esbuild has taken the types out of.
@@ -104,6 +105,8 @@ func (w *scriptWalk) Enter(n js.INode) js.IVisitor {
 		w.b.waits = w.b.waits || (n.Await && w.inside == 0)
 	case *js.NewExpr:
 		w.b.now = w.b.now || asksTheTime(n)
+	case *js.DotExpr:
+		w.b.asks = w.b.asks || asksTheData(n)
 	}
 	return w
 }
@@ -119,6 +122,28 @@ func (w *scriptWalk) Exit(n js.INode) {
 func asksTheTime(n *js.NewExpr) bool {
 	name, isFree := freeName(n.X)
 	return isFree && name == "Date" && (n.Args == nil || len(n.Args.List) == 0)
+}
+
+// asksTheData tells whether an expression is Shugo.query or Shugo.paginate:
+// what a script reads the data database of the project with.
+func asksTheData(n *js.DotExpr) bool {
+	name, isFree := freeName(n.X)
+	if !isFree || name != "Shugo" {
+		return false
+	}
+	member, _ := memberOf(n)
+	return member == "query" || member == "paginate"
+}
+
+// memberOf returns the name that stands after the dot.
+func memberOf(n *js.DotExpr) (name string, ok bool) {
+	switch y := n.Y.(type) {
+	case js.LiteralExpr:
+		return string(y.Data), true
+	case *js.LiteralExpr:
+		return string(y.Data), true
+	}
+	return "", false
 }
 
 // freeName returns the name an expression is, if it is nothing but a name
