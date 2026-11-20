@@ -213,7 +213,13 @@ What follows:
 Found on the go:
 
 - **More questions for storage.** When many pages are affected, Go asks the storage for each of its route, and then again about the settings of this route - the same. If you ask about the route once, 20,000 pages are updated for 1.4 s instead of 1.65 s, 100,000 - for 6.2 s instead of 7.5 s; checked. The code is taken from the 2 variant and is available in all three base variants. Not corrected.
-- **The server re-reads the entire site after each update.** The first request after updating to 100,000 products is waiting for 0.2 s, the following - 0.2–0.4 ms. This time grows with the site, not with the change. Fixed by the fact that the server takes from the storage only records that have changed from the previous version. Not fixed.
+- **The server re-reads the entire site after each update.** It keeps records of all pages and common blocks in memory. Seeing a new version of the repository, he reads them all over again, even if one price has changed; the first request after the update is waiting for this reading. Nothing accumulates: from update to update, the expectation is the same and depends only on the size of the site. Fixed by the fact that the server takes from the storage only records that have changed from the previous version. Not corrected.
+
+  | Products | Pages | First request after update, ten updates in a row | The following requests |
+  | ---: | ---: | ---: | ---: |
+  | 1 000 | 1 042 | 4–10 ms | 0.4 ms |
+  | 10 000 | 10 420 | 24–49 ms | 0.3 ms |
+  | 100 000 | 104 200 | 213–288 ms | 0.3 ms |
 
 ## Proposal, pending approval
 
