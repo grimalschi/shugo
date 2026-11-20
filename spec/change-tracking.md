@@ -15,15 +15,16 @@ The words of the author of the project, 20 November 2026 year.
 - How data gets into pages and components can be changed for the sake of a simple and quick comparison. The main thing is the effectiveness of updates.
 - In the second variant, changes are recognized from the log that triggers on tables, and not from the mandatory field `updated_at`: the log sees inserts and deletions, and it cannot be forgotten to update. Confirmed by 20 on November 2026 year.
 
-## Two trial implementations
+## Trial implementations
 
-The author of the project asked to make two implementations (20 November 2026 years) for comparison. Both are made, pass all tests on Bun and Node and stand on a common basis. Which one to take is not decided.
+The author of the project asked to make two implementations for comparison, then a third one - "the second option with a dependency tree from the first" (20 November 2026 year). All done, pass all tests on Bun and Node and stand on a common basis. Which one to take is not decided. The 3 number in the discussion is occupied by [data Adapter](data-adapter.md): it is not a substitute for these options, but what brings data to the database of variants 2 and 4.
 
 | | Branch & Folder | Essence |
 | --- | --- | --- |
 | Base | `lab/base`, `../shugo-lab/base` | Go himself names which pages and common blocks to calculate, and injects a partial result into the repository. She calculates everything |
 | Variant 1 | `lab/fingerprints`, `../shugo-lab/fingerprints` | proposal from this document: data code is executed entirely, the imprint on the dependency tree, templates - only for the changed |
 | Variant 2 | `lab/query`, `../shugo-lab/query` | idea of the author: data is in SQLite under the framework control, read only through `Shugo.query`, dependencies are tied to base entries |
+| Variant 4 | `lab/query-tree`, `../shugo-lab/query-tree` | update as in 2, compiler and two sides as in 1; the string itself remembers which columns it has read |
 
 Each option in the root branch is `VARIANT.md`: how it works, rules for the author of the site, taken along the way of the decision with the reasons and what is not.
 
@@ -104,9 +105,38 @@ Variant 2:
 - The route that distributes `props` pages calculates all its pages when it changes.
 - Changed 3,900 lines; compiler not touched, new dependencies in Go no.
 
-### They can be connected
+### 4 variant: second with dependency tree from first
 
-The options answer different questions. The 2 version knows which entries have changed and who requested them. The 1 variant knows what the template actually shows. The dependency tree on top of the queries will narrow down reading to the columns that the template reads, and the list in `select` will become optional. It's not done.
+The update is in the database log, as in the 2 version. The compiler, two sides and three rules for the author are taken from the 1 variant. New one: the page depends only on those columns of the entry that are actually read, and the list of `select` is not needed for this.
+
+How it's done. The dependency tree only knows what the pattern reads. What the data code reads like `finalPrice(item)` it doesn’t know, so narrowing the dependency to one tree would be wrong. Each row returned by the query itself records which columns it reads: the data code and the pass that copies the pattern of its part. Nothing is added to the compiler for this.
+
+| 100,000 products, Bun | Variant 2 | Variant 4 |
+| --- | ---: | ---: |
+| Price of one product | 0.03 s | 0.04 s |
+| Product name of the month, phone in the footer | 0.12 s | 0.12 s |
+| Product added | 0.41 s | 0.46–0.58 s |
+| The field that no one reads has 5,000 products | 0.12 s, nothing calculated; columns listed in `select` | 0.12 s, nothing calculated; `select` not needed |
+| Prices 20,000 items together | 4.9 s | 4.9 s |
+| First Assembly, Bun and Node | 13.9 s and 17.4 s | 13.9 s and 17.0 s |
+| Storage | 140 MB | 140 MB |
+| Changed lines regarding the base | 3 900 | 8 600 |
+
+What was added to the 2 variant:
+
+- Accuracy without `select`. `select` remained a way to take less from the database: in the example, it is needed in one place, in the list of addresses of one hundred thousand goods.
+- Templates and regular components run on copy and cannot depend on what they are not handed; the rules of the 1 variant and their assembly errors.
+- The line left in the module variable and read from another page is an error. The 2 version was silently missing this.
+- `shugo update -check` works with the database: calculates everything and names pages that read something past it. On 100,000, products are 7 s.
+
+What it does not give and what is worth:
+
+- Speed does not add or subtract: the read entry costs 1–2% first build.
+- Accuracy ends where the tree says "whole": a string passed to a function in a template or a normal component reads everything.
+- The template is considered to read everything it can read, no matter what branch `g-if` goes into. Verified: the date of receipt of the product that is in stock and does not show it, still calculates the page; the record goes the same.
+- The compiler of the version 1 with all its complexity and three rules for the author.
+
+Test output. The accuracy was not given by the tree, but by the lines that remember what was read. The tree gives another: the pattern cannot depend on what is not passed to it. Lines with memory can be put on the 2 version without a tree: then the template reads them itself, the read is recorded in fact - with accuracy to the branch conditions and through functions and components - and the rules of the 1 variant are not needed. There is no combination in the tests.
 
 ## Proposal, pending approval
 
@@ -347,7 +377,7 @@ Order of works:
 
 ## Open questions
 
-- Choose the option: first, second or second with the dependency tree from the first.
+- Choose the option: second, fourth or second with lines that remember what you read, but without a tree. The first as an independent path disappears if a copy of the data in the database is part of the architecture.
 - For the 1 variant: approve the mechanism and three rules for site authors.
 - For the 2 variant: what the query designer should be able to do. How external sources get into the database is in [Data Adapter](data-adapter.md).
 - Approve a copy of your part instead of Seroval.
