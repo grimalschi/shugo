@@ -47,7 +47,7 @@ Everything is calculated, only the difference ([1](decisions.md#1-data-loading-a
 
 ### Effects of data changes
 
-Shop on 100,000 products: 104,202 pages, 100,009 common blocks, 1.2 million blocks, 304,300 different tapes. Each update took 3.5–3.8 s. Full table and run in [README booth](../examples/catalog/README.md).
+Shop on 100,000 products: 104,202 pages, 100,009 common blocks, 1.2 million blocks, 304,300 different tapes. Each update took 3.3–3.7 s. Full table and run in [README booth](../examples/catalog/README.md).
 
 | What changed in the data | Pages have changed | The blocks have changed |
 | --- | ---: | ---: |

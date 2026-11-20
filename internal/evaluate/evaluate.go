@@ -269,9 +269,9 @@ func (k *keeper) keep(data []byte) error {
 		return errors.New("the project's code sent a record with a damaged header")
 	}
 	kind, name := fields[0][0], string(fields[1])
-	origin, err1 := strconv.ParseInt(string(fields[2]), 10, 64)
+	origin, err := strconv.ParseInt(string(fields[2]), 10, 64)
 	top, err2 := strconv.Atoi(string(fields[3]))
-	if err1 != nil || err2 != nil {
+	if err != nil || err2 != nil {
 		return errors.New("the project's code sent a record with a damaged header")
 	}
 	where := "the shared block " + name
@@ -327,8 +327,8 @@ func (k *keeper) keep(data []byte) error {
 		k.seenShared[name] = struct{}{}
 		kept, known := k.shared[name]
 		if !known {
-			if kept.ID, err1 = k.update.NewShared(name); err1 != nil {
-				return err1
+			if kept.ID, err = k.update.NewShared(name); err != nil {
+				return err
 			}
 		}
 		k.numbers[origin] = kept.ID

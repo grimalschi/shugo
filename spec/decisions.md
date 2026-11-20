@@ -14,7 +14,7 @@ The solutions are from the most important to the small.
 - The very calculation of expressions in the prototype took 2–5% step time. There is almost nothing to save it by skipping unchanged blocks.
 - The compiler has become much easier: it no longer needs to parse the expressions and output which fields each block reads.
 
-**What's lost.** Each update counts the expressions of all pages, not just those that have changed. The update time depends on the size of the site, not the size of the change: on the stand it is 0.4 s on 10,000 pages and about 4 s on 100,000. Exact figures are in [README booth](../examples/catalog/README.md).
+**What's lost.** Each update counts the expressions of all pages, not just those that have changed. The update time depends on the size of the site, not the size of the change: on the stand it is 0.4 s on 10,000 pages and 3.3–3.7 s on 100,000. Exact figures are in [README booth](../examples/catalog/README.md).
 
 **What's left.** Record only changed. The header is stored once. After changing the price of one product, one page and one shared card are changed. Rantime collects pages from the saved and does not execute the project code.
 

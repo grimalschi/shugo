@@ -39,17 +39,17 @@ Xeon E3-1270 v6 (4 cores, 8 threads), Go 1.27.4, Bun 1.4.4, Node 24.22.1. Novemb
 
 | Products | Pages | Shared blocks | Total blocks | Distinct tapes | Store |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 000 | 1 052 | 1 009 | 12 214 | 3 150 | — |
-| 10 000 | 10 452 | 10 009 | 121 514 | 30 550 | — |
+| 1,000 | 1,052 | 1,009 | 12,214 | 3,150 | 0.9 MB |
+| 10,000 | 10,452 | 10,009 | 121,514 | 30,550 | 8.4 MB |
 | 100,000 | 104,202 | 100,009 | 1,213 196 | 304,300 | 85 MB |
 
 ### Timing
 
 | Products | Initial build | Update with Bun | Update with Node |
 | ---: | ---: | ---: | ---: |
-| 1,000 | 0.15 s | 0.11–0.13 s | — |
-| 10,000 | 0.64 s | 0.40–0.45 s | 0.51 s |
-| 100,000 | 8.6 s | 3.3–3.7 s | NODE100K |
+| 1,000 | 0.11–0.15 s | 0.11–0.13 s | — |
+| 10,000 | 0.64–0.69 s | 0.40–0.45 s | 0.51 s |
+| 100,000 | 8.6 s | 3.3–3.7 s | 4.3–4.7 s |
 
 Update time is similar across edits because the build evaluates the whole site and writes only the differences. A typical run for 100,000 products takes 3.5 s.
 
@@ -96,7 +96,16 @@ After 20 changes, the incrementally updated site matched the clean build on all 
 
 ### Runtime
 
-RUNTIME_NUMBERS
+A product page contains 2.7 KB of HTML from 12 blocks.
+
+| Measurement | Result |
+| --- | ---: |
+| Assemble a page with its tapes in memory | 7 µs |
+| Assemble a page on first request, reading its tapes from SQLite | 47 µs |
+| Full server request with 8 clients on the same machine | 25–30 µs per request, 33,000–39,000 requests per second |
+| Export all 104,202 pages to files | 8.5 s, 427 MB |
+
+Run `go test ./test/ -run xxx -bench .` to reproduce the benchmark. Set the shop size with `SHUGO_BENCH_SIZE`.
 
 ## Findings
 

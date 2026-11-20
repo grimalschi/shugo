@@ -18,8 +18,6 @@ type script struct {
 	lines []string       // the JavaScript, by line
 	smap  *sourcemap.Map // where every line came from in the .shugo file
 	top   []span         // imports and exports, as ranges of lines
-	// imports are the modules the script names, as written.
-	imports []string
 	// paths tells that the script exports getStaticPaths.
 	paths bool
 }
@@ -34,14 +32,14 @@ const keepImports = `{"compilerOptions":{"verbatimModuleSyntax":true}}`
 // An empty export makes the script a module for esbuild, where a "return"
 // outside of a function is an error. Without it the return would end the
 // function the script is put into.
-const moduleMark = "\nexport {};"
+const moduleMark = "export {};"
 
 func compileScript(f *syntax.File) (*script, error) {
 	source := f.Source[f.Script.Start:f.Script.End]
 	// The script keeps its place in the file, so that esbuild reports lines
 	// and columns of the .shugo file.
 	padding := strings.Repeat("\n", strings.Count(f.Source[:f.Script.Start], "\n"))
-	result := api.Transform(padding+source+moduleMark, api.TransformOptions{
+	result := api.Transform(padding+source+"\n"+moduleMark, api.TransformOptions{
 		Loader:      api.LoaderTS,
 		Target:      api.ESNext,
 		Sourcefile:  f.Path,
@@ -61,8 +59,8 @@ func compileScript(f *syntax.File) (*script, error) {
 		return nil, err
 	}
 	s := &script{smap: smap}
-	code := strings.TrimSuffix(strings.TrimRight(string(result.Code), "\n"), strings.TrimLeft(moduleMark, "\n"))
-	if err := s.split(f, strings.TrimRight(code, "\n")); err != nil {
+	code := strings.TrimSuffix(strings.TrimSpace(string(result.Code)), moduleMark)
+	if err := s.split(f, strings.TrimSpace(code)); err != nil {
 		return nil, err
 	}
 	return s, nil
@@ -139,7 +137,6 @@ func (s *script) statement(scan *syntax.Scanner, code string, export bool) (int,
 	depth := 0
 	declares := "" // the keyword of what is exported: "function", "const", …
 	inBody := false
-	specifier := "" // the last string: in an import it names the module
 	for {
 		token, err := next(scan)
 		if err != nil {
@@ -150,8 +147,6 @@ func (s *script) statement(scan *syntax.Scanner, code string, export bool) (int,
 		}
 		text := scan.Text(token)
 		switch {
-		case token.Kind == syntax.String:
-			specifier = text[1 : len(text)-1]
 		case token.Kind != syntax.Word || inBody:
 		case text == "getStaticPaths":
 			s.paths = s.paths || export
@@ -171,9 +166,6 @@ func (s *script) statement(scan *syntax.Scanner, code string, export bool) (int,
 			continue
 		}
 		if (block && inBody && text == "}") || (!block && text == ";") {
-			if !export && specifier != "" {
-				s.imports = append(s.imports, specifier)
-			}
 			return token.End, nil
 		}
 	}

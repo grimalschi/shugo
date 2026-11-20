@@ -64,7 +64,16 @@ The project program is data, not code. The worst thing that a wrong program or t
 
 ### Speed
 
-Shop from the stand, 104,202 pages, one stream. Measurements — in [README booth](../examples/catalog/README.md).
+Shop from the stand on 100,000 products, product page — 2.7 KB HTML of 12 blocks:
+
+| What is measured | Result |
+| --- | ---: |
+| Page assembly, tape is already in memory | 7 µs |
+| Page assembly when you first access it | 47 µs |
+| Request to server whole, 8 clients on same machine | 33–39 thousand requests per second |
+| Generate all 104,202 pages into files | 8.5 s |
+
+Details are in [README booth](../examples/catalog/README.md).
 
 ## Open questions
 

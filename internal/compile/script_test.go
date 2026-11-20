@@ -75,9 +75,6 @@ const tpl = ` + "`export ${{ a: 1 }.a}`" + `;`
 	if got := lines(s, s.body()); got != wantBody {
 		t.Errorf("body\n got:\n%s\nwant:\n%s", got, wantBody)
 	}
-	if got := strings.Join(s.imports, " "); got != "../lib/shop ../components/Card.shugo ../styles/main.css" {
-		t.Errorf("imports: %s", got)
-	}
 	if !s.paths {
 		t.Error("getStaticPaths was not noticed")
 	}

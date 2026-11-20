@@ -1,12 +1,14 @@
 package test
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/grimalschi/shugo/internal/compile"
@@ -173,5 +175,54 @@ func TestExport(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(out, "café au lait", "index.html")); err == nil {
 		t.Error("the file of the removed page is still there")
+	}
+}
+
+// While updates go on, every page a server gives belongs to one state of
+// the store: the header counts as many products as the page lists.
+func TestPagesStayWholeDuringUpdates(t *testing.T) {
+	s := newSite(t, shop)
+	s.build()
+	stop := make(chan struct{})
+	failures := make(chan string, 16)
+	var readers sync.WaitGroup
+	for range 4 {
+		readers.Go(func() {
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				page, err := s.pages.Render(nil, "/")
+				if err != nil || !page.Found {
+					failures <- fmt.Sprintf("the page was not built: %v", err)
+					return
+				}
+				html := string(page.HTML)
+				listed := strings.Count(html, "<li>")
+				if !strings.Contains(html, fmt.Sprintf("· %d products</header>", listed)) {
+					failures <- "the header and the list come from different states: " + html
+					return
+				}
+			}
+		})
+	}
+	for round := range 12 {
+		s.change(func(_ map[string]any, products []map[string]any) []map[string]any {
+			products[0]["related"] = []string{"cup"}
+			if round%2 == 0 {
+				return products[:2]
+			}
+			return append(products[:2], map[string]any{"slug": "tray", "title": "Tray", "price": round, "related": []string{}})
+		})
+		s.update()
+	}
+	close(stop)
+	readers.Wait()
+	select {
+	case failure := <-failures:
+		t.Error(failure)
+	default:
 	}
 }
