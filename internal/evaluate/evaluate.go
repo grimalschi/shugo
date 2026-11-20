@@ -84,6 +84,12 @@ type DataReport struct {
 	Rows int `json:"rows"`
 	// Routes counts the routes whose list of pages was read again.
 	Routes int `json:"routes"`
+	// Indexes are the indexes that were made in the database for questions
+	// of the project that had none to find their rows by.
+	Indexes []string `json:"indexes,omitempty"`
+	// Position is where the journal of the database stood when the update
+	// read it: every change up to there is in the site.
+	Position int64 `json:"position"`
 }
 
 // Changes tells what happened to the pages or to the shared blocks.
@@ -308,6 +314,7 @@ func tracked(w *worker, k *keeper, path string, whole bool, took func(string)) e
 	if err != nil {
 		return err
 	}
+	k.report.Data.Position = now
 	return k.update.SetData(fmt.Sprintf("%s %d", source.ID, now))
 }
 

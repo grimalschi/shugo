@@ -673,7 +673,19 @@ export async function run(modules) {
 
   try {
     const site = JSON.parse(readFileSync(new URL("./site.json", import.meta.url), "utf8"));
-    if (process.env.SHUGO_DATA) data = await open(process.env.SHUGO_DATA, (number, spec) => send("S", number + "\x02" + spec));
+    if (process.env.SHUGO_DATA) {
+      data = await open(process.env.SHUGO_DATA, {
+        declare: (number, spec) => send("S", number + "\x02" + spec),
+        // The answer is waited for: the question that needs the index is
+        // asked right after it.
+        index(table, columns) {
+          send("I", [table, ...columns].join("\x02"));
+          const answer = receive();
+          if (answer?.kind !== "I") throw new Error("the shugo command did not answer a request for an index: build the project again");
+          return answer.text === "1";
+        },
+      });
+    }
     const run = new Run(site, new Map(modules), send);
     for (let request = receive(); request !== null && request.kind !== "Q"; request = receive()) {
       switch (request.kind) {

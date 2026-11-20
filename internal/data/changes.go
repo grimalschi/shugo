@@ -48,6 +48,24 @@ func position(tx *sql.Tx) (at int64, err error) {
 	return at, err
 }
 
+// Moved tells whether the data may be other than it was when the journal
+// stood at after: the journal has new lines, or it is no longer in place for
+// the tables as they are. Whatever else is written to the file — an index
+// that Shugo makes, lines of the journal that are dropped — moves nothing.
+func (d *DB) Moved(after int64) (bool, error) {
+	tx, err := d.db.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	_, _, _, inPlace, err := journaled(tx)
+	if err != nil || !inPlace {
+		return true, err
+	}
+	at, err := position(tx)
+	return at != after, err
+}
+
 // Changes returns the rows that are not what they were when the journal
 // stood at after, and where it stands now. A row that was touched and holds
 // what it held is not among them.

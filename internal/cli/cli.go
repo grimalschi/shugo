@@ -106,6 +106,7 @@ type command struct {
 	stdout, stderr io.Writer
 	project        *project.Project
 	json, check    bool
+	position       int64 // of the journal of the data database, at the latest build or update
 	addr, out      string
 	runtime        string
 }
@@ -146,7 +147,17 @@ func (c *command) rebuild(st *store.Store) error {
 	}
 	report.Time["compile"] = float64(compiledIn.Microseconds()) / 1000
 	report.Time["total"] += report.Time["compile"]
+	c.noted(report)
 	return c.print(report, func() string { return summary("built", report) })
+}
+
+// noted keeps where the journal of the data database stood when the site
+// was brought up to date: development mode tells by it whether the data has
+// changed since.
+func (c *command) noted(report *evaluate.Report) {
+	if report.Data != nil {
+		c.position = report.Data.Position
+	}
 }
 
 // update computes the pages of a compiled project again. If the project
@@ -175,6 +186,7 @@ func (c *command) renew(st *store.Store) error {
 	if err != nil {
 		return err
 	}
+	c.noted(report)
 	if err := c.print(report, func() string { return summary("updated", report) }); err != nil {
 		return err
 	}
@@ -206,6 +218,9 @@ func summary(verb string, r *evaluate.Report) string {
 	fmt.Fprintf(&out, "\n  computed %d pages and %d shared blocks, %d blocks in all", r.Computed.Pages, r.Computed.Shared, r.Blocks)
 	if r.Data != nil && !r.Data.Whole {
 		fmt.Fprintf(&out, "\n  %d rows of the data have changed", r.Data.Rows)
+	}
+	if r.Data != nil && len(r.Data.Indexes) > 0 {
+		fmt.Fprintf(&out, "\n  made %d indexes in the data database in %.0f ms: %s", len(r.Data.Indexes), r.Time["indexes"], strings.Join(r.Data.Indexes, ", "))
 	}
 	if r.Rebuilt {
 		out.WriteString("\n  the project was compiled anew, so everything was computed from scratch")

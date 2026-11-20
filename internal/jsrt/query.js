@@ -32,19 +32,21 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 
-// open opens the database at path for reading. Everything read through it
-// belongs to one state of the data, however long the run takes.
-export async function open(path, declare) {
-  let prepare;
+// open opens the database at path for reading. host is the Go side as the
+// queries need it: declare tells it a new shape of readings, index asks it
+// for an index and tells whether one had to be made.
+//
+// Everything is read inside one transaction, so that a run sees one state
+// of the data however long it takes — until an index is made: see serve.
+export async function open(path, host) {
+  let db, prepare;
   if (typeof Bun !== "undefined") {
     const { Database } = await import("bun:sqlite");
-    const db = new Database(path, { readonly: true });
-    db.exec("BEGIN");
+    db = new Database(path, { readonly: true });
     prepare = (sql) => db.query(sql);
   } else {
     const { DatabaseSync } = await import("node:sqlite");
-    const db = new DatabaseSync(path, { readOnly: true });
-    db.exec("BEGIN");
+    db = new DatabaseSync(path, { readOnly: true });
     // Node gives rows without the methods every object has; a script or a
     // template may count on them, so rows are given them, as on Bun.
     const usual = (row) => Object.setPrototypeOf(row, Object.prototype);
@@ -63,19 +65,26 @@ export async function open(path, declare) {
       };
     };
   }
-  return new Data(prepare, declare);
+  db.exec("BEGIN");
+  const again = () => {
+    db.exec("COMMIT");
+    db.exec("BEGIN");
+  };
+  return new Data(prepare, again, host);
 }
 
 // Data is the open database with what was learned about it so far.
 class Data {
-  constructor(prepare, declare) {
+  constructor(prepare, again, host) {
     this.prepare = prepare;
-    this.declare = declare; // tells the Go side a new shape: its number and what it is
+    this.again = again; // starts reading anew, from the state the database is in now
+    this.host = host;
     this.tables = new Map(); // name → what table() returns
     this.shapes = new Map(); // what a shape is → its number
     // A project asks the same few questions with other values over and over.
     // How to ask one and what it reads is worked out once: see Query.#plan.
     this.plans = new Map();
+    this.served = new Set(); // the indexes asked for so far
   }
 
   // table returns the columns of a table: their names, what kind of values
@@ -109,9 +118,26 @@ class Data {
     let number = this.shapes.get(spec);
     if (number === undefined) {
       this.shapes.set(spec, (number = this.shapes.size));
-      this.declare(number, spec);
+      this.host.declare(number, spec);
     }
     return number;
+  }
+
+  // serve makes sure that the rows of a table can be found by columns, in
+  // their order, without reading the whole table. The Go side owns the
+  // database: it is asked for the index, and makes one unless an index that
+  // is there starts with these columns.
+  //
+  // A new index is seen only by who starts reading after it was made, so
+  // reading starts anew then. What was read before belongs to an earlier
+  // state of the data; whatever has changed in between is in the journal
+  // past the place the update read it at, and the next update computes
+  // again whoever read it.
+  serve(table, columns) {
+    const wanted = table.name + "\x00" + columns.join("\x00");
+    if (this.served.has(wanted)) return;
+    this.served.add(wanted);
+    if (this.host.index(table.name, columns)) this.again();
   }
 }
 
@@ -581,6 +607,16 @@ export class Query {
     const filter = terms.length === 0 ? "" : " WHERE " + terms.join(" AND ");
     // What decides which rows are found, and in which order.
     const matters = new Set([...by, ...other.map((one) => one.column)]);
+
+    // The index that serves the question: the columns the rows are found by
+    // with given values, then the columns of the order. A question that
+    // looks for a value no two rows share has the index of that column; one
+    // that neither narrows nor orders needs none. Other comparisons add
+    // nothing: the rows they leave out are read all the same.
+    if (!by.some((column) => table.unique.has(column))) {
+      const sought = [...new Set([...by, ...(way === "count" ? [] : order.map((one) => one.column))])];
+      if (sought.length > 0) data.serve(table, sought);
+    }
 
     // A plan of a question is what stays the same whatever its values: how
     // to ask it, where its values stand, and how to tell the shapes of its

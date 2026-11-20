@@ -57,6 +57,10 @@ type Table struct {
 	Key     int // which column is the primary key
 	// unique are the columns of every unique index beside the key.
 	unique [][]int
+	// indexes are the indexes rows of the table can be found by, once they
+	// were asked about: see Index.
+	indexes []index
+	listed  bool
 }
 
 // Column returns the place of a column among the columns of the table.
@@ -99,6 +103,34 @@ func (d *DB) Table(name string) (*Table, bool) {
 	return t, found
 }
 
+// journaled tells what the journal has to be for the tables as they are
+// now: the triggers it needs and a name for the set of them. inPlace tells
+// that it is so already: it was made for these very tables, and all of its
+// triggers are still there as they were made.
+func journaled(tx *sql.Tx) (tables []*Table, wanted []string, signature string, inPlace bool, err error) {
+	if tables, err = readTables(tx); err != nil {
+		return nil, nil, "", false, err
+	}
+	for _, t := range tables {
+		wanted = append(wanted, t.triggers()...)
+	}
+	sum := sha256.Sum256([]byte(strings.Join(wanted, "\n")))
+	signature = hex.EncodeToString(sum[:16])
+	kept, err := readTriggers(tx)
+	if err != nil {
+		return nil, nil, "", false, err
+	}
+	inPlace = len(kept) == len(wanted)
+	for _, statement := range wanted {
+		inPlace = inPlace && kept[statement]
+	}
+	var made string
+	if err := tx.QueryRow("SELECT value FROM " + settings + " WHERE name = 'tables'").Scan(&made); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, nil, "", false, err
+	}
+	return tables, wanted, signature, inPlace && made == signature, nil
+}
+
 // prepare reads the tables and puts the journal in place where it is not
 // there yet or was made for other tables.
 func (d *DB) prepare() error {
@@ -110,33 +142,14 @@ func (d *DB) prepare() error {
 	if _, err := tx.Exec(layout); err != nil {
 		return err
 	}
-	tables, err := readTables(tx)
+	tables, wanted, signature, inPlace, err := journaled(tx)
 	if err != nil {
 		return err
 	}
-	var wanted []string
 	for _, t := range tables {
 		d.tables[t.Name] = t
-		wanted = append(wanted, t.triggers()...)
 	}
-	sum := sha256.Sum256([]byte(strings.Join(wanted, "\n")))
-	signature := hex.EncodeToString(sum[:16])
-
-	// The journal is in place if it was made for these very tables and all
-	// of its triggers are still there as they were made.
-	kept, err := readTriggers(tx)
-	if err != nil {
-		return err
-	}
-	inPlace := len(kept) == len(wanted)
-	for _, statement := range wanted {
-		inPlace = inPlace && kept[statement]
-	}
-	var made string
-	if err := tx.QueryRow("SELECT value FROM " + settings + " WHERE name = 'tables'").Scan(&made); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return err
-	}
-	if inPlace && made == signature {
+	if inPlace {
 		if err := tx.QueryRow("SELECT value FROM " + settings + " WHERE name = 'id'").Scan(&d.ID); err != nil {
 			return err
 		}

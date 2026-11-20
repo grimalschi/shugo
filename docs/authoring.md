@@ -294,7 +294,8 @@ That is what makes updates exact. Shugo notes for every page and every shared co
 ### Rules for the database
 
 - **Every table has a primary key of one column.** By it Shugo tells the rows of a table apart. A table of pairs gets a key of its own: `id INTEGER PRIMARY KEY`.
-- Shugo adds a table `_shugo_journal`, a table `_shugo_meta` and triggers named `_shugo_…` to the database and switches it to WAL mode. Leave them alone. Write to the tables with anything, in any way; `INSERT OR REPLACE` and upserts are fine.
+- Shugo adds a table `_shugo_journal`, a table `_shugo_meta`, and triggers and indexes named `_shugo_…` to the database and switches it to WAL mode. Leave them alone. Write to the tables with anything, in any way; `INSERT OR REPLACE` and upserts are fine.
+- **Make no indexes for the pages.** Shugo makes the ones their queries need, the first time a query is asked: by the columns that `where` compares with values, then by the columns of `order`. An index that is there already and starts with those columns is used instead. A column that must not repeat a value is said in the table: `slug TEXT UNIQUE`.
 - After a table is added, removed or altered, the next update computes everything once.
 - Views are not queried: Shugo cannot tell which rows a view is made of. Query the tables.
 - Data read from anywhere else — a file, `fetch`, a value that a module keeps between pages — is not tracked: `shugo update` does not see it change. `shugo build` computes everything and reads it again; `shugo update -check` names the pages that depend on such data.
@@ -327,7 +328,7 @@ Shugo.query("products")                       // a table
 - `structuredClone(row)` does not work on a row; copy with `{ ...row }`.
 - **Compare with values of the column's kind**: a text for a text column, a number for a number column. `where({ id: 5 })` on a text column is an error that says what to write.
 - `where({ column: null })` finds rows without a value.
-- Rows come in the order the database finds them; say `order()` where the order matters, and add an index for it on big tables: `CREATE INDEX … ON products (category, position)` for `where({ category }).order("position")`.
+- Rows come in the order the database finds them; say `order()` where the order matters.
 - A query runs when it is asked, synchronously; there is nothing to `await`.
 
 ### Where to ask

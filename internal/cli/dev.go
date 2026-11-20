@@ -29,9 +29,11 @@ func (c *command) dev() error {
 	// SQLite removes the files it keeps beside a database when its last
 	// connection closes, and makes them again for the next one. Every update
 	// would then look like a change of the data and set off another. One
-	// connection held open keeps the files where they are.
+	// connection held open keeps the files where they are; it also tells
+	// whether a write to the database has changed the data at all.
+	var held *data.DB
 	if path := c.project.Data(); path != "" {
-		if held, err := data.Open(path); err == nil {
+		if held, err = data.Open(path); err == nil {
 			defer held.Close()
 		}
 	}
@@ -83,7 +85,12 @@ func (c *command) dev() error {
 				settle = time.After(80 * time.Millisecond)
 			case <-settle:
 				settle = nil
-				build(sources)
+				// Shugo writes to the data database itself: it makes an
+				// index, it drops the lines of the journal it has read.
+				// Only what the journal has not told yet is a change.
+				if sources || c.moved(held) {
+					build(sources)
+				}
 				sources = false
 			case err, open := <-watcher.Errors:
 				if !open {
@@ -94,6 +101,16 @@ func (c *command) dev() error {
 		}
 	}()
 	return c.listen(&server.Server{Pages: pages, Live: live})
+}
+
+// moved tells whether the data database holds changes that the site does
+// not show yet.
+func (c *command) moved(held *data.DB) bool {
+	if held == nil {
+		return true
+	}
+	moved, err := held.Moved(c.position)
+	return moved || err != nil
 }
 
 // isData tells whether a file is the data database of the project, or one

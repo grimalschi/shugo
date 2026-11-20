@@ -7,6 +7,7 @@ import (
 	"errors"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/grimalschi/shugo/internal/data"
 	"github.com/grimalschi/shugo/internal/program"
@@ -125,6 +126,20 @@ func (s *shapes) tell(number int, spec string) error {
 	}
 	s.told[number] = one
 	return nil
+}
+
+// index makes sure that the rows a question of the project's code looks for
+// can be found without reading their whole table, and tells whether an
+// index had to be made for it.
+func (k *keeper) index(table string, columns []string) (bool, error) {
+	started := time.Now()
+	name, err := k.shapes.source.Index(table, columns)
+	if err != nil || name == "" {
+		return false, err
+	}
+	k.report.Data.Indexes = append(k.report.Data.Indexes, name)
+	k.report.Time["indexes"] += float64(time.Since(started).Microseconds()) / 1000
+	return true, nil
 }
 
 // reached finds the readers of rows that have changed: the pages, the

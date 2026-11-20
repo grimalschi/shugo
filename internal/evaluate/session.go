@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 
 	"github.com/grimalschi/shugo/internal/compile"
 	"github.com/grimalschi/shugo/internal/project"
@@ -32,7 +33,9 @@ import (
 //	   address \x02 route, or       F  a shared block failed: name \x02 the failure
 //	   s \x02 name                  S  a shape of readings: number \x02 what it is
 //	Q  nothing more                 E  it failed: { message, stack, place }
-//	                                D  the request is done: what it has to add
+//	I  the index asked for is       I  an index is wanted: table \x02 column
+//	   there: 1 if it was made         \x02 column …; the answer is waited for
+//	   just now, else 0             D  the request is done: what it has to add
 type wire struct {
 	asks    io.Writer
 	answers *bufio.Reader
@@ -90,6 +93,24 @@ func (w *wire) ask(kind byte, body []byte, k *keeper, got func(kind byte, body [
 				return nil, errorf("a damaged shape of readings")
 			}
 			if err := k.shapes.tell(at, string(spec)); err != nil {
+				return nil, err
+			}
+		case 'I':
+			// The project's code waits for the answer before it asks its
+			// question: with the index, the question finds its rows at once.
+			names := strings.Split(string(body), "\x02")
+			if k.shapes == nil {
+				return nil, errorf("a request for an index of a data database, and the project names none")
+			}
+			made, err := k.index(names[0], names[1:])
+			if err != nil {
+				return nil, err
+			}
+			answer := []byte("0")
+			if made {
+				answer = []byte("1")
+			}
+			if err := w.send('I', answer); err != nil {
 				return nil, err
 			}
 		default:

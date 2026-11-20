@@ -9,6 +9,9 @@ import { open } from "./db.mjs";
 // The tables of the shop. Every table has a key of one column: by it Shugo
 // tells its rows apart. The order of products, variants, badges and related
 // products is a column of its own.
+//
+// There are no indexes here beside what the tables say themselves. Shugo
+// makes the ones the questions of the pages need, when they are first asked.
 export const tables = `
 CREATE TABLE shop (id INTEGER PRIMARY KEY, name TEXT NOT NULL, phone TEXT NOT NULL, featured TEXT);
 CREATE TABLE categories (id TEXT PRIMARY KEY, title TEXT NOT NULL, position INTEGER NOT NULL);
@@ -21,16 +24,6 @@ CREATE TABLE variants (sku TEXT PRIMARY KEY, product TEXT NOT NULL, title TEXT N
 CREATE TABLE reviews (id INTEGER PRIMARY KEY, product TEXT NOT NULL, author TEXT NOT NULL, text TEXT NOT NULL, approved INTEGER NOT NULL);
 CREATE TABLE badges (id INTEGER PRIMARY KEY, product TEXT NOT NULL, text TEXT NOT NULL, position INTEGER NOT NULL);
 CREATE TABLE related (id INTEGER PRIMARY KEY, product TEXT NOT NULL, other TEXT NOT NULL, position INTEGER NOT NULL);
-`;
-
-const indexes = `
-CREATE INDEX products_category ON products (category, position);
-CREATE INDEX products_position ON products (position);
-CREATE INDEX variants_product ON variants (product, position);
-CREATE INDEX reviews_product ON reviews (product, approved);
-CREATE INDEX badges_product ON badges (product, position);
-CREATE INDEX related_product ON related (product, position);
-CREATE INDEX related_other ON related (other);
 `;
 
 export function generate(count) {
@@ -99,7 +92,7 @@ export async function write(path, shop) {
     p.badges.forEach((text, at) => badge.run(p.id, text, at + 1));
     p.related.forEach((other, at) => related.run(p.id, other, at + 1));
   });
-  db.exec(indexes + "COMMIT;");
+  db.exec("COMMIT;");
   db.close();
 }
 
