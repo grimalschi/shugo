@@ -42,11 +42,22 @@ func (l *lab) made() []string {
 // by are the columns rows are found by with given values.
 type by = []string
 
-// index asks for an index of rows found by given values of some columns, in
-// the order of others, and returns the name of the one that was made.
-func (l *lab) index(table string, equal by, order ...string) string {
+// rows asks for an index for rows that are found by given values of some
+// columns and taken in the order of others, and returns the name of the one
+// that was made.
+func (l *lab) rows(table string, equal by, order ...string) string {
 	l.t.Helper()
-	name, _, err := l.db.Index(table, equal, order)
+	name, err := l.db.Index(table, equal, order, true)
+	if err != nil {
+		l.t.Fatal(err)
+	}
+	return name
+}
+
+// count asks for an index for rows that are found and counted.
+func (l *lab) count(table string, equal by) string {
+	l.t.Helper()
+	name, err := l.db.Index(table, equal, nil, false)
 	if err != nil {
 		l.t.Fatal(err)
 	}
@@ -56,78 +67,74 @@ func (l *lab) index(table string, equal by, order ...string) string {
 func TestIndex(t *testing.T) {
 	l := newLab(t, wares)
 	id := l.db.ID
+	none := func(what string, names ...string) {
+		t.Helper()
+		for _, name := range names {
+			if name != "" {
+				t.Errorf("%s: made %q", what, name)
+			}
+		}
+	}
 
 	// An index is made for columns that have none, once.
-	if name := l.index("products", by{"category"}); name != "_shugo_products_category" {
+	if name := l.rows("products", by{"category"}); name != "_shugo_products_category" {
 		t.Errorf("made %q", name)
 	}
-	if name := l.index("products", by{"category"}); name != "" {
-		t.Errorf("made %q again", name)
-	}
+	none("the same again", l.rows("products", by{"category"}), l.count("products", by{"category"}))
 	// The key and a unique column have their index by themselves, for
 	// finding a row and for the order. The rows of a table with a key of
 	// whole numbers lie in its order with no index at all.
-	for _, column := range []string{"id", "slug"} {
-		if name := l.index("products", by{column}); name != "" {
-			t.Errorf("made %q for %s", name, column)
-		}
-		if name := l.index("products", nil, column); name != "" {
-			t.Errorf("made %q for the order of %s", name, column)
-		}
-	}
-	if name := l.index("a", nil, "id"); name != "" {
-		t.Errorf("made %q for the order of a key of whole numbers", name)
-	}
+	none("the key", l.rows("products", by{"id"}), l.rows("products", nil, "id"), l.rows("a", by{"id"}), l.rows("a", nil, "id"))
+	none("a unique column", l.rows("products", by{"slug"}), l.rows("products", nil, "slug"), l.count("products", by{"slug"}))
 	// One row is found by them, so whatever else is asked of it adds nothing.
-	for _, name := range []string{
-		l.index("products", by{"category", "id"}),
-		l.index("products", by{"slug"}, "position"),
-		l.index("a", by{"b", "id"}, "c"),
-	} {
-		if name != "" {
-			t.Errorf("made %q for one row", name)
-		}
-	}
-	// An index that starts with the columns asked for serves them; one that
-	// is longer takes the place of ours that it starts with.
-	if name := l.index("products", by{"category"}, "position"); name != "_shugo_products_category_position" {
-		t.Errorf("made %q", name)
-	}
-	for _, name := range []string{l.index("products", by{"category"}), l.index("products", nil, "category"), l.index("products", nil, "category", "position")} {
-		if name != "" {
-			t.Errorf("made %q, which the longer index serves", name)
-		}
-	}
-	l.index("products", nil, "position")
-	if want := []string{"_shugo_products_category_position ON products (category, position)", "_shugo_products_position ON products (position)"}; !reflect.DeepEqual(l.made(), want) {
-		t.Errorf("indexes: %q, want %q", l.made(), want)
-	}
+	none("one row", l.rows("products", by{"category", "id"}), l.rows("products", by{"slug"}, "position"), l.rows("a", by{"b", "id"}, "c"))
 
+	// Rows that are taken come in the order asked for and then as they lie
+	// in the table. An index gives that when it ends where the order ends.
+	if name := l.rows("products", by{"category"}, "position"); name != "_shugo_products_category_position" {
+		t.Errorf("made %q", name)
+	}
+	// The shorter index stays: rows found by the category alone come from
+	// it as they lie in the table, and from the longer one by the position.
+	none("rows found by the category alone", l.rows("products", by{"category"}))
 	// The columns of the order count in their order.
-	if name := l.index("products", nil, "position", "category"); name != "_shugo_products_position_category" {
+	if name := l.rows("products", nil, "position", "category"); name != "_shugo_products_position_category" {
 		t.Errorf("made %q", name)
 	}
-	if got := l.made(); len(got) != 2 || !strings.HasPrefix(got[1], "_shugo_products_position_category ") {
-		t.Errorf("the index of the position alone was to go: %q", got)
-	}
-	// The columns rows are found by with given values do not: an index
-	// that starts with them whichever way round finds the rows at once.
-	if name := l.index("products", by{"position", "category"}); name != "" {
-		t.Errorf("made %q for columns that an index starts with the other way round", name)
-	}
-	// What comes after them is the order, and that counts again.
-	if name := l.index("products", by{"category"}, "title"); name != "_shugo_products_category_title" {
+	// The columns rows are found by with given values do not: an index that
+	// starts with them whichever way round finds the rows at once.
+	none("two columns the other way round", l.rows("products", by{"position", "category"}))
+	// An index that goes on after the columns asked for does not give the
+	// rows in their order.
+	if name := l.rows("products", nil, "position"); name != "_shugo_products_position" {
 		t.Errorf("made %q", name)
 	}
-	if name := l.index("products", by{"title", "category"}, "position"); name != "_shugo_products_title_category_position" {
+	if name := l.rows("products", by{"title", "category"}, "position"); name != "_shugo_products_title_category_position" {
 		t.Errorf("made %q", name)
+	}
+	if name := l.rows("products", by{"title"}); name != "_shugo_products_title" {
+		t.Errorf("made %q", name)
+	}
+	// A count asks for no order: any index that starts with its columns does.
+	none("a count", l.count("products", by{"category"}), l.count("products", by{"position"}), l.count("products", by{"title", "category"}), l.count("products", by{"category", "position"}))
+	if name := l.count("products", by{"price"}); name != "_shugo_products_price" {
+		t.Errorf("made %q", name)
+	}
+	if want := []string{
+		"_shugo_products_category ON products (category)",
+		"_shugo_products_category_position ON products (category, position)",
+		"_shugo_products_position ON products (position)",
+		"_shugo_products_position_category ON products (position, category)",
+		"_shugo_products_price ON products (price)",
+		"_shugo_products_title ON products (title)",
+		"_shugo_products_title_category_position ON products (title, category, position)",
+	}; !reflect.DeepEqual(l.made(), want) {
+		t.Errorf("indexes: %q\n    want: %q", l.made(), want)
 	}
 
 	// Another connection sees the same.
 	l.open()
-	if name := l.index("products", by{"category"}, "position"); name != "" {
-		t.Errorf("made %q after the database was opened anew", name)
-	}
+	none("after the database was opened anew", l.rows("products", by{"category"}, "position"), l.rows("products", by{"title"}), l.count("products", by{"price"}))
 	// An index is not a change of the tables: the journal keeps its name,
 	// and nothing of the data has moved.
 	if l.db.ID != id {
@@ -138,7 +145,7 @@ func TestIndex(t *testing.T) {
 	}
 }
 
-// An index made by hand serves if it starts with the columns asked for and
+// An index made by hand serves if it is over the columns asked for and
 // finds rows by them as the queries compare them.
 func TestIndexMadeByHand(t *testing.T) {
 	l := newLab(t, wares+`
@@ -148,24 +155,29 @@ CREATE INDEX loose ON products (title COLLATE NOCASE);
 CREATE INDEX reckoned ON products (lower(note));
 `)
 	for _, name := range []string{
-		l.index("products", by{"category"}, "position"),
-		l.index("products", by{"category"}),
-		l.index("products", by{"position", "category"}),
-		l.index("products", by{"position", "category"}, "title"),
-		l.index("products", nil, "category", "position"),
+		l.rows("products", by{"category"}, "position", "title"),
+		l.rows("products", by{"position", "category"}, "title"),
+		l.rows("products", by{"title", "position", "category"}),
+		l.count("products", by{"category"}),
+		l.count("products", by{"position", "category"}),
 	} {
 		if name != "" {
 			t.Errorf("made %q beside an index made by hand", name)
 		}
 	}
+	// It goes on after the position: rows found by the category would come
+	// from it in the order of their titles where the positions are the same.
+	if name := l.rows("products", by{"category"}, "position"); name != "_shugo_products_category_position" {
+		t.Errorf("made %q", name)
+	}
 	// It does not serve what it does not start with.
-	if name := l.index("products", by{"position"}); name != "_shugo_products_position" {
+	if name := l.count("products", by{"position"}); name != "_shugo_products_position" {
 		t.Errorf("made %q", name)
 	}
 	// One over a part of the rows, one that compares text in another way
 	// and one over an expression do not find every row the queries look for.
 	for _, column := range []string{"price", "title", "note"} {
-		if name := l.index("products", by{column}); name != "_shugo_products_"+column {
+		if name := l.rows("products", by{column}); name != "_shugo_products_"+column {
 			t.Errorf("%s: made %q", column, name)
 		}
 	}
@@ -174,10 +186,10 @@ CREATE INDEX reckoned ON products (lower(note));
 func TestIndexNames(t *testing.T) {
 	l := newLab(t, wares)
 	// Two tables may come to the same name; the later index gets a number.
-	if name := l.index("a_b", by{"c"}); name != "_shugo_a_b_c" {
+	if name := l.rows("a_b", by{"c"}); name != "_shugo_a_b_c" {
 		t.Errorf("made %q", name)
 	}
-	if name := l.index("a", by{"b"}, "c"); name != "_shugo_a_b_c_2" {
+	if name := l.rows("a", by{"b"}, "c"); name != "_shugo_a_b_c_2" {
 		t.Errorf("made %q", name)
 	}
 	if want := []string{"_shugo_a_b_c ON a_b (c)", "_shugo_a_b_c_2 ON a (b, c)"}; !reflect.DeepEqual(l.made(), want) {
@@ -191,17 +203,19 @@ func TestIndexRejects(t *testing.T) {
 	for name, ask := range map[string]struct {
 		table        string
 		equal, order []string
+		rows         bool
 	}{
-		"a table that is not there":        {"orders", by{"id"}, nil},
-		"a table of the journal":           {"_shugo_journal", by{"seq"}, nil},
-		"a column that is not there":       {"products", by{"colour"}, nil},
-		"an order that is not there":       {"products", by{"title"}, []string{"colour"}},
-		"no columns":                       {"products", nil, nil},
-		"a column twice":                   {"products", by{"title", "title"}, nil},
-		"a column found by and ordered by": {"products", by{"title"}, []string{"title"}},
-		"something that is not a name":     {"products", by{`title"); DROP TABLE products; --`}, nil},
+		"a table that is not there":        {"orders", by{"id"}, nil, true},
+		"a table of the journal":           {"_shugo_journal", by{"seq"}, nil, true},
+		"a column that is not there":       {"products", by{"colour"}, nil, true},
+		"an order that is not there":       {"products", by{"title"}, []string{"colour"}, true},
+		"no columns":                       {"products", nil, nil, true},
+		"a column twice":                   {"products", by{"title", "title"}, nil, true},
+		"a column found by and ordered by": {"products", by{"title"}, []string{"title"}, true},
+		"a count in an order":              {"products", by{"title"}, []string{"position"}, false},
+		"something that is not a name":     {"products", by{`title"); DROP TABLE products; --`}, nil, true},
 	} {
-		if made, _, err := l.db.Index(ask.table, ask.equal, ask.order); err == nil {
+		if made, err := l.db.Index(ask.table, ask.equal, ask.order, ask.rows); err == nil {
 			t.Errorf("%s: made %q", name, made)
 		}
 	}
@@ -226,7 +240,7 @@ func TestMoved(t *testing.T) {
 	if moved() {
 		t.Error("moved, and nothing was written")
 	}
-	l.index("products", by{"category"})
+	l.rows("products", by{"category"})
 	if moved() {
 		t.Error("moved by an index")
 	}

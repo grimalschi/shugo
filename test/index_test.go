@@ -43,9 +43,9 @@ const indexSite = `
 -- pages/equal.shugo --
 <p>{Shugo.query("products").where({ category: "c1" }).all().length}</p>
 -- pages/counted.shugo --
-<p>{Shugo.query("products").where({ note: "" }).count()}</p>
+<p>{Shugo.query("products").where({ category: "c2", price: 9 }).count()}</p>
 -- pages/ordered.shugo --
-<p>{Shugo.query("products").where({ note: "" }).order("position", "desc").all().map((row) => row.title)}</p>
+<p>{Shugo.query("products").where({ note: "" }).order("position", "desc").all().map((row) => row.title)}</p><p>{Shugo.query("products").where({ note: "" }).count()}</p>
 -- pages/sorted.shugo --
 <p>{Shugo.query("products").order("price").limit(2).all().map((row) => row.title)}</p>
 -- pages/among.shugo --
@@ -76,24 +76,24 @@ func TestIndexesAreMade(t *testing.T) {
 	want := []string{
 		"_shugo_categories_position_title_id", // both: the columns with values in the order of their names, then the order
 		"_shugo_products_category",            // equal
-		"_shugo_products_note_position",       // ordered; counted is served by it
+		"_shugo_products_category_price",      // counted
+		"_shugo_products_note_position",       // ordered; the count beside it is served by it
 		"_shugo_products_price",               // sorted
 		"_shugo_products_title",               // among
 	}
 	if got := s.indexes(); !reflect.DeepEqual(got, want) {
 		t.Errorf("indexes: %q\n    want: %q", got, want)
 	}
-	// The report names what was made and is there. The index of the note
-	// alone was made for the count, or was not, as the pages came; if it
-	// was, it went when the longer one came.
+	// The report names what was made.
 	made := append([]string{}, report.Data.Indexes...)
 	sort.Strings(made)
 	if !reflect.DeepEqual(made, want) {
 		t.Errorf("the report names %q", made)
 	}
-	expect(t, s.page("/ordered"), `<p>VaseTrayCupJug</p>`)
+	expect(t, s.page("/ordered"), `<p>VaseTrayCupJug</p><p>4</p>`)
 	expect(t, s.page("/sorted"), `<p>CupTray</p>`)
 	expect(t, s.page("/both"), `<p>1</p>`)
+	expect(t, s.page("/counted"), `<p>1</p>`)
 
 	// The indexes are a part of neither the tables nor the data: an update
 	// after them follows the journal, and a second build makes none.
@@ -112,23 +112,82 @@ func TestIndexesAreMade(t *testing.T) {
 }
 
 // A database that has indexes made by hand keeps them, and Shugo makes none
-// beside one that starts with the columns a question needs. The columns the
-// rows are found by with given values may stand in it whichever way round.
+// beside one that serves a question. The columns the rows are found by with
+// given values may stand in it whichever way round. For rows that are taken
+// it has to end where the order of the question ends; for a count it only
+// has to start with the columns of the count.
 func TestIndexesMadeByHand(t *testing.T) {
 	s := newSite(t, indexSite)
 	s.sql(readRows + `
-CREATE INDEX by_category ON products (category, position);
-CREATE INDEX by_note ON products (note, position, title);
-CREATE INDEX by_price ON products (price);
+CREATE INDEX by_category ON products (category);
+CREATE INDEX by_note ON products (note, position);
+CREATE INDEX by_price ON products (price, title);
 CREATE INDEX by_title ON categories (title, position, id);
+CREATE INDEX by_three ON products (price, category, note);
 `)
 	s.build()
-	if got, want := s.indexes(), []string{"_shugo_products_title"}; !reflect.DeepEqual(got, want) {
+	// The index of the price goes on with the title: the two cheapest
+	// products would come from it by their titles where prices are the same.
+	if got, want := s.indexes(), []string{"_shugo_products_price", "_shugo_products_title"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("indexes: %q\n    want: %q", got, want)
 	}
-	expect(t, s.page("/ordered"), `<p>VaseTrayCupJug</p>`)
+	expect(t, s.page("/ordered"), `<p>VaseTrayCupJug</p><p>4</p>`)
+	expect(t, s.page("/counted"), `<p>1</p>`)
 	s.changed(`UPDATE products SET position = 9 WHERE id = 'p1'`)
-	expect(t, s.page("/ordered"), `<p>JugVaseTrayCup</p>`)
+	expect(t, s.page("/ordered"), `<p>JugVaseTrayCup</p><p>4</p>`)
+	s.sameAsBuilt()
+}
+
+const orderSite = `
+-- shugo.json --
+{"data": "data/shop.db"}
+-- pages/a.shugo --
+---
+const titles = (query) => query.all().map((row) => row.title)
+console.log("a")
+---
+<p>{titles(Shugo.query("products").where({ category: "c1" }))}</p><p>{titles(Shugo.query("products").order("price"))} {titles(Shugo.query("products").order("price", "desc"))} {titles(Shugo.query("products").order("price").limit(2))}</p><p>{titles(Shugo.query("tags").where({ kind: "x" }))} {titles(Shugo.query("odd").where({ kind: "x" }))}</p>
+-- pages/b.shugo --
+<p>{Shugo.query("products").where({ category: "c1" }).order("title").all().map((row) => row.title)}</p><p>{Shugo.query("products").order("price").order("title", "desc").all().map((row) => row.title)}</p>
+`
+
+// Three products cost the same. One table keeps its rows by its key, and
+// one has a column called as the place of a row in its table is.
+const orderRows = readRows + `
+UPDATE products SET price = 5 WHERE category = 'c1';
+CREATE TABLE tags (title TEXT PRIMARY KEY, kind TEXT) WITHOUT ROWID;
+INSERT INTO tags VALUES ('new', 'x'), ('big', 'x'), ('old', 'y');
+CREATE TABLE odd (id INTEGER PRIMARY KEY, rowid TEXT, title TEXT, kind TEXT);
+INSERT INTO odd VALUES (2, 'b', 'second', 'x'), (1, 'a', 'first', 'x');
+`
+
+// Rows that nothing orders, and rows that the order asked for does not tell
+// apart, come as they lie in the table — whichever index finds them. So a
+// page shows the same after an index is made for another page, and the same
+// as a site built anew on a database that has the index already.
+func TestRowsComeAsTheyLieInTheTable(t *testing.T) {
+	const want = `<p>JugCupTray</p><p>JugCupTrayVase VaseTrayCupJug JugCup</p><p>bignew firstsecond</p>`
+	s := newSite(t, orderSite)
+	s.sql(orderRows)
+	s.build()
+	expect(t, s.page("/a"), want)
+	expect(t, s.page("/b"), `<p>CupJugTray</p><p>TrayJugCupVase</p>`)
+	if got, want := s.indexes(), []string{
+		"_shugo_odd_kind", "_shugo_products_category", "_shugo_products_category_title", "_shugo_products_price", "_shugo_products_price_title", "_shugo_tags_kind",
+	}; !reflect.DeepEqual(got, want) {
+		t.Errorf("indexes: %q\n    want: %q", got, want)
+	}
+	s.sameAsBuilt()
+
+	// The same where indexes made by hand go on after the columns of the
+	// questions, and were there before the site was first built.
+	s = newSite(t, orderSite)
+	s.sql(orderRows + `
+CREATE INDEX wide ON products (category, title);
+CREATE INDEX dear ON products (price, title);
+`)
+	s.build()
+	expect(t, s.page("/a"), want)
 	s.sameAsBuilt()
 }
 

@@ -33,11 +33,12 @@ import (
 //	   address \x02 route, or       F  a shared block failed: name \x02 the failure
 //	   s \x02 name                  S  a shape of readings: number \x02 what it is
 //	Q  nothing more                 E  it failed: { message, stack, place }
-//	I  the index asked for is       I  an index is wanted: table \x02 how many
-//	   there: 1 if it was made         columns rows are found by with given
-//	   just now, else 0                values \x02 these columns and those of
-//	                                   the order, split by \x02; the answer
-//	                                   is waited for
+//	I  the index asked for is       I  an index is wanted: table \x02 1 for
+//	   there: 1 if it was made         rows in their order, 0 for a count
+//	   just now, else 0                \x02 how many columns rows are found
+//	                                   by with given values \x02 these
+//	                                   columns and those of the order, split
+//	                                   by \x02; the answer is waited for
 //	                                D  the request is done: what it has to add
 type wire struct {
 	asks    io.Writer
@@ -105,15 +106,15 @@ func (w *wire) ask(kind byte, body []byte, k *keeper, got func(kind byte, body [
 			if k.shapes == nil {
 				return nil, errorf("a request for an index of a data database, and the project names none")
 			}
-			if len(names) < 2 {
+			if len(names) < 3 || (names[1] != "0" && names[1] != "1") {
 				return nil, errorf("a request for an index that cannot be read: %q", body)
 			}
-			columns := names[2:]
-			equal, err := strconv.Atoi(names[1])
+			columns := names[3:]
+			equal, err := strconv.Atoi(names[2])
 			if err != nil || equal < 0 || equal > len(columns) {
 				return nil, errorf("a request for an index that cannot be read: %q", body)
 			}
-			made, err := k.index(names[0], columns[:equal], columns[equal:])
+			made, err := k.index(names[0], columns[:equal], columns[equal:], names[1] == "1")
 			if err != nil {
 				return nil, err
 			}

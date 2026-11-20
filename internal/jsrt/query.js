@@ -89,6 +89,11 @@ class Data {
 
   // table returns the columns of a table: their names, what kind of values
   // each holds, which one is the key and which ones never repeat a value.
+  //
+  // place is what the rows of the table lie by: every table of SQLite keeps
+  // its rows by a number of their own, which each of its indexes ends with,
+  // unless it was made to keep them by its key. Rows that nothing else
+  // orders are asked for in that order, and come in it at no cost.
   table(name) {
     let table = this.tables.get(name);
     if (table !== undefined) return table;
@@ -102,8 +107,11 @@ class Data {
       const names = this.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' AND name NOT LIKE '\\_shugo\\_%' ESCAPE '\\' ORDER BY name").all().map((row) => row.name);
       throw new Error(`there is no table ${JSON.stringify(name)} in the data database; it has: ${names.join(", ") || "no tables"}`);
     }
-    table = { name, columns: new Map(columns.map((column) => [column.name, kindOf(column.type)])), key: columns.find((column) => column.pk > 0).name, unique: new Set() };
+    table = { name, columns: new Map(columns.map((column) => [column.name, kindOf(column.type)])), key: columns.find((column) => column.pk > 0).name, unique: new Set(), place: "" };
     table.unique.add(table.key);
+    const number = ["rowid", "_rowid_", "oid"].find((hidden) => !columns.some((column) => column.name.toLowerCase() === hidden));
+    const byKey = this.prepare("SELECT wr FROM pragma_table_list(?)").get(name)?.wr === 1;
+    table.place = byKey || number === undefined ? quote(table.key) : number;
     for (const index of this.prepare(`SELECT name FROM pragma_index_list(?) WHERE "unique" = 1`).all(name)) {
       const parts = this.prepare("SELECT name FROM pragma_index_info(?)").all(index.name);
       if (parts.length === 1 && parts[0].name !== null) table.unique.add(parts[0].name);
@@ -124,21 +132,21 @@ class Data {
   }
 
   // serve makes sure that the rows of a table with given values in the
-  // columns of equal can be found, in the order of the columns of order,
-  // without reading the whole table. The Go side owns the database: it is
-  // asked for the index, and makes one unless an index that is there starts
-  // with these columns.
+  // columns of equal can be found without reading the whole table: counted
+  // only, or, if rows is set, taken in the order of the columns of order.
+  // The Go side owns the database: it is asked for the index, and makes one
+  // unless an index that is there serves.
   //
   // A new index is seen only by who starts reading after it was made, so
   // reading starts anew then. What was read before belongs to an earlier
   // state of the data; whatever has changed in between is in the journal
   // past the place the update read it at, and the next update computes
   // again whoever read it.
-  serve(table, equal, order) {
-    const wanted = [table.name, equal.join("\x00"), order.join("\x00")].join("\x01");
+  serve(table, equal, order, rows) {
+    const wanted = [table.name, rows ? 1 : 0, equal.join("\x00"), order.join("\x00")].join("\x01");
     if (this.served.has(wanted)) return;
     this.served.add(wanted);
-    if (this.host.index(table.name, equal, order)) this.again();
+    if (this.host.index(table.name, equal, order, rows)) this.again();
   }
 }
 
@@ -614,7 +622,7 @@ export class Query {
     // neither narrows nor orders needs none. Other comparisons add nothing:
     // the rows they leave out are read all the same.
     const ordered = way === "count" ? [] : [...new Set(order.map((one) => one.column))].filter((column) => !by.includes(column));
-    if (by.length + ordered.length > 0) data.serve(table, by, ordered);
+    if (by.length + ordered.length > 0) data.serve(table, by, ordered, way !== "count");
 
     // A plan of a question is what stays the same whatever its values: how
     // to ask it, where its values stand, and how to tell the shapes of its
@@ -633,6 +641,13 @@ export class Query {
     const taken = [...new Set([...(select ?? table.columns.keys()), table.key, ...joins.map((join) => join.column)])];
     const sorted = order.map((one) => `${quote(one.column)}${one.direction === "desc" ? " DESC" : ""}`);
     for (const one of order) matters.add(one.column);
+    // Rows that the order does not tell apart come as they lie in the table.
+    // Left unsaid, their order would be that of whichever index found them,
+    // and a page would show another one after an index was made. An index
+    // over the columns of the question ends with the place of the row, so
+    // this order costs nothing; it runs the way the order before it runs,
+    // for the index to be read from one end.
+    if (!by.some((column) => table.unique.has(column))) sorted.push(table.place + (order.at(-1)?.direction === "desc" ? " DESC" : ""));
     let text = `SELECT ${taken.map(quote).join(", ")} FROM ${quote(table.name)}${filter}${sorted.length === 0 ? "" : " ORDER BY " + sorted.join(", ")}`;
     const cut = way === "first" || limit !== -1 || offset !== -1;
     if (cut) {

@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
-	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -132,21 +131,13 @@ func (s *shapes) tell(number int, spec string) error {
 // index makes sure that the rows a question of the project's code looks for
 // can be found without reading their whole table, and tells whether an
 // index had to be made for it.
-func (k *keeper) index(table string, equal, order []string) (bool, error) {
+func (k *keeper) index(table string, equal, order []string, rows bool) (bool, error) {
 	started := time.Now()
-	name, dropped, err := k.shapes.source.Index(table, equal, order)
+	name, err := k.shapes.source.Index(table, equal, order, rows)
 	if err != nil || name == "" {
 		return false, err
 	}
-	// The report names the indexes the run leaves behind: one that a
-	// longer one took the place of is not among them.
-	made := k.report.Data.Indexes[:0]
-	for _, one := range k.report.Data.Indexes {
-		if !slices.Contains(dropped, one) {
-			made = append(made, one)
-		}
-	}
-	k.report.Data.Indexes = append(made, name)
+	k.report.Data.Indexes = append(k.report.Data.Indexes, name)
 	k.report.Time["indexes"] += float64(time.Since(started).Microseconds()) / 1000
 	return true, nil
 }
