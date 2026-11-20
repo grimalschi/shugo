@@ -352,22 +352,29 @@ type bundled struct {
 // library of the framework into one file.
 func (b *builder) bundle(routes []program.Route) (*bundled, error) {
 	root := b.project.Root
-	// The entry names the modules that give pages; the rest of what it
-	// needs to know is in the program of the site.
-	used := map[int]bool{}
+	// The entry names the module of every file: a page is computed from its
+	// route, and a shared block from its name alone, so any file may be what
+	// a computation starts from. The rest of what the run needs to know is
+	// in the program of the site.
+	//
+	// Pages and layouts come first, in their order: style sheets apply in
+	// the order of imports, and that order starts from the pages.
+	routed := map[int]bool{}
 	for _, r := range routes {
-		used[r.File] = true
+		routed[r.File] = true
 		for _, layout := range r.Layouts {
-			used[layout] = true
+			routed[layout] = true
 		}
 	}
 	var entry strings.Builder
 	entry.WriteString("import { run } from \"shugo:runtime\";\n")
 	var table []string
-	for id, path := range b.paths {
-		if used[id] {
-			fmt.Fprintf(&entry, "import * as $%d from %s;\n", id, quote("./"+path))
-			table = append(table, fmt.Sprintf("[%d, $%d]", id, id))
+	for _, first := range []bool{true, false} {
+		for id, path := range b.paths {
+			if routed[id] == first {
+				fmt.Fprintf(&entry, "import * as $%d from %s;\n", id, quote("./"+path))
+				table = append(table, fmt.Sprintf("[%d, $%d]", id, id))
+			}
 		}
 	}
 	fmt.Fprintf(&entry, "await run([%s]);\n", strings.Join(table, ", "))

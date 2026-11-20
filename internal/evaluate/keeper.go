@@ -1,0 +1,790 @@
+package evaluate
+
+import (
+	"bytes"
+	"errors"
+	"fmt"
+	"sort"
+	"strconv"
+	"strings"
+
+	"github.com/grimalschi/shugo/internal/program"
+	"github.com/grimalschi/shugo/internal/record"
+	"github.com/grimalschi/shugo/internal/render"
+	"github.com/grimalschi/shugo/internal/store"
+)
+
+// keeper takes the records of the units a run computes and writes to the
+// store those that differ from what it has. It also keeps the store's
+// account of who shows which shared block and which values, so that at the
+// end it can drop what nothing shows any more and tell on which pages the
+// HTML differs.
+type keeper struct {
+	site   *program.Site
+	update *store.Update
+	report *Report
+	limit  int // how many names a report lists
+
+	// again tells whether a shared block that a record of this run shows is
+	// to be computed in this run too. known says that the store has it.
+	again func(name string, known bool) bool
+
+	// What the store had before the run, if the whole of it was read at
+	// once: see preload. Otherwise the store is asked one record at a time.
+	pages  map[string]record.Hash
+	shared map[string]store.Kept
+	whole  bool
+	// anew tells that the records of another compiled project were dropped.
+	anew   bool
+	totals store.Totals
+
+	// What the run has computed.
+	seenPages  map[string]struct{}
+	seenShared map[int64]struct{}
+
+	// The shared blocks the run has met, and those of them that are still
+	// to be computed, in the order they were met.
+	met   map[string]met
+	named map[int64]string
+	asked map[int64]struct{}
+	next  []string
+	// blank are shared blocks that got a number in this run and no record yet.
+	blank map[int64]struct{}
+
+	// Which records are new or not what they were.
+	touched map[string]bool // pages
+	fresh   map[int64]bool  // shared blocks
+	// uses is which shared blocks a shared block shows, for those the run
+	// has looked at.
+	uses map[int64][]int64
+	// loose are shared blocks that someone stopped showing.
+	loose map[int64]struct{}
+
+	shows   edges
+	values  ledger
+	was, is content
+}
+
+// met is a shared block as the run found it in the store, or made it.
+type met struct {
+	id    int64
+	hash  record.Hash
+	known bool // the store had its record before the run
+}
+
+func newKeeper(site *program.Site, u *store.Update, report *Report, limit int) (*keeper, error) {
+	totals, err := u.Totals()
+	if err != nil {
+		return nil, err
+	}
+	return &keeper{
+		site: site, update: u, report: report, limit: limit, totals: totals,
+		again:     func(string, bool) bool { return false },
+		seenPages: map[string]struct{}{}, seenShared: map[int64]struct{}{},
+		met: map[string]met{}, named: map[int64]string{}, asked: map[int64]struct{}{}, blank: map[int64]struct{}{},
+		touched: map[string]bool{}, fresh: map[int64]bool{}, uses: map[int64][]int64{}, loose: map[int64]struct{}{},
+		shows:  edges{update: u},
+		values: ledger{update: u, more: map[record.Hash]*addition{}, fewer: map[record.Hash]int{}},
+		was:    content{shared: map[int64]struct{}{}, values: map[record.Hash]int{}},
+		is:     content{shared: map[int64]struct{}{}, values: map[record.Hash]int{}},
+	}, nil
+}
+
+// clear drops the records of another compiled project. The values stay:
+// most of them will be computed again as they were.
+func (k *keeper) clear() error {
+	k.anew, k.totals = true, store.Totals{}
+	return k.update.ClearRecords()
+}
+
+// preload reads at once what the store has of every page and shared block.
+// A run that computes most of the site compares all of it anyway.
+func (k *keeper) preload() (err error) {
+	if k.pages, err = k.update.KeptPages(); err != nil {
+		return err
+	}
+	k.shared, err = k.update.KeptShared()
+	k.whole = err == nil
+	return err
+}
+
+func (k *keeper) page(path string) (hash record.Hash, known bool, err error) {
+	if k.whole {
+		hash, known = k.pages[path]
+		return hash, known, nil
+	}
+	return k.update.PageHash(path)
+}
+
+// meet finds a shared block by its name, giving it a number if the store
+// has none for it.
+func (k *keeper) meet(name string) (met, error) {
+	if m, already := k.met[name]; already {
+		return m, nil
+	}
+	kept, known := k.shared[name]
+	if !k.whole {
+		var err error
+		if kept, known, err = k.update.SharedNamed(name); err != nil {
+			return met{}, err
+		}
+	}
+	if !known {
+		id, err := k.update.NewShared(name)
+		if err != nil {
+			return met{}, err
+		}
+		kept.ID = id
+		k.blank[id] = struct{}{}
+	}
+	m := met{kept.ID, kept.Hash, known}
+	k.met[name], k.named[kept.ID] = m, name
+	return m, nil
+}
+
+// take returns the shared blocks that records of this run show and that
+// are to be computed next.
+func (k *keeper) take() []string {
+	names := k.next
+	k.next = nil
+	return names
+}
+
+// count tells how many units the run has computed, and has, whether a unit
+// is among them.
+func (k *keeper) count() int { return len(k.seenPages) + len(k.seenShared) }
+
+func (k *keeper) has(u unit) bool {
+	if !u.shared {
+		_, seen := k.seenPages[u.name]
+		return seen
+	}
+	m, known := k.met[u.name]
+	_, seen := k.seenShared[m.id]
+	return known && seen
+}
+
+// put takes one record as the project's code sent it: a header and blocks
+// split by \x01, their fields split by \x02. The header is p or s, the
+// address or the name, the route of a page, and the block to start from.
+func (k *keeper) put(data []byte) error {
+	header, rest, _ := bytes.Cut(data, []byte{1})
+	fields := bytes.Split(header, []byte{2})
+	if len(fields) != 4 || len(fields[0]) != 1 {
+		return errorf("a record with a damaged header")
+	}
+	_, err := strconv.Atoi(string(fields[2]))
+	top, err2 := strconv.Atoi(string(fields[3]))
+	if err != nil || err2 != nil {
+		return errorf("a record with a damaged header")
+	}
+	u := unit{shared: fields[0][0] == 's', name: string(fields[1])}
+
+	// Who the record is of comes first, so that a shared block that shows
+	// itself is not asked for again.
+	var self met
+	var user string
+	switch fields[0][0] {
+	case 'p':
+		if !validPath(u.name) {
+			return errorf("a page with the address %q", u.name)
+		}
+		if _, twice := k.seenPages[u.name]; twice {
+			return errorf("%s twice", u)
+		}
+		k.seenPages[u.name] = struct{}{}
+		k.report.Computed.Pages++
+		user = store.PageUser(u.name)
+	case 's':
+		if self, err = k.meet(u.name); err != nil {
+			return err
+		}
+		if _, twice := k.seenShared[self.id]; twice {
+			return errorf("%s twice", u)
+		}
+		k.seenShared[self.id] = struct{}{}
+		k.report.Computed.Shared++
+		user = store.SharedUser(self.id)
+	default:
+		return errorf("a record of an unknown kind %q", fields[0][0])
+	}
+
+	rec := &record.Record{Top: top}
+	var values [][]byte
+	var shows []int64
+	for len(rest) > 0 {
+		if len(rec.Blocks) == maxBlocks {
+			return fmt.Errorf("%s has more than %d blocks", u, maxBlocks)
+		}
+		var one []byte
+		one, rest, _ = bytes.Cut(rest, []byte{1})
+		block, data, err := k.block(one)
+		if err != nil {
+			return fmt.Errorf("%s: %w", u, err)
+		}
+		if block.Use {
+			shows = append(shows, block.Shared)
+		}
+		rec.Blocks = append(rec.Blocks, block)
+		values = append(values, data)
+	}
+	k.report.Blocks += len(rec.Blocks)
+	encoded := rec.Encode()
+	hash := record.HashOf(encoded)
+
+	// A record that is what it was needs nothing: what it shows is in the
+	// store already, and it was checked when it got there.
+	var old []byte
+	if u.shared {
+		k.uses[self.id] = shows
+		if self.known && self.hash == hash {
+			return nil
+		}
+		if top < len(rec.Blocks) && rec.Blocks[top].Use {
+			return fmt.Errorf("%s does not start with a template", u)
+		}
+		if self.known {
+			if old, _, err = k.update.Shared(self.id); err != nil {
+				return err
+			}
+		}
+	} else {
+		kept, known, err := k.page(u.name)
+		if err != nil {
+			return err
+		}
+		if known && kept == hash {
+			return nil
+		}
+		if known {
+			if old, _, err = k.update.Page(u.name); err != nil {
+				return err
+			}
+		}
+	}
+	if err := k.check(rec, values); err != nil {
+		return fmt.Errorf("%s: %w", u, err)
+	}
+	if err := k.change(user, old, rec, values); err != nil {
+		return fmt.Errorf("%s: %w", u, err)
+	}
+	if u.shared {
+		delete(k.blank, self.id)
+		k.fresh[self.id] = true
+		k.noted(&k.report.Shared, u.name, self.known)
+		return k.update.PutShared(self.id, hash, encoded)
+	}
+	k.touched[u.name] = true
+	k.noted(&k.report.Pages, u.name, old != nil)
+	return k.update.PutPage(u.name, hash, encoded)
+}
+
+// noted counts one page or shared block that is new or not what it was.
+func (k *keeper) noted(changes *Changes, name string, known bool) {
+	if known {
+		changes.note(&changes.Changed, &changes.ChangedNames, name, k.limit)
+	} else {
+		changes.note(&changes.Added, &changes.AddedNames, name, k.limit)
+	}
+}
+
+// block reads one block: "b", its file, its part, its children, its slots
+// and its values; or "u", the name of a shared block and what fills its slots.
+func (k *keeper) block(data []byte) (record.Block, []byte, error) {
+	fields := bytes.SplitN(data, []byte{2}, 6)
+	var b record.Block
+	var slots []byte
+	var values []byte
+	switch {
+	case len(fields) == 3 && string(fields[0]) == "u":
+		name := string(fields[1])
+		shown, err := k.meet(name)
+		if err != nil {
+			return b, nil, err
+		}
+		// The run computes a shared block it has met at most once, and one
+		// the store has no record of in any case.
+		_, seen := k.seenShared[shown.id]
+		if _, waits := k.asked[shown.id]; !seen && !waits && (!shown.known || k.again(name, shown.known)) {
+			k.asked[shown.id] = struct{}{}
+			k.next = append(k.next, name)
+		}
+		b.Use, b.Shared, slots = true, shown.id, fields[2]
+	case len(fields) == 6 && string(fields[0]) == "b":
+		var err1, err2, err3 error
+		b.File, err1 = strconv.Atoi(string(fields[1]))
+		b.Part, err2 = strconv.Atoi(string(fields[2]))
+		b.Children, err3 = numbers(fields[3])
+		if err1 != nil || err2 != nil || err3 != nil {
+			return b, nil, errDamaged
+		}
+		if _, ok := k.site.Part(b.File, b.Part); !ok {
+			return b, nil, errorf("a block of template %d, part %d, which the site does not have", b.File, b.Part)
+		}
+		slots, values = fields[4], fields[5]
+		b.Values = record.HashOf(values)
+	default:
+		return b, nil, errDamaged
+	}
+	// Slots are written as name=1,2;other=3.
+	for len(slots) > 0 {
+		var one []byte
+		one, slots, _ = bytes.Cut(slots, []byte{';'})
+		name, list, found := bytes.Cut(one, []byte{'='})
+		fills, err := numbers(list)
+		if !found || len(name) == 0 || err != nil {
+			return b, nil, errDamaged
+		}
+		b.Slots = append(b.Slots, record.Slot{Name: string(name), Blocks: fills})
+	}
+	return b, values, nil
+}
+
+// numbers reads "1,2,3".
+func numbers(list []byte) ([]int, error) {
+	if len(list) == 0 {
+		return nil, nil
+	}
+	parts := bytes.Split(list, []byte{','})
+	out := make([]int, len(parts))
+	for i, part := range parts {
+		n, err := strconv.Atoi(string(part))
+		if err != nil || n < 0 {
+			return nil, errors.New("not a number")
+		}
+		out[i] = n
+	}
+	return out, nil
+}
+
+// check tells whether a record can be shown: its blocks make one tree, and
+// the values of every block fit its template.
+func (k *keeper) check(rec *record.Record, values [][]byte) error {
+	if err := rec.Check(); err != nil {
+		return err
+	}
+	for i := range rec.Blocks {
+		if b := &rec.Blocks[i]; !b.Use {
+			if err := render.Check(k.site, b, values[i]); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// content is what a record shows beside its own markup: shared blocks, and
+// values by their names. A name that several blocks have counts once.
+type content struct {
+	shared map[int64]struct{}
+	values map[record.Hash]int // one of the blocks that have them
+}
+
+func (c *content) of(rec *record.Record) {
+	clear(c.shared)
+	clear(c.values)
+	if rec == nil {
+		return
+	}
+	for i := range rec.Blocks {
+		if b := &rec.Blocks[i]; b.Use {
+			c.shared[b.Shared] = struct{}{}
+		} else {
+			c.values[b.Values] = i
+		}
+	}
+}
+
+// change notes what a page or a shared block shows now in place of what it
+// showed. old is its record as the store has it, now the one that replaces
+// it with the values of its blocks; either may be missing.
+func (k *keeper) change(user string, old []byte, now *record.Record, values [][]byte) error {
+	var before *record.Record
+	if len(old) > 0 {
+		var err error
+		if before, err = record.Decode(old); err != nil {
+			return fmt.Errorf("the record the store has: %w", err)
+		}
+	}
+	k.was.of(before)
+	k.is.of(now)
+	for id := range k.is.shared {
+		if _, kept := k.was.shared[id]; !kept {
+			k.shows.more = append(k.shows.more, edge{id, user})
+		}
+	}
+	for id := range k.was.shared {
+		if _, kept := k.is.shared[id]; !kept {
+			k.shows.fewer = append(k.shows.fewer, edge{id, user})
+			k.loose[id] = struct{}{}
+		}
+	}
+	for hash, at := range k.is.values {
+		if _, kept := k.was.values[hash]; !kept {
+			if err := k.values.use(hash, values[at]); err != nil {
+				return err
+			}
+		}
+	}
+	for hash := range k.was.values {
+		if _, kept := k.is.values[hash]; !kept {
+			k.values.drop(hash)
+		}
+	}
+	return nil
+}
+
+// remove drops a page the project no longer has.
+func (k *keeper) remove(path string) error {
+	old, found, err := k.update.Page(path)
+	if err != nil || !found {
+		return err
+	}
+	if err := k.change(store.PageUser(path), old, nil, nil); err != nil {
+		return fmt.Errorf("the page %s: %w", path, err)
+	}
+	k.report.Pages.note(&k.report.Pages.Removed, &k.report.Pages.RemovedNames, path, k.limit)
+	return k.update.DeletePage(path)
+}
+
+// finish settles the accounts of the run: it drops the shared blocks and
+// the values nothing shows any more, and tells what the update came to.
+func (k *keeper) finish() error {
+	for id := range k.blank {
+		return errorf("no record of the shared block %s, which a record shows", k.named[id])
+	}
+	if err := k.loops(); err != nil {
+		return err
+	}
+	if err := k.sweep(); err != nil {
+		return err
+	}
+	if err := k.values.settle(); err != nil {
+		return err
+	}
+	r := k.report
+	r.Values.Added, r.Values.Removed = k.values.added, k.values.removed
+	k.totals.Pages += r.Pages.Added - r.Pages.Removed
+	k.totals.Shared += r.Shared.Added - r.Shared.Removed
+	k.totals.Values += r.Values.Added - r.Values.Removed
+	if k.anew {
+		// The values of the project compiled before stayed while the
+		// records were computed anew; those nothing took again go now.
+		dropped, left, err := k.update.SweepValues()
+		if err != nil {
+			return err
+		}
+		r.Values.Removed += dropped
+		k.totals.Values = left
+	}
+	r.Pages.Total, r.Shared.Total, r.Values.Total = k.totals.Pages, k.totals.Shared, k.totals.Values
+	if err := k.update.SetTotals(k.totals); err != nil {
+		return err
+	}
+	if err := k.rendered(); err != nil {
+		return err
+	}
+	for _, names := range []*[]string{
+		&r.RenderNames,
+		&r.Pages.AddedNames, &r.Pages.ChangedNames, &r.Pages.RemovedNames,
+		&r.Shared.AddedNames, &r.Shared.ChangedNames, &r.Shared.RemovedNames,
+	} {
+		sort.Strings(*names)
+	}
+	return nil
+}
+
+// shown returns the shared blocks that a shared block shows.
+func (k *keeper) shown(id int64) ([]int64, error) {
+	if uses, looked := k.uses[id]; looked {
+		return uses, nil
+	}
+	data, _, err := k.update.Shared(id)
+	if err != nil {
+		return nil, err
+	}
+	var uses []int64
+	if len(data) > 0 {
+		rec, err := record.Decode(data)
+		if err != nil {
+			return nil, fmt.Errorf("the shared block %s: %w", k.name(id), err)
+		}
+		for i := range rec.Blocks {
+			if rec.Blocks[i].Use {
+				uses = append(uses, rec.Blocks[i].Shared)
+			}
+		}
+	}
+	k.uses[id] = uses
+	return uses, nil
+}
+
+func (k *keeper) name(id int64) string {
+	if name, met := k.named[id]; met {
+		return name
+	}
+	name, err := k.update.SharedName(id)
+	if err != nil {
+		return "number " + strconv.FormatInt(id, 10)
+	}
+	k.named[id] = name
+	return name
+}
+
+// loops makes sure that no shared block shows itself, directly or through
+// others: showing it would never end. Only a record that is new or has
+// changed can close such a circle.
+func (k *keeper) loops() error {
+	const open, closed = 1, 2
+	state := map[int64]int8{}
+	var trail []int64
+	var visit func(id int64) error
+	visit = func(id int64) error {
+		switch state[id] {
+		case closed:
+			return nil
+		case open:
+			var way []string
+			for at := len(trail) - 1; at >= 0; at-- {
+				way = append([]string{k.name(trail[at])}, way...)
+				if trail[at] == id {
+					break
+				}
+			}
+			if len(way) == 1 {
+				return fmt.Errorf("%s shows itself again with the same parameters, which would never end", way[0])
+			}
+			return fmt.Errorf("%s shows itself again with the same parameters through %s, which would never end", way[0], strings.Join(way[1:], ", "))
+		}
+		state[id] = open
+		trail = append(trail, id)
+		uses, err := k.shown(id)
+		if err != nil {
+			return err
+		}
+		for _, next := range uses {
+			if err := visit(next); err != nil {
+				return err
+			}
+		}
+		trail = trail[:len(trail)-1]
+		state[id] = closed
+		return nil
+	}
+	for id := range k.fresh {
+		if err := visit(id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// sweep drops the shared blocks that nothing shows any more. What such a
+// block showed may go with it.
+func (k *keeper) sweep() error {
+	for {
+		// Who shows what is told to the store first: it is asked right below.
+		if err := k.shows.settle(); err != nil {
+			return err
+		}
+		if len(k.loose) == 0 {
+			return nil
+		}
+		ids := make([]int64, 0, len(k.loose))
+		for id := range k.loose {
+			ids = append(ids, id)
+		}
+		clear(k.loose)
+		for _, id := range ids {
+			if shown, err := k.update.Shown(id); err != nil {
+				return err
+			} else if shown {
+				continue
+			}
+			old, found, err := k.update.Shared(id)
+			if err != nil {
+				return err
+			} else if !found {
+				continue
+			}
+			name := k.name(id)
+			if err := k.change(store.SharedUser(id), old, nil, nil); err != nil {
+				return fmt.Errorf("the shared block %s: %w", name, err)
+			}
+			if err := k.update.DeleteShared(id); err != nil {
+				return err
+			}
+			delete(k.fresh, id)
+			k.report.Shared.note(&k.report.Shared.Removed, &k.report.Shared.RemovedNames, name, k.limit)
+		}
+	}
+}
+
+// rendered finds the pages whose HTML differs from what it was: those whose
+// record is new or has changed, and those that show a shared block whose
+// record has, directly or through other shared blocks.
+func (k *keeper) rendered() error {
+	pages := make(map[string]struct{}, len(k.touched))
+	for path := range k.touched {
+		pages[path] = struct{}{}
+	}
+	// When every page has changed itself, there is nobody else to find.
+	if len(pages) < k.totals.Pages {
+		seen := make(map[int64]struct{}, len(k.fresh))
+		queue := make([]int64, 0, len(k.fresh))
+		for id := range k.fresh {
+			seen[id] = struct{}{}
+			queue = append(queue, id)
+		}
+		for len(queue) > 0 {
+			id := queue[len(queue)-1]
+			queue = queue[:len(queue)-1]
+			err := k.update.Users(id, func(user string) {
+				if shared, is := store.UserShared(user); !is {
+					pages[user] = struct{}{}
+				} else if _, already := seen[shared]; !already {
+					seen[shared] = struct{}{}
+					queue = append(queue, shared)
+				}
+			})
+			if err != nil {
+				return err
+			}
+		}
+	}
+	k.report.Render = len(pages)
+	for path := range pages {
+		k.report.RenderNames = append(k.report.RenderNames, path)
+	}
+	sort.Strings(k.report.RenderNames)
+	if len(k.report.RenderNames) > k.limit {
+		k.report.RenderNames = k.report.RenderNames[:k.limit]
+	}
+	return nil
+}
+
+// edges are the changes of who shows which shared block that a run has
+// found and not told the store yet. Told in order, a hundred thousand pages
+// that show the same layout are written several times faster.
+type edges struct {
+	update      *store.Update
+	more, fewer []edge
+}
+
+type edge struct {
+	shared int64
+	user   string
+}
+
+func (e *edges) settle() error {
+	for _, list := range [][]edge{e.more, e.fewer} {
+		sort.Slice(list, func(a, b int) bool {
+			if list[a].shared != list[b].shared {
+				return list[a].shared < list[b].shared
+			}
+			return list[a].user < list[b].user
+		})
+	}
+	for _, one := range e.more {
+		if err := e.update.Show(one.shared, one.user); err != nil {
+			return err
+		}
+	}
+	for _, one := range e.fewer {
+		if err := e.update.Unshow(one.shared, one.user); err != nil {
+			return err
+		}
+	}
+	e.more, e.fewer = e.more[:0], e.fewer[:0]
+	return nil
+}
+
+// ledger counts how the uses of values change during a run. It tells the
+// store at the end, or earlier when it holds a lot of values to keep.
+type ledger struct {
+	update *store.Update
+	more   map[record.Hash]*addition
+	fewer  map[record.Hash]int
+	held   int // bytes of values waiting to be kept
+
+	added, removed int
+}
+
+// addition is values that more records use now.
+type addition struct {
+	data  []byte
+	count int
+}
+
+// enough is how many bytes of values the ledger holds before it tells the store.
+const enough = 64 << 20
+
+func (l *ledger) use(hash record.Hash, data []byte) error {
+	if a, held := l.more[hash]; held {
+		a.count++
+		return nil
+	}
+	// The data belongs to a message that is read over.
+	l.more[hash] = &addition{bytes.Clone(data), 1}
+	if l.held += len(data); l.held > enough {
+		return l.flush()
+	}
+	return nil
+}
+
+func (l *ledger) drop(hash record.Hash) { l.fewer[hash]++ }
+
+// flush keeps the values held so far, in the order of their names: the
+// store takes them several times faster that way.
+func (l *ledger) flush() error {
+	names := make([]record.Hash, 0, len(l.more))
+	for hash := range l.more {
+		names = append(names, hash)
+	}
+	sort.Slice(names, func(a, b int) bool { return bytes.Compare(names[a][:], names[b][:]) < 0 })
+	for _, hash := range names {
+		a := l.more[hash]
+		fresh, err := l.update.UseValues(hash, a.data, a.count)
+		if err != nil {
+			return err
+		}
+		if fresh {
+			l.added++
+		}
+	}
+	clear(l.more)
+	l.held = 0
+	return nil
+}
+
+// settle tells the store everything. Uses that came go first, so that
+// values which changed hands are never dropped in between.
+func (l *ledger) settle() error {
+	if err := l.flush(); err != nil {
+		return err
+	}
+	for hash, count := range l.fewer {
+		gone, err := l.update.DropValues(hash, count)
+		if err != nil {
+			return err
+		}
+		if gone {
+			l.removed++
+		}
+	}
+	clear(l.fewer)
+	return nil
+}
+
+// validPath tells whether text can be the address of a page.
+func validPath(path string) bool {
+	if !strings.HasPrefix(path, "/") || len(path) > 4096 {
+		return false
+	}
+	for _, part := range strings.Split(path[1:], "/") {
+		if part == "." || part == ".." || (part == "" && path != "/") {
+			return false
+		}
+	}
+	return !strings.ContainsAny(path, "\x00\\?#")
+}

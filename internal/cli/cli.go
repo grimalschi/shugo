@@ -181,7 +181,8 @@ func (c *command) print(report any, words func() string) error {
 // summary says in a few lines what an update did.
 func summary(verb string, r *evaluate.Report) string {
 	var out strings.Builder
-	fmt.Fprintf(&out, "%s in %.0f ms: %d pages, %d shared blocks, %d blocks, %d values", verb, r.Time["total"], r.Pages.Total, r.Shared.Total, r.Blocks, r.Values.Total)
+	fmt.Fprintf(&out, "%s in %.0f ms: %d pages, %d shared blocks, %d values", verb, r.Time["total"], r.Pages.Total, r.Shared.Total, r.Values.Total)
+	fmt.Fprintf(&out, "\n  computed %d pages and %d shared blocks, %d blocks in all", r.Computed.Pages, r.Computed.Shared, r.Blocks)
 	if r.Rebuilt {
 		out.WriteString("\n  the project was compiled anew, so everything was computed from scratch")
 	}

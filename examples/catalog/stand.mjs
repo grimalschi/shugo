@@ -8,7 +8,7 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,6 +26,7 @@ const runtime = option("runtime", "");
 
 const data = generate(size);
 const product = (number) => data.products[number - 1];
+mkdirSync(join(here, "data"), { recursive: true });
 const save = () => writeFileSync(join(here, "data/catalog.json"), JSON.stringify(data));
 const run = (command, folder = here, ...more) =>
   JSON.parse(execFileSync(shugo, [command, "-json", ...(runtime ? ["-runtime", runtime] : []), ...more, folder], { encoding: "utf8", maxBuffer: 1 << 30 }));

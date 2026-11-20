@@ -4,9 +4,13 @@
 // template, and hands the result to the Go side, which keeps it and builds
 // HTML from it. No markup is produced here.
 //
+// The Go side leads. It asks which pages the project has, then names the
+// pages and the shared blocks to compute; this side answers each request and
+// waits for the next.
+//
 // Runs on Bun and on Node.
 
-import { readFileSync, writeSync } from "node:fs";
+import { readFileSync, readSync, writeSync } from "node:fs";
 
 // ---------------------------------------------------------------------------
 // What is computed
@@ -15,10 +19,10 @@ import { readFileSync, writeSync } from "node:fs";
 // blocks in the order they were started. Blocks of a record name each other
 // by their place in it.
 class Record {
-  constructor(kind, key, origin) {
+  constructor(kind, key, route) {
     this.kind = kind; // "p" for a page, "s" for a shared block
     this.key = key; // the address of the page, or the name of the shared block
-    this.origin = origin; // the route of the page, or the number of the shared block
+    this.route = route; // the route of a page, by its place among the routes
     this.blocks = [];
     this.top = 0;
   }
@@ -26,13 +30,13 @@ class Record {
   // A block is one template being shown: a page, a layout, a component, or
   // markup put into a component (a part of the template it is written in).
   block(file, part) {
-    const block = { index: this.blocks.length, file, part, values: [], children: [], slots: null, shared: -1 };
+    const block = { index: this.blocks.length, file, part, values: [], children: [], slots: null, shared: null };
     this.blocks.push(block);
     return block;
   }
 
-  // A use stands where a shared block is shown. The shared block is kept
-  // once; what this place put into its slots is kept here.
+  // A use stands where a shared block is shown, and names it. The shared
+  // block is kept once; what this place put into its slots is kept here.
   use(shared, slots) {
     const block = this.block(-1, 0);
     block.shared = shared;
@@ -45,7 +49,6 @@ class Record {
 //   page      the page being computed: { params, url }; null inside a shared block
 //   slots     what the caller put into the slots: Map of name → blocks; null for none
 //   provided  what the page gives to its layouts: Map of name → blocks; null inside a shared block
-//   owner     the name of the shared block being computed, or null
 
 // Writer is "$$" in generated code: it writes the values of one block.
 class Writer {
@@ -240,73 +243,102 @@ export function component(file, render) {
 class Run {
   constructor(site, modules, send) {
     this.site = site;
-    this.modules = modules; // Map of file number → module, for pages and layouts
+    this.modules = modules; // Map of file number → module
     this.send = send;
-    this.shared = new Map(); // name → promise of the number of the shared block
-    this.numbers = new Map(); // name → the number, once the block is computed
-    this.waits = new Map(); // which shared block every shared block being computed waits for
-    this.claims = new Map(); // address → route
+    this.files = new Map(site.files.map((file, number) => [file.path, number]));
+    this.pages = new Map(); // address → { index, route, entry }, once the pages are listed
     this.batch = [];
     this.batchSize = 0;
-    this.counts = { pages: 0, shared: 0, blocks: 0, shadowed: 0 };
+  }
+
+  // list finds the pages of the site: every route says which pages it has. A
+  // route that names more of an address comes earlier and takes it.
+  async list() {
+    this.pages.clear();
+    let shadowed = 0;
+    let lines = [];
+    for (const [index, route] of this.site.routes.entries()) {
+      const place = `getStaticPaths of ${this.site.files[route.file].path}`;
+      try {
+        for (const entry of await entries(route, this.modules.get(route.file))) {
+          const path = address(route, entry.params);
+          const taken = this.pages.get(path);
+          if (taken !== undefined && taken.index === index) throw new Error(`getStaticPaths of ${route.pattern} returned the address ${path} twice`);
+          if (taken !== undefined) {
+            shadowed++;
+            continue;
+          }
+          this.pages.set(path, { index, route, entry });
+          if (lines.push(index + "\x02" + path) === 4096) {
+            this.send("P", lines.join("\x03"));
+            lines = [];
+          }
+        }
+      } catch (error) {
+        throw placed(error, place);
+      }
+    }
+    if (lines.length > 0) this.send("P", lines.join("\x03"));
+    return { shadowed };
+  }
+
+  // compute computes the units the Go side named, several at a time: a unit
+  // is "p" or "s", \x02, and the address of a page or the name of a shared block.
+  async compute(units) {
+    let next = 0;
+    const worker = async () => {
+      while (next < units.length) {
+        const unit = units[next++];
+        const name = unit.slice(2);
+        try {
+          await (unit[0] === "p" ? this.page(name) : this.block(name));
+        } catch (error) {
+          next = units.length; // the others stop after the unit they are at
+          throw placed(error, unit[0] === "p" ? `the page ${name} (${this.site.files[this.pages.get(name)?.route.file]?.path})` : `the shared block ${name}`);
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: concurrency }, worker));
+    this.flush();
   }
 
   // show computes a component at one place of a record and returns the block
-  // that stands for it there.
+  // that stands for it there. Where the component gives a shared block, that
+  // block only gets named: the Go side knows whether it has to be computed.
   async show(record, target, props, slots, scope) {
     const name = this.site.files[target.file].shared ? sharedName(this.site.files[target.file].path, props, slots) : null;
-    if (name !== null) {
-      // Most uses of a shared block come after it has been computed.
-      const number = this.numbers.get(name) ?? (await this.share(name, target, props, slots, scope));
-      return record.use(number, slots).index;
-    }
+    if (name !== null) return record.use(name, slots).index;
     const block = record.block(target.file, 0);
     block.slots = slots;
-    const inner = { page: scope.page, slots, provided: scope.provided, owner: scope.owner };
+    const inner = { page: scope.page, slots, provided: scope.provided };
     await target.render(new Writer(this, record, block, inner), new Context(target, props, inner));
     return block.index;
   }
 
-  // share returns the number of a shared block, computing it at the first call.
-  async share(name, target, props, slots, scope) {
-    let pending = this.shared.get(name);
-    if (pending === undefined) {
-      pending = this.compute(name, target, props, slots);
-      this.shared.set(name, pending);
-    }
-    if (scope.owner === null) return pending;
-    // One shared block is waiting for another: make sure that one is not
-    // waiting for this one in turn.
-    for (let at = name; at !== undefined; at = this.waits.get(at)) {
-      if (at === scope.owner) throw new Error(`${name} shows itself again with the same parameters, which would never end`);
-    }
-    this.waits.set(scope.owner, name);
-    try {
-      return await pending;
-    } finally {
-      this.waits.delete(scope.owner);
-    }
-  }
-
-  async compute(name, target, props, slots) {
-    const number = this.counts.shared++;
-    const record = new Record("s", name, number);
+  // block computes a shared block from its name alone: the name holds the
+  // file, the parameters and the names of the slots.
+  async block(name) {
+    const { path, props, slots } = unnamed(name);
+    const target = this.modules.get(this.files.get(path))?.default;
+    if (target === undefined) throw new Error(`there is no file ${path} to compute the shared block from`);
+    const record = new Record("s", name, 0);
     const block = record.block(target.file, 0);
     // Inside a shared block only the names of the slots matter: what fills
     // them belongs to the place the block is used at.
-    const inner = { page: null, slots, provided: null, owner: name };
+    const inner = { page: null, slots, provided: null };
     await target.render(new Writer(this, record, block, inner), new Context(target, props, inner));
     this.emit(record);
-    this.numbers.set(name, number);
-    return number;
   }
 
   // page computes one page: the page itself, then every layout around it,
   // from the innermost.
-  async page(index, route, entry, path) {
+  async page(path) {
+    const listed = this.pages.get(path);
+    if (listed === undefined) throw new Error(`the page ${path} was asked for, and the project does not have it`);
+    const { index, route, entry } = listed;
     const record = new Record("p", path, index);
     const params = Object.freeze({ ...entry.params });
-    const scope = { page: { params, path, origin: this.site.origin, url: undefined }, slots: null, provided: new Map(), owner: null };
+    const scope = { page: { params, path, origin: this.site.origin, url: undefined }, slots: null, provided: new Map() };
     let top = await this.show(record, this.modules.get(route.file).default, entry.props ?? {}, null, scope);
     for (let i = route.layouts.length - 1; i >= 0; i--) {
       // A layout shows the page in its default slot. What the page, or a
@@ -323,12 +355,10 @@ class Run {
       top = await this.show(record, layout, {}, slots, scope);
     }
     record.top = top;
-    this.counts.pages++;
     this.emit(record);
   }
 
   emit(record) {
-    this.counts.blocks += record.blocks.length;
     const text = encode(record);
     this.batch.push(text);
     if ((this.batchSize += text.length) > 1 << 18) this.flush();
@@ -366,13 +396,29 @@ function sharedName(path, props, slots) {
   return path + "{" + key + "}";
 }
 
+// unnamed reads a name that sharedName wrote. The names of slots follow the
+// last "|" and are made of letters, digits, "-" and "_"; a "|" inside a
+// parameter is followed by the quote that closes its text at the least.
+function unnamed(name) {
+  const start = name.indexOf("{");
+  let inside = name.slice(start + 1, -1);
+  let slots = null;
+  const bar = inside.lastIndexOf("|");
+  if (bar >= 0 && /^[\w,-]*$/.test(inside.slice(bar + 1))) {
+    slots = new Map(inside.slice(bar + 1).split(",").filter((slot) => slot !== "").map((slot) => [slot, []]));
+    inside = inside.slice(0, bar);
+  }
+  return { path: name.slice(0, start), props: JSON.parse("{" + inside + "}"), slots };
+}
+
 // On the wire a record is its header and its blocks, split by \x01; fields
-// are split by \x02, and every value of a block follows a \x00.
+// are split by \x02, and every value of a block follows a \x00. A block that
+// stands for a shared block carries its name.
 function encode(record) {
-  const lines = [record.kind + "\x02" + record.key + "\x02" + record.origin + "\x02" + record.top];
+  const lines = [record.kind + "\x02" + record.key + "\x02" + record.route + "\x02" + record.top];
   for (const block of record.blocks) {
     lines.push(
-      block.shared >= 0
+      block.shared !== null
         ? "u\x02" + block.shared + "\x02" + slotsOf(block.slots)
         : "b\x02" + block.file + "\x02" + block.part + "\x02" + block.children.join(",") + "\x02" + slotsOf(block.slots) + "\x02" + valuesOf(block.values),
     );
@@ -467,15 +513,25 @@ async function entries(route, module) {
 // ---------------------------------------------------------------------------
 // The entry point
 
-// How many pages are computed at once. More does not use more processor,
-// only lets pages wait for their data together.
+// How many units are computed at once. More does not use more processor,
+// only lets them wait for their data together.
 const concurrency = 32;
 
-// run computes every page of the site. modules are the compiled page and
-// layout files by their numbers.
+// placed notes what was being computed when an error came up.
+function placed(error, place) {
+  const failure = error instanceof Error ? error : new Error(String(error));
+  failure.place ??= place;
+  return failure;
+}
+
+// run answers the requests of the Go side until it has no more. modules are
+// the compiled files by their numbers.
+//
+// A message in either direction is a length in four bytes, a letter that
+// says what the message is, and its body.
 export async function run(modules) {
-  const out = Number(process.env.SHUGO_OUT);
-  if (!Number.isInteger(out)) {
+  const [input, output] = [Number(process.env.SHUGO_IN), Number(process.env.SHUGO_OUT)];
+  if (!Number.isInteger(input) || !Number.isInteger(output)) {
     console.error("This file is a part of a Shugo project and is run by the shugo command: `shugo build` or `shugo update`.");
     process.exit(2);
   }
@@ -484,51 +540,44 @@ export async function run(modules) {
     const head = Buffer.allocUnsafe(4);
     head.writeUInt32LE(body.length, 0);
     for (const buffer of [head, body]) {
-      for (let sent = 0; sent < buffer.length; ) sent += writeSync(out, buffer, sent, buffer.length - sent);
+      for (let sent = 0; sent < buffer.length; ) sent += writeSync(output, buffer, sent, buffer.length - sent);
     }
   };
-  let place = "";
+  // Nothing happens here between two requests, so waiting for the next one
+  // may hold everything else up.
+  const fill = (buffer) => {
+    for (let got = 0; got < buffer.length; ) {
+      const count = readSync(input, buffer, got, buffer.length - got, null);
+      if (count === 0) return false;
+      got += count;
+    }
+    return true;
+  };
+  const receive = () => {
+    const head = Buffer.allocUnsafe(4);
+    if (!fill(head)) return null;
+    const body = Buffer.allocUnsafe(head.readUInt32LE(0));
+    return fill(body) ? { kind: String.fromCharCode(body[0]), text: body.toString("utf8", 1) } : null;
+  };
+
   try {
     const site = JSON.parse(readFileSync(new URL("./site.json", import.meta.url), "utf8"));
     const run = new Run(site, new Map(modules), send);
-
-    // First the list of all pages: every route says which pages it has. A
-    // route that names more of an address comes earlier and takes it.
-    const pages = [];
-    for (const [index, route] of site.routes.entries()) {
-      place = `getStaticPaths of ${site.files[route.file].path}`;
-      for (const entry of await entries(route, run.modules.get(route.file))) {
-        const path = address(route, entry.params);
-        const owner = run.claims.get(path);
-        if (owner === index) throw new Error(`getStaticPaths of ${route.pattern} returned the address ${path} twice`);
-        if (owner !== undefined) {
-          run.counts.shadowed++;
-          continue;
-        }
-        run.claims.set(path, index);
-        pages.push({ index, route, entry, path });
+    for (let request = receive(); request !== null && request.kind !== "Q"; request = receive()) {
+      switch (request.kind) {
+        case "L":
+          send("D", JSON.stringify(await run.list()));
+          break;
+        case "C":
+          await run.compute(request.text.split("\x03"));
+          send("D", "{}");
+          break;
+        default:
+          throw new Error(`the shugo command asked for "${request.kind}", which this project's compiled code does not know: build the project again`);
       }
     }
-
-    // Then the pages themselves, several at a time.
-    let next = 0;
-    const worker = async () => {
-      while (next < pages.length) {
-        const { index, route, entry, path } = pages[next++];
-        place = "";
-        try {
-          await run.page(index, route, entry, path);
-        } catch (error) {
-          next = pages.length; // the others stop after the page they are at
-          throw Object.assign(error instanceof Error ? error : new Error(String(error)), { place: `the page ${path} (${site.files[route.file].path})` });
-        }
-      }
-    };
-    await Promise.all(Array.from({ length: concurrency }, worker));
-    run.flush();
-    send("D", JSON.stringify(run.counts));
   } catch (error) {
-    send("E", JSON.stringify({ message: String(error?.message ?? error), stack: String(error?.stack ?? ""), place: error?.place ?? place }));
+    send("E", JSON.stringify({ message: String(error?.message ?? error), stack: String(error?.stack ?? ""), place: error?.place ?? "" }));
     process.exit(1);
   }
 }
