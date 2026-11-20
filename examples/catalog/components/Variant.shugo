@@ -1,0 +1,9 @@
+---
+import type { Variant } from "../lib/catalog"
+const { variant } = Shugo.props as { variant: Variant }
+---
+<li class={variant.stock > 0 ? "variant" : "variant out"}>
+  {variant.title}:
+  <g-if cond={variant.stock > 0}>{variant.stock} in stock</g-if>
+  <g-else>out of stock</g-else>
+</li>

@@ -1,0 +1,23 @@
+---
+import { categories, inCategory, product, shop } from "../lib/catalog"
+import ProductCard from "./ProductCard.shugo"
+
+// The menu shows how many products every category has.
+const menu = categories.slice(0, 8).map((category) => ({
+  href: `/categories/${category.id}`,
+  title: category.title,
+  count: inCategory(category.id).length,
+}))
+---
+<header>
+  <a class="brand" href="/">{shop.name}</a>
+  <nav>
+    <g-for each={menu} as="item">
+      <a href={item.href}>{item.title} <small>{item.count}</small></a>
+    </g-for>
+  </nav>
+  <g-if cond={shop.featured}>
+    <p>Product of the month: {product(shop.featured!).title}</p>
+    <ProductCard id={shop.featured} />
+  </g-if>
+</header>

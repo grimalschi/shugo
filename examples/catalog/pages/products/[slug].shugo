@@ -1,0 +1,44 @@
+---
+import Badge from "../../components/Badge.shugo"
+import ProductCard from "../../components/ProductCard.shugo"
+import Variant from "../../components/Variant.shugo"
+import { finalPrice, price, products, type Product } from "../../lib/catalog"
+
+export function getStaticPaths() {
+  return products.map((item) => ({ params: { slug: item.slug }, props: { item } }))
+}
+
+const { item } = Shugo.props as { item: Product }
+const reviews = item.reviews.filter((review) => review.approved)
+---
+<title slot="head">{item.title} — Measure</title>
+<h1>{item.title}</h1>
+<p class="badges"><g-for each={item.badges} as="badge"><Badge text={badge} /></g-for></p>
+<p class="price">
+  <g-if cond={item.discount}>
+    <s>{price(item.price)}</s>
+    <strong>{price(finalPrice(item))}</strong>
+    <span>−{item.discount!.percent}% to {item.discount!.until}</span>
+  </g-if>
+  <g-else><strong>{price(item.price)}</strong></g-else>
+</p>
+<g-if cond={item.available}><p class="stock">In stock</p></g-if>
+<g-else><p class="stock">Available to order; arriving {item.arrival}</p></g-else>
+<p>{item.description}</p>
+<ul class="variants">
+  <g-for each={item.variants} as="variant"><Variant variant={variant} /></g-for>
+</ul>
+<section class="reviews">
+  <h2>Reviews: {reviews.length}</h2>
+  <g-for each={reviews} as="review">
+    <blockquote><p>{review.text}</p><small>{review.author}</small></blockquote>
+  </g-for>
+</section>
+<g-if cond={item.related.length}>
+  <section class="related">
+    <h2>Frequently bought together</h2>
+    <ul class="cards">
+      <g-for each={item.related} as="id"><li><ProductCard id={id} /></li></g-for>
+    </ul>
+  </section>
+</g-if>

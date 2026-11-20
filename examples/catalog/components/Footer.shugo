@@ -1,0 +1,4 @@
+---
+import { shop } from "../lib/catalog"
+---
+<footer>{shop.name} · {shop.phone}</footer>

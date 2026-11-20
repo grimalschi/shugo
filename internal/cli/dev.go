@@ -2,7 +2,9 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -53,7 +55,7 @@ func (c *command) dev() error {
 				if !open {
 					return
 				}
-				if ignored(event.Name) {
+				if ignored(event.Name) || c.writesTo(event.Name) {
 					continue
 				}
 				if event.Has(fsnotify.Create) {
@@ -72,6 +74,24 @@ func (c *command) dev() error {
 		}
 	}()
 	return c.listen(&server.Server{Pages: pages, Live: live})
+}
+
+// writesTo tells whether the command itself writes to the file: its output
+// may be sent to a file inside the project, and every build would then set
+// off the next one.
+func (c *command) writesTo(path string) bool {
+	changed, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	for _, output := range []io.Writer{c.stdout, c.stderr} {
+		if file, ok := output.(*os.File); ok {
+			if info, err := file.Stat(); err == nil && os.SameFile(changed, info) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // watch watches a folder and every folder inside it.

@@ -1,0 +1,9 @@
+{
+  "name": "shugo-example-tailwind",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.5",
+    "tailwindcss": "^4.3.5"
+  }
+}

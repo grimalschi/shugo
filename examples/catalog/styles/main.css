@@ -1,0 +1,9 @@
+body { color: #222; font: 16px/1.5 system-ui, sans-serif; margin: 0 auto; max-width: 60rem; padding: 0 1rem; }
+header, footer { border-bottom: 1px solid #ddd; padding: 1rem 0; }
+footer { border: 0; border-top: 1px solid #ddd; color: #666; }
+nav a { margin-right: 1rem; }
+.cards { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); list-style: none; padding: 0; }
+.card { border: 1px solid #ddd; border-radius: 8px; color: inherit; display: block; padding: 1rem; text-decoration: none; }
+.badge { background: #eee; border-radius: 4px; font-size: 0.8em; margin-right: 0.25rem; padding: 0 0.4em; }
+.price s { color: #999; }
+.out { color: #999; }

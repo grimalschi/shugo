@@ -1,0 +1,9 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand: #c2410c;
+}
+
+.prose-lite p {
+  @apply my-3 leading-relaxed;
+}

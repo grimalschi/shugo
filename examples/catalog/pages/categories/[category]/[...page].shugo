@@ -1,0 +1,23 @@
+---
+import ProductCard from "../../../components/ProductCard.shugo"
+import { categories, inCategory, type Category, type Product } from "../../../lib/catalog"
+
+// Every category is a list of pages, 24 products on each.
+export function getStaticPaths({ paginate }) {
+  return categories.flatMap((category) =>
+    paginate(inCategory(category.id), { pageSize: 24, params: { category: category.id }, props: { category } }),
+  )
+}
+
+const { category, page } = Shugo.props as { category: Category; page: { data: Product[]; currentPage: number; lastPage: number; total: number; url: { prev?: string; next?: string } } }
+---
+<title slot="head">{category.title} — Measure</title>
+<h1>{category.title}</h1>
+<p>Products: {page.total}. Page {page.currentPage} of {page.lastPage}.</p>
+<ul class="cards">
+  <g-for each={page.data} as="item"><li><ProductCard id={item.id} /></li></g-for>
+</ul>
+<nav class="pages">
+  <g-if cond={page.url.prev}><a href={page.url.prev}>← Previous</a></g-if>
+  <g-if cond={page.url.next}><a href={page.url.next}>Next →</a></g-if>
+</nav>

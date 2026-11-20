@@ -243,6 +243,7 @@ class Run {
     this.modules = modules; // Map of file number → module, for pages and layouts
     this.send = send;
     this.shared = new Map(); // name → promise of the number of the shared block
+    this.numbers = new Map(); // name → the number, once the block is computed
     this.waits = new Map(); // which shared block every shared block being computed waits for
     this.claims = new Map(); // address → route
     this.batch = [];
@@ -255,7 +256,9 @@ class Run {
   async show(record, target, props, slots, scope) {
     const name = this.site.files[target.file].shared ? sharedName(this.site.files[target.file].path, props, slots) : null;
     if (name !== null) {
-      return record.use(await this.share(name, target, props, slots, scope), slots).index;
+      // Most uses of a shared block come after it has been computed.
+      const number = this.numbers.get(name) ?? (await this.share(name, target, props, slots, scope));
+      return record.use(number, slots).index;
     }
     const block = record.block(target.file, 0);
     block.slots = slots;
@@ -294,6 +297,7 @@ class Run {
     const inner = { page: null, slots, provided: null, owner: name };
     await target.render(new Writer(this, record, block, inner), new Context(target, props, inner));
     this.emit(record);
+    this.numbers.set(name, number);
     return number;
   }
 
@@ -340,18 +344,30 @@ class Run {
 
 // A component that depends on nothing of the page and is called with plain
 // values shows the same wherever it stands, so it is computed once under a
-// name made of its file and those values. null means: not shared.
+// name made of its file and those values. null means: not shared. JSON
+// writes every control character as an escape, so a name never holds one of
+// the separators.
 function sharedName(path, props, slots) {
   let key = "";
-  for (const name of Object.keys(props).sort()) {
+  for (const name in props) {
     const value = props[name];
     if (value === undefined) continue;
     const type = typeof value;
     if (value !== null && type !== "string" && type !== "boolean" && !(type === "number" && Number.isFinite(value))) return null;
     key += JSON.stringify(name) + ":" + JSON.stringify(value) + ",";
   }
+  // Parameters in another order are the same parameters.
+  if (key.indexOf(",") !== key.length - 1) key = sorted(props);
   if (slots !== null) key += "|" + [...slots.keys()].sort().join(",");
-  return clean(path + "{" + key + "}");
+  return path + "{" + key + "}";
+}
+
+function sorted(props) {
+  let key = "";
+  for (const name of Object.keys(props).sort()) {
+    if (props[name] !== undefined) key += JSON.stringify(name) + ":" + JSON.stringify(props[name]) + ",";
+  }
+  return key;
 }
 
 // On the wire a record is its header and its blocks, split by \x01; fields
@@ -479,8 +495,10 @@ export async function run(modules) {
   try {
     const site = JSON.parse(readFileSync(new URL("./site.json", import.meta.url), "utf8"));
     const run = new Run(site, new Map(modules), send);
-    const working = new Set();
-    let failure;
+
+    // First the list of all pages: every route says which pages it has. A
+    // route that names more of an address comes earlier and takes it.
+    const pages = [];
     for (const [index, route] of site.routes.entries()) {
       place = `getStaticPaths of ${site.files[route.file].path}`;
       for (const entry of await entries(route, run.modules.get(route.file))) {
@@ -488,22 +506,29 @@ export async function run(modules) {
         const owner = run.claims.get(path);
         if (owner === index) throw new Error(`getStaticPaths of ${route.pattern} returned the address ${path} twice`);
         if (owner !== undefined) {
-          // A route that names more of the address has taken it already.
           run.counts.shadowed++;
           continue;
         }
         run.claims.set(path, index);
-        if (failure !== undefined) throw failure;
-        while (working.size >= concurrency) await Promise.race(working);
-        const task = run.page(index, route, entry, path).catch((error) => {
-          failure ??= Object.assign(error instanceof Error ? error : new Error(String(error)), { place: `the page ${path} (${site.files[route.file].path})` });
-        });
-        working.add(task);
-        task.finally(() => working.delete(task));
+        pages.push({ index, route, entry, path });
       }
     }
-    await Promise.all(working);
-    if (failure !== undefined) throw failure;
+
+    // Then the pages themselves, several at a time.
+    let next = 0;
+    const worker = async () => {
+      while (next < pages.length) {
+        const { index, route, entry, path } = pages[next++];
+        place = "";
+        try {
+          await run.page(index, route, entry, path);
+        } catch (error) {
+          next = pages.length; // the others stop after the page they are at
+          throw Object.assign(error instanceof Error ? error : new Error(String(error)), { place: `the page ${path} (${site.files[route.file].path})` });
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: concurrency }, worker));
     run.flush();
     send("D", JSON.stringify(run.counts));
   } catch (error) {

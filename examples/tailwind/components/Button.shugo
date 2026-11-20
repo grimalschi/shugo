@@ -1,0 +1,9 @@
+---
+interface Props {
+  href: string
+  kind?: "primary" | "quiet"
+}
+const { href, kind = "primary" } = Shugo.props as Props
+const look = kind === "primary" ? "bg-brand text-white hover:bg-orange-800" : "text-brand underline"
+---
+<a href={href} class={`inline-block rounded-lg px-4 py-2 font-medium ${look}`}><g-slot /></a>

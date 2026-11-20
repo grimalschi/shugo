@@ -1,0 +1,11 @@
+---
+import ProductCard from "../components/ProductCard.shugo"
+import { products } from "../lib/catalog"
+
+const first = products.slice(0, 24)
+---
+<title slot="head">Measure — handmade tableware</title>
+<h1>New in the catalog</h1>
+<ul class="cards">
+  <g-for each={first} as="item"><li><ProductCard id={item.id} /></li></g-for>
+</ul>
