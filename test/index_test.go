@@ -169,3 +169,60 @@ console.log("index")
 	expect(t, s.page("/"), `<p>Jug: JugMugTray</p>`)
 	s.sameAsBuilt()
 }
+
+// Reading starts anew when an index is made in the middle of a run, so what
+// is read after it may be of a later state of the data than what was read
+// before. The page here is written to show it: something writes to the data
+// between its two questions, and the second is new to the run.
+//
+// Nothing is lost by it. The run notes where the journal stood before it
+// read anything, so the change is past that place, and the next update
+// computes again whoever read the row — as it does for any change that
+// comes while a site is built.
+func TestChangeWhileAnIndexIsMade(t *testing.T) {
+	s := newSite(t, `
+-- shugo.json --
+{"data": "data/shop.db"}
+-- lib/outside.ts --
+// Whoever fills the database writes to it while the site is built.
+export async function rename(): Promise<void> {
+  const change = "UPDATE products SET title = 'Mug' WHERE id = 'p2' AND title = 'Cup'"
+  if (typeof Bun !== "undefined") {
+    const { Database } = await import("bun:sqlite")
+    const db = new Database(process.env.SHUGO_DATA)
+    db.exec(change)
+    db.close()
+  } else {
+    const { DatabaseSync } = await import("node:sqlite")
+    const db = new DatabaseSync(process.env.SHUGO_DATA)
+    db.exec(change)
+    db.close()
+  }
+}
+-- pages/index.shugo --
+---
+import { rename } from "../lib/outside"
+const before = Shugo.query("products").get("p2").title
+await rename()
+const after = Shugo.query("products").where({ category: "c1" }).order("position").all().map((row) => row.title)
+console.log("index")
+---
+<p>{before}: {after}</p>
+`)
+	s.sql(readRows)
+	if report := s.build(); !reflect.DeepEqual(report.Data.Indexes, []string{"_shugo_products_category_position"}) {
+		t.Fatalf("the build made %q", report.Data.Indexes)
+	}
+	expect(t, s.page("/"), `<p>Cup: JugMugTray</p>`)
+	s.computed()
+
+	report := s.update()
+	if report.Data.Whole || report.Data.Rows != 1 {
+		t.Errorf("the update after it: %+v", report.Data)
+	}
+	if got := s.computed(); !reflect.DeepEqual(got, []string{"index"}) {
+		t.Errorf("computed %q", got)
+	}
+	expect(t, s.page("/"), `<p>Mug: JugMugTray</p>`)
+	s.sameAsBuilt()
+}
