@@ -97,6 +97,10 @@ func (d *DB) Index(table string, equal, order []string, rows bool) (made string,
 			one.order = append(slices.Clone(columns), key)
 		}
 	}
+	if len(one.columns) == 0 {
+		// The order of the key alone is the table itself.
+		return "", nil
+	}
 	tx, err := d.db.Begin()
 	if err != nil {
 		return "", err
@@ -116,9 +120,11 @@ func (d *DB) Index(table string, equal, order []string, rows bool) (made string,
 		}
 		one.name = plain + "_" + strconv.Itoa(n)
 	}
+	// The queries compare values exactly, whatever way of comparing text
+	// the column was declared with; so does the index.
 	quoted := make([]string, len(one.columns))
 	for i, column := range one.columns {
-		quoted[i] = quote(column)
+		quoted[i] = quote(column) + " COLLATE BINARY"
 	}
 	if _, err := tx.Exec("CREATE INDEX " + quote(one.name) + " ON " + quote(t.Name) + " (" + strings.Join(quoted, ", ") + ")"); err != nil {
 		return "", fmt.Errorf("cannot make an index of the table %s over %s: %w", table, strings.Join(one.columns, ", "), err)

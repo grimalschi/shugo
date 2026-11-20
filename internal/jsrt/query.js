@@ -651,9 +651,9 @@ export class Query {
     const taken = [...new Set([...(select ?? table.columns.keys()), table.key, ...joins.map((join) => join.column)])];
     const sorted = order.map((one) => `${quote(one.column)}${one.direction === "desc" ? " DESC" : ""}`);
     for (const one of order) matters.add(one.column);
-    // The key runs the way the order before it runs, for the index to be
-    // read from one end.
-    if (ties) sorted.push(quote(table.key) + (order.at(-1)?.direction === "desc" ? " DESC" : ""));
+    // The key is compared exactly, as the index holds it, and runs the way
+    // the order before it runs, for the index to be read from one end.
+    if (ties) sorted.push(quote(table.key) + " COLLATE BINARY" + (order.at(-1)?.direction === "desc" ? " DESC" : ""));
     let text = `SELECT ${taken.map(quote).join(", ")} FROM ${quote(table.name)}${filter}${sorted.length === 0 ? "" : " ORDER BY " + sorted.join(", ")}`;
     const cut = way === "first" || limit !== -1 || offset !== -1;
     if (cut) {

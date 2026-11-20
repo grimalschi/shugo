@@ -8,10 +8,10 @@ import (
 )
 
 const wares = `
-CREATE TABLE products (id TEXT PRIMARY KEY, slug TEXT NOT NULL UNIQUE, title TEXT, price INTEGER, category TEXT, position INTEGER, note TEXT);
+CREATE TABLE products (id TEXT PRIMARY KEY, slug TEXT NOT NULL UNIQUE, title TEXT, price INTEGER, category TEXT, position INTEGER, note TEXT, maker TEXT COLLATE NOCASE);
 CREATE TABLE "a_b" (id INTEGER PRIMARY KEY, c TEXT);
 CREATE TABLE a (id INTEGER PRIMARY KEY, b TEXT, c TEXT);
-INSERT INTO products VALUES ('p1', 'jug', 'Jug', 100, 'c1', 1, ''), ('p2', 'cup', 'Cup', 50, 'c1', 2, '');
+INSERT INTO products VALUES ('p1', 'jug', 'Jug', 100, 'c1', 1, '', 'Anna'), ('p2', 'cup', 'Cup', 50, 'c1', 2, '', 'anna');
 `
 
 // made returns the indexes that Shugo has made, as "name: the statement
@@ -34,7 +34,7 @@ func (l *lab) made() []string {
 		if err := rows.Scan(&statement); err != nil {
 			l.t.Fatal(err)
 		}
-		out = append(out, strings.NewReplacer(`"`, "", "CREATE INDEX ", "").Replace(statement))
+		out = append(out, strings.NewReplacer(`"`, "", "CREATE INDEX ", "", " COLLATE BINARY", "").Replace(statement))
 	}
 	return out
 }
@@ -122,12 +122,17 @@ func TestIndex(t *testing.T) {
 	made(l.count("a", by{"c"}), "_shugo_a_c")
 	none("rows by the column of a count", l.rows("a", by{"c"}, "id"), l.rows("a", nil, "c", "id"))
 
+	// A column that was declared to compare text loosely gets an index
+	// that compares it exactly, as the queries do.
+	made(l.rows("products", by{"maker"}, "id"), "_shugo_products_maker_id")
+
 	if want := []string{
 		"_shugo_a_b ON a (b)",
 		"_shugo_a_b_c ON a (b, c)",
 		"_shugo_a_c ON a (c)",
 		"_shugo_products_category_id ON products (category, id)",
 		"_shugo_products_category_position_id ON products (category, position, id)",
+		"_shugo_products_maker_id ON products (maker, id)",
 		"_shugo_products_position_category_id ON products (position, category, id)",
 		"_shugo_products_position_id ON products (position, id)",
 		"_shugo_products_price ON products (price)",
@@ -142,7 +147,7 @@ func TestIndex(t *testing.T) {
 	l.open()
 	none("after the database was opened anew",
 		l.rows("products", by{"category"}, "position", "id"), l.rows("products", by{"title"}, "id"), l.count("products", by{"price"}),
-		l.rows("a", by{"b"}, "c", "id"), l.rows("a", by{"c"}, "id"))
+		l.rows("products", by{"maker"}, "id"), l.rows("a", by{"b"}, "c", "id"), l.rows("a", by{"c"}, "id"))
 	// An index is not a change of the tables: the journal keeps its name,
 	// and nothing of the data has moved.
 	if l.db.ID != id {
