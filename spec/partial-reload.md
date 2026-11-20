@@ -1,6 +1,6 @@
 # Partial data reboot
 
-Now each update calculates the entire site anew and records differences. On 100,000 pages, this is 3.3–3.7 s, no matter how much it changes. This document is a suggestion as to how to update only a part when the data source can say what exactly has changed.
+Now each update calculates the entire site anew and records differences. On 100,000 pages, this is 3.2–3.7 s, no matter how much it changes. This document is a suggestion as to how to update only a part when the data source can say what exactly has changed.
 
 ## Decisions
 

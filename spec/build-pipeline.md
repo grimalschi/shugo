@@ -55,7 +55,7 @@ The stand is a store of [examples/catalog](../examples/catalog/README.md), Bun 1
 | ---: | ---: | ---: | ---: |
 | 1 000 | 1 052 | 0.11–0.15 s | 0.11–0.13 s |
 | 10 000 | 10 452 | 0.64–0.69 s | 0.40–0.45 s |
-| 100 000 | 104 202 | 8.6 s | 3.3–3.7 s |
+| 100 000 | 104 202 | 8.5–8.6 s | 3.2–3.7 s |
 
 Update time does not depend on what has changed: everything is calculated, only the difference is recorded. Of 3.5 s on 100,000, about 2.7 s products are occupied by JS itself, including 0.4 s - read the stand data file. Node update is occupied by 4.3–4.7 s.
 
