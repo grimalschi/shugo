@@ -17,7 +17,7 @@ The words of the author of the project, 20 November 2026 year.
 - The adapter is most likely running from the command line.
 - The copy tables describe Shugo. The adapter tells you what data will come: a set of fields and their types - a scheme on TypeScript, probably on Valibot or Zod. The adapter works with TS data types; it writes Shugo into a copy and decides which types of SQLite to take based on what the adapter has sent.
 - The date the adapter sent is saved as a date in the copy.
-- While the copy works without indexes. The question of indices is postponed.
+- The indexes in the copy are built by Shugo itself: it knows all the project requests and columns they are looking for. The author of the adapter does not describe the indexes.
 
 ## Proposal, pending approval
 
@@ -124,6 +124,14 @@ About the date. The schema itself says that the field is a date: both in Valibot
 
 SQLite has no separate date type: the date is stored in text or number, and its date functions take both. The text in the form of ISO 8601, `2026-11-20T10:30:00.000Z` is offered: such dates are compared and sorted as rows, read by eyes, functions of `date`, `strftime`, `unixepoch` work with them. The data code is returned to `Date`; it is checked that the value is returned without loss.
 
+### Indices
+
+An index needs a query that searches for rows by column values or takes them in column order. What exactly searches for and how to organize each project request, Shugo learns when the request is first set, and then builds an index: first the columns that are searched for, then the order columns. You don’t need an index for a key and a unique column: it already exists.
+
+Why it is necessary, measured on the example of a store without indexes, except for keys: the first assembly 1,000 Goods 0.7 s instead of 0.2 s, 2,000 — 1.9 s instead of 0.4 s, 5,000 — 11 s instead of 0.7 s. Time grows like a square of the number of records: each page goes through the whole table. Stands still worked with indexes that were created by the data generator.
+
+The implementation is done in the fifth trial branch, `lab/query-signals`.
+
 Changed the scheme — changed the tables copy. The journal after that can not say what has changed in the data, and the site is calculated as a whole; so already works option with the database.
 
 ### Commands
@@ -140,7 +148,6 @@ shugo update                         find pages that have read the changed
 ## Open questions
 
 - What is the schema library: Valibot, Zod or any that gives JSON Schema and supports Standard Schema.
-- **Postponed by author: indexes in copy.** There are no keys yet. What this means is measured by the example of the store: the first assembly of 1,000 goods is 0.7 s instead of 0.2 s, 2,000 - 1.9 s instead of 0.4 s, 5,000 - 11 s instead of 0.7 s. Time grows like a square of the number of records: each page takes the whole table. The stands still worked with indexes that the data generator created. When we get back to the question: Shugo knows all the project requests and columns they are looking for, and can build indexes themselves.
 - What are the limitations of page requests to a copy; your SQL can only be tracked roughly, by tables and columns.
 - After the `shugo data …` commands, the site is updated by itself or by a separate `shugo update` command.
 - Multiple adapters in one project and connections between their collections.
