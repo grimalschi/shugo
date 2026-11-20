@@ -68,18 +68,18 @@ const indexSite = `
 
 // Shugo makes the indexes that the questions of a project need: by the
 // columns the rows are found by with given values, then by the columns of
-// the order. The author of the project makes none.
+// the order, down to the key. The author of the project makes none.
 func TestIndexesAreMade(t *testing.T) {
 	s := newSite(t, indexSite)
 	s.sql(readRows)
 	report := s.build()
 	want := []string{
 		"_shugo_categories_position_title_id", // both: the columns with values in the order of their names, then the order
-		"_shugo_products_category",            // equal
-		"_shugo_products_category_price",      // counted
-		"_shugo_products_note_position",       // ordered; the count beside it is served by it
-		"_shugo_products_price",               // sorted
-		"_shugo_products_title",               // among
+		"_shugo_products_category_id",         // equal
+		"_shugo_products_category_price",      // counted: a count has no order
+		"_shugo_products_note_position_id",    // ordered; the count beside it is served by it
+		"_shugo_products_price_id",            // sorted
+		"_shugo_products_title_id",            // among
 	}
 	if got := s.indexes(); !reflect.DeepEqual(got, want) {
 		t.Errorf("indexes: %q\n    want: %q", got, want)
@@ -114,21 +114,21 @@ func TestIndexesAreMade(t *testing.T) {
 // A database that has indexes made by hand keeps them, and Shugo makes none
 // beside one that serves a question. The columns the rows are found by with
 // given values may stand in it whichever way round. For rows that are taken
-// it has to end where the order of the question ends; for a count it only
-// has to start with the columns of the count.
+// it has to end where the order of the question ends, with the key; for a
+// count it only has to start with the columns of the count.
 func TestIndexesMadeByHand(t *testing.T) {
 	s := newSite(t, indexSite)
 	s.sql(readRows + `
-CREATE INDEX by_category ON products (category);
-CREATE INDEX by_note ON products (note, position);
-CREATE INDEX by_price ON products (price, title);
+CREATE INDEX by_category ON products (category, id);
+CREATE INDEX by_note ON products (note, position, id);
+CREATE INDEX by_price ON products (price);
 CREATE INDEX by_title ON categories (title, position, id);
 CREATE INDEX by_three ON products (price, category, note);
 `)
 	s.build()
-	// The index of the price goes on with the title: the two cheapest
-	// products would come from it by their titles where prices are the same.
-	if got, want := s.indexes(), []string{"_shugo_products_price", "_shugo_products_title"}; !reflect.DeepEqual(got, want) {
+	// The index of the price does not end with the key: products of the
+	// same price would come from it as they happen to lie in the table.
+	if got, want := s.indexes(), []string{"_shugo_products_price_id", "_shugo_products_title_id"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("indexes: %q\n    want: %q", got, want)
 	}
 	expect(t, s.page("/ordered"), `<p>VaseTrayCupJug</p><p>4</p>`)
@@ -151,32 +151,44 @@ console.log("a")
 <p>{Shugo.query("products").where({ category: "c1" }).order("title").all().map((row) => row.title)}</p><p>{Shugo.query("products").order("price").order("title", "desc").all().map((row) => row.title)}</p>
 `
 
-// Three products cost the same. One table keeps its rows by its key, and
-// one has a column called as the place of a row in its table is.
-const orderRows = readRows + `
-UPDATE products SET price = 5 WHERE category = 'c1';
+// Three products cost the same, and were put into their table in another
+// order than that of their keys. One table keeps its rows by a key of
+// text, one by a key of whole numbers.
+const orderRows = `
+CREATE TABLE products (id TEXT PRIMARY KEY, title TEXT, price INTEGER, note TEXT, category TEXT);
+INSERT INTO products VALUES ('p3', 'Tray', 5, '', 'c1'), ('p1', 'Jug', 5, '', 'c1'), ('p4', 'Vase', 9, '', 'c2'), ('p2', 'Cup', 5, '', 'c1');
 CREATE TABLE tags (title TEXT PRIMARY KEY, kind TEXT) WITHOUT ROWID;
 INSERT INTO tags VALUES ('new', 'x'), ('big', 'x'), ('old', 'y');
-CREATE TABLE odd (id INTEGER PRIMARY KEY, rowid TEXT, title TEXT, kind TEXT);
-INSERT INTO odd VALUES (2, 'b', 'second', 'x'), (1, 'a', 'first', 'x');
+CREATE TABLE odd (id INTEGER PRIMARY KEY, title TEXT, kind TEXT);
+INSERT INTO odd VALUES (2, 'second', 'x'), (1, 'first', 'x');
 `
 
 // Rows that nothing orders, and rows that the order asked for does not tell
-// apart, come as they lie in the table — whichever index finds them. So a
-// page shows the same after an index is made for another page, and the same
-// as a site built anew on a database that has the index already.
-func TestRowsComeAsTheyLieInTheTable(t *testing.T) {
+// apart, come in the order of their keys — whichever index finds them and
+// wherever they lie in their table. So a page shows the same after an index
+// is made for another page, and after a row is removed and put back as it
+// was; and the same as a site built anew.
+func TestRowsComeInTheOrderOfTheirKeys(t *testing.T) {
 	const want = `<p>JugCupTray</p><p>JugCupTrayVase VaseTrayCupJug JugCup</p><p>bignew firstsecond</p>`
 	s := newSite(t, orderSite)
 	s.sql(orderRows)
 	s.build()
+	s.computed()
 	expect(t, s.page("/a"), want)
 	expect(t, s.page("/b"), `<p>CupJugTray</p><p>TrayJugCupVase</p>`)
 	if got, want := s.indexes(), []string{
-		"_shugo_odd_kind", "_shugo_products_category", "_shugo_products_category_title", "_shugo_products_price", "_shugo_products_price_title", "_shugo_tags_kind",
+		"_shugo_odd_kind", "_shugo_products_category_id", "_shugo_products_category_title_id", "_shugo_products_price_id", "_shugo_products_price_title_id", "_shugo_tags_kind",
 	}; !reflect.DeepEqual(got, want) {
 		t.Errorf("indexes: %q\n    want: %q", got, want)
 	}
+	s.sameAsBuilt()
+
+	// A row is removed and put back as it was, and one is written over
+	// with what no page reads of it: both lie at the end of the table now,
+	// and nothing has changed for the pages.
+	s.changed(`DELETE FROM products WHERE id = 'p1'; INSERT INTO products VALUES ('p1', 'Jug', 5, '', 'c1')`)
+	s.changed(`INSERT OR REPLACE INTO products VALUES ('p3', 'Tray', 5, 'checked', 'c1')`)
+	expect(t, s.page("/a"), want)
 	s.sameAsBuilt()
 
 	// The same where indexes made by hand go on after the columns of the
@@ -218,7 +230,7 @@ console.log("index")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := report.Data.Indexes, []string{"_shugo_products_category_position"}; !reflect.DeepEqual(got, want) || report.Data.Whole {
+	if got, want := report.Data.Indexes, []string{"_shugo_products_category_position_id"}; !reflect.DeepEqual(got, want) || report.Data.Whole {
 		t.Errorf("the update made %q, want %q; %+v", got, want, report.Data)
 	}
 	expect(t, s.page("/"), `<p>Jug: JugCupTray</p>`)
@@ -269,7 +281,7 @@ console.log("index")
 <p>{before}: {after}</p>
 `)
 	s.sql(readRows)
-	if report := s.build(); !reflect.DeepEqual(report.Data.Indexes, []string{"_shugo_products_category_position"}) {
+	if report := s.build(); !reflect.DeepEqual(report.Data.Indexes, []string{"_shugo_products_category_position_id"}) {
 		t.Fatalf("the build made %q", report.Data.Indexes)
 	}
 	expect(t, s.page("/"), `<p>Cup: JugMugTray</p>`)

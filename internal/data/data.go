@@ -60,6 +60,7 @@ type Table struct {
 	// indexes are the indexes rows of the table can be found by, once they
 	// were asked about: see Index.
 	indexes []index
+	byKey   bool // its rows lie in the order of the key
 	listed  bool
 }
 
