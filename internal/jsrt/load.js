@@ -23,7 +23,7 @@
 import { readFileSync, readSync, writeSync } from "node:fs";
 import { createRequire } from "node:module";
 
-import { open, Query, Reads } from "shugo:query";
+import { open, Query, Reads, unwatched } from "shugo:query";
 
 // The data database of the project, once it is open; null if it has none.
 let data = null;
@@ -231,8 +231,6 @@ function mix(h) {
   return h ^ (h >>> 16);
 }
 
-
-
 // ---------------------------------------------------------------------------
 // What a template reads
 
@@ -251,8 +249,11 @@ function copy(v, depth = 0) {
   }
   const kind = Object.getPrototypeOf(v);
   if (kind === Object.prototype || kind === null) {
+    // A row of the data database is read whole here, so it is taken
+    // without its watcher.
+    const from = unwatched(v);
     const out = kind === null ? Object.create(null) : {};
-    for (const key in v) out[key] = copy(v[key], depth);
+    for (const key in from) out[key] = copy(from[key], depth);
     return out;
   }
   if (v instanceof Date) return new Date(v.getTime());

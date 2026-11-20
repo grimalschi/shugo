@@ -344,6 +344,7 @@ Shugo.query("products")                       // a table
 - **In a component without props**, for what every page shows: `<Header />` reads the menu itself.
 - **Not in the markup**, and not in a component that was given an object: those only show. A query in `{…}` is an error that says so.
 - Not in a module of `lib/` when it is imported: a query belongs to the page or component that asks, so only `Shugo.query` and the `query` of `getStaticPaths` can ask. A helper takes the query function or the rows as an argument.
+- **A row is for the script that asked for it.** Do not keep rows in a variable of a module for other pages: a page that reads a kept row has not asked for it, and nothing would compute it again when the row changes. Reading a row after the page that asked for it was computed is an error that says so. Ask again instead: a row by its key takes a few microseconds.
 - Throw an error when a row that must be there is not: `if (!product) throw new Error(…)`.
 
 ### Without a database

@@ -194,6 +194,90 @@ console.log("index")
 	s.changed(`UPDATE products SET title = 'Pot' WHERE id = 'p1'`, "index")
 }
 
+// A row is an object like any other, on Bun and on Node: it has the methods
+// every object has, and asking one of them about a column reads the column.
+func TestRowIsAnOrdinaryObject(t *testing.T) {
+	s := newSite(t, `
+-- shugo.json --
+{"data": "data/shop.db"}
+-- pages/index.shugo --
+---
+const item = Shugo.query("products").get("p1")
+const priced = item.hasOwnProperty("price")
+const text = String(item)
+console.log("index")
+---
+<p>{priced} {text}</p>
+`)
+	s.sql(readRows)
+	s.build()
+	s.computed()
+	expect(t, s.page("/"), `<p>true [object Object]</p>`)
+	s.changed(`UPDATE products SET title = 'Big jug' WHERE id = 'p1'`)
+	s.changed(`UPDATE products SET price = 12 WHERE id = 'p1'`, "index")
+}
+
+// A row that a template reads whole is handed over without its watcher. Only
+// a row is: an object of the project that answers to any name it is asked
+// for is copied for the template like every other object.
+func TestOnlyRowsAreHandedOver(t *testing.T) {
+	s := newSite(t, `
+-- shugo.json --
+{"data": "data/shop.db"}
+-- components/Name.shugo --
+<b>{Shugo.props.of.title}</b>
+-- pages/index.shugo --
+---
+import Name from "../components/Name.shugo"
+const item = Shugo.query("products").get("p1")
+const shop = new Proxy({ title: "Shop" }, { get: (target, name) => target[name] ?? "nothing" })
+---
+<Name of={item} /><Name of={shop} />
+`)
+	s.sql(readRows)
+	s.build()
+	expect(t, s.page("/"), `<b>Jug</b><b>Shop</b>`)
+}
+
+// A row notes what is read of it for the one who asked for it. Kept in a
+// module and read by another page, it would leave that page depending on
+// nothing: the row refuses, and says what to do.
+func TestRowKeptForAnotherScript(t *testing.T) {
+	s := newSite(t, `
+-- shugo.json --
+{"data": "data/shop.db"}
+-- lib/kept.ts --
+let kept: { title: string } | undefined
+export const jug = (Shugo: any) => (kept ??= Shugo.query("products").get("p1"))
+-- pages/index.shugo --
+---
+import { jug } from "../lib/kept"
+const item = jug(Shugo)
+---
+<p>{item.title}</p>
+-- pages/about.shugo --
+---
+import { jug } from "../lib/kept"
+const item = jug(Shugo)
+---
+<p>{item.title}</p>
+`)
+	s.sql(readRows)
+	_, err := s.tryBuild()
+	if err == nil {
+		t.Fatal("no error")
+	}
+	for _, want := range []string{
+		"a row of the table products is read when the page, shared block or list of pages that asked for it is already computed",
+		"let every script ask for the rows it uses",
+		"while computing the page /",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("%v\nwant: %s", err, want)
+		}
+	}
+}
+
 // A check computes everything and names the pages that came out different
 // although no row they read has changed: they read something past the
 // database, which a plain update cannot see.

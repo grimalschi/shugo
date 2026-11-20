@@ -2,7 +2,7 @@
 //
 // A query is built step by step and run by all(), first(), get() or count():
 //
-//   Shugo.query("products").select("title", "price").where({ category: "c9" }).order("position").limit(24).all()
+//   Shugo.query("products").where({ category: "c9" }).order("position").limit(24).all()
 //
 // Every query that runs leaves readings with the page or shared block that
 // made it: which rows of which table it looked for, and which of their
@@ -36,15 +36,20 @@ export async function open(path, declare) {
     const { DatabaseSync } = await import("node:sqlite");
     const db = new DatabaseSync(path, { readOnly: true });
     db.exec("BEGIN");
-    // Node gives rows without the methods every object has; templates may
-    // count on them, so rows are made the objects they are on Bun.
+    // Node gives rows without the methods every object has; a script may
+    // count on them, so rows are given them, as they have them on Bun.
+    const usual = (row) => Object.setPrototypeOf(row, Object.prototype);
     prepare = (sql) => {
       const statement = db.prepare(sql);
       return {
-        all: (...values) => statement.all(...values).map((row) => ({ ...row })),
-        get: (...values) => {
+        all(...values) {
+          const rows = statement.all(...values);
+          rows.forEach(usual);
+          return rows;
+        },
+        get(...values) {
           const row = statement.get(...values);
-          return row === undefined ? undefined : { ...row };
+          return row === undefined ? undefined : usual(row);
         },
       };
     };
@@ -148,6 +153,9 @@ const comparisons = new Set(["=", "!=", "<", "<=", ">", ">=", "like", "in"]);
 export class Reads {
   constructor() {
     this.asked = [];
+    // Once the readings are told, a column read of these rows would be read
+    // unseen. closed tells the rows to refuse it.
+    this.closed = false;
   }
 
   // text settles the readings and writes them for the Go side: a JSON list
@@ -155,10 +163,12 @@ export class Reads {
   // another; the shape tells how many values a key has.
   //
   // It is asked for when nothing will read the rows any more: after the
-  // script has run and the template has been given its copy. whole tells
-  // that the rows went on to others who may read anything of them — a list
-  // of pages hands them to its pages — and counts every column as read.
+  // script has run and the template has been given its copy. From then on
+  // the rows are closed. whole tells that the rows went on to others who
+  // may read anything of them — a list of pages hands them to its pages —
+  // and counts every column as read; such rows stay open.
   text(whole = false) {
+    this.closed = !whole;
     if (this.asked.length === 0) return "";
     const list = [];
     for (const one of this.asked) one.settle(list, whole);
@@ -171,30 +181,69 @@ export class Reads {
 // JSON does.
 const everything = "*";
 
-// Watcher stands between a row and whoever reads it, and notes in seen the
-// names that are read. The row itself is a plain object and stays one.
+// A watcher that is asked for bare hands over its row as it is, in a
+// Handed, and counts every column of the row as read.
+const bare = Symbol("bare");
+
+class Handed {
+  constructor(row) {
+    this.row = row;
+  }
+}
+
+// unwatched returns a row without its watcher, for one who is about to read
+// all of it: listing the columns of a row through its watcher costs over
+// twenty times what it costs on the row itself. Every column of the row
+// counts as read. What is not a row comes back as it is.
+export function unwatched(value) {
+  const handed = value[bare];
+  return handed instanceof Handed ? handed.row : value;
+}
+
+// Watcher stands between a row of a table and whoever reads it, and notes in
+// seen the names that are read. The row itself is a plain object and stays
+// one. reads is what the row was asked for.
 class Watcher {
-  constructor(seen) {
+  constructor(reads, table, seen) {
+    this.reads = reads;
+    this.table = table;
     this.seen = seen;
   }
 
+  // note notes a name that is read. A row that outlives the one who asked
+  // for it — kept in a variable of a module, and read by the script of
+  // another page — would be read with nobody depending on it.
+  note(name) {
+    if (this.reads.closed) {
+      throw new Error(
+        `a row of the table ${this.table} is read when the page, shared block or list of pages that asked for it is already computed, so whoever reads it now would not be computed again when the row changes. ` +
+          "A row is for the script that asked for it: do not keep it in a variable of a module for others, let every script ask for the rows it uses",
+      );
+    }
+    this.seen.add(name);
+  }
+
   get(row, name) {
-    if (typeof name === "string") this.seen.add(name);
+    if (typeof name === "string") this.note(name);
+    else if (name === bare) {
+      this.note(everything);
+      return new Handed(row);
+    }
     return row[name];
   }
 
   has(row, name) {
-    if (typeof name === "string") this.seen.add(name);
+    if (typeof name === "string") this.note(name);
     return name in row;
   }
 
   ownKeys(row) {
-    this.seen.add(everything);
+    this.note(everything);
     return Reflect.ownKeys(row);
   }
 
   getOwnPropertyDescriptor(row, name) {
-    if (typeof name === "string") this.seen.add(name);
+    if (typeof name === "string") this.note(name);
     return Reflect.getOwnPropertyDescriptor(row, name);
   }
 }
@@ -305,9 +354,9 @@ export class Query {
     return name;
   }
 
-  // select names the columns to take. Without it a query takes all of them;
-  // a page is computed again only when a column it took changes, so naming
-  // the ones it shows keeps it from being computed for nothing.
+  // select names the columns to take. Without it a query takes all of them.
+  // It is a way to fetch less and no more than that: what a reader depends
+  // on is the columns that are read of the rows, named here or not.
   select(...columns) {
     const names = columns.flat();
     if (names.length === 0) throw new Error('select() takes the names of columns: select("id", "title")');
@@ -428,6 +477,7 @@ export class Query {
   // is read of it from now on.
   #rows(plan) {
     const values = this.#values;
+    const reads = this.#reads;
     const rows = plan.statement.all(...plan.places.map((at) => values[at]));
     const asked = new Asked(plan, values);
     for (const join of plan.joins) {
@@ -445,7 +495,7 @@ export class Query {
           const seen = new Set();
           // A row that is not there is read too: it is missed until it comes.
           asked.joined.push([join, value, seen]);
-          found.set(value, other == null ? null : new Proxy(other, new Watcher(seen)));
+          found.set(value, other == null ? null : new Proxy(other, new Watcher(reads, join.table.name, seen)));
         }
         row[join.as] = found.get(value);
       }
@@ -457,14 +507,14 @@ export class Query {
       for (let i = 0; i < rows.length; i++) {
         const seen = new Set(plan.pointers);
         asked.rows.push([rows[i][table.key], seen]);
-        rows[i] = new Proxy(rows[i], new Watcher(seen));
+        rows[i] = new Proxy(rows[i], new Watcher(reads, table.name, seen));
       }
     } else {
       asked.seen = new Set(plan.pointers);
-      const watcher = new Watcher(asked.seen);
+      const watcher = new Watcher(reads, table.name, asked.seen);
       for (let i = 0; i < rows.length; i++) rows[i] = new Proxy(rows[i], watcher);
     }
-    this.#reads.asked.push(asked);
+    reads.asked.push(asked);
     return rows;
   }
 
