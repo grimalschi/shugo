@@ -56,6 +56,16 @@ How to fix - two ways:
 1. **No copy.** Each request reads the necessary entries from SQLite; there is nothing to update, fresh data is visible immediately. Page in 10 is more expensive.
 2. **Update the copy for changes.** Update leaves a list of entries changed in its version in the repository. The server reads only them and replaces them in the copy so that the page that is going at this moment does not mix the two states. The request speed is the same, the work after the update is by the size of the change.
 
+Memory, same store, after the server has collected all 104,202 pages:
+
+| | Without a copy, the values do not hold | No copy, memory value | With a copy in mind |
+| --- | ---: | ---: | ---: |
+| Memory of the program | 1–5 MB | 78 MB | 115 MB |
+| Process Memory | 29 MB | 182 MB | 225 MB |
+| Page Assembly | 156–162 µs | 100–104 µs | 9 µs |
+
+The copy of the records itself is 37 MB: 104,202 page records and 100,009 shared blocks, about 180 bytes per record. The rest are values, 304,300 pieces; they are held in both ways, and their volume is limited by the setting, now 256 MB. While the server rereads the entire copy, two copies are stored in the memory for a while.
+
 Second way suggested. Not done.
 
 ### What Rantime Doesn't Trust
