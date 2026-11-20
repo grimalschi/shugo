@@ -27,18 +27,22 @@ A folder is a project; without it, the current one is taken.
 
 - The project (templates, code, styles) - `shugo build` has changed.
 - Only the data has changed — `shugo update`. It does not compile the project, but runs the already collected JS.
+- If you run `shugo update` after the project itself is changed, it will notice this and compile the project first. To do this, the compiler writes hashes of all files from which the project is assembled. So the site cannot show the result of the old code.
 - `shugo serve` can not be restarted: it sees every update.
 
 ### Reports
 
 ```
 $ shugo update
-updated in 118 ms: 1052 pages, 1009 shared blocks, 12214 blocks, 3150 values
+updated in 68 ms: 1052 pages, 1009 shared blocks, 12214 blocks, 3150 values
   pages: 0 added, 1 changed, 0 removed
     changed: /products/product-5
   shared blocks: 0 added, 1 changed, 0 removed
-    changed: components/ProductCard.shugo{"id":"p5",}
+    changed: components/ProductCard.shugo{"id":"p5"}
+  the HTML differs on 7 pages: they show a shared block that has changed
 ```
+
+The report has two different numbers. “Changed pages” are page entries in the repository: one. “HTML is different” are the pages that a visitor will see others: the product page itself and the six pages where his card stands. Their records are not touched because the card is kept separately.
 
 In JSON, the same time of each step is in milliseconds:
 
@@ -47,15 +51,20 @@ In JSON, the same time of each step is in milliseconds:
   "build": "…",
   "rebuilt": false,
   "pages": { "total": 1052, "added": 0, "changed": 1, "removed": 0, "changedNames": ["/products/product-5"] },
-  "shared": { "total": 1009, "added": 0, "changed": 1, "removed": 0, "changedNames": ["components/ProductCard.shugo{\"id\":\"p5\",}"] },
+  "shared": { "total": 1009, "added": 0, "changed": 1, "removed": 0, "changedNames": ["components/ProductCard.shugo{\"id\":\"p5\"}"] },
   "blocks": 12214,
   "values": { "total": 3150, "added": 2, "removed": 2 },
+  "render": 7,
+  "renderNames": ["/", "/categories/c5", "/products/product-5", "…"],
   "shadowed": 0,
-  "time": { "open": 5.1, "compute": 110.4, "save": 1.2, "total": 118.3 }
+  "time": { "open": 4.9, "compute": 61.3, "save": 1.1, "total": 67.6 }
 }
 ```
 
-The names in the report are no more than a thousand of each species. `rebuilt` means that the project was compiled anew and everything is calculated from scratch. `shadowed` - how many addresses the dynamic page gave way to the page with the exact name.
+- `render` — how many pages of HTML have changed: these are the changed pages and pages that show the changed common block. You can reset the cache in front of the site from this list.
+- The names in the report are no more than a thousand of each species.
+- `rebuilt` means that the project has been compiled anew and everything is calculated from scratch.
+- `shadowed` - how many addresses did the dynamic page give way to a page with an exact name.
 
 ### Errors
 

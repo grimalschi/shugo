@@ -29,6 +29,12 @@ In Go, only the ready expression values are left text.
 
 There is no separate concept of “project data”: this is a regular module that is imported.
 
+### Data Files
+
+The data file is read during the calculation: `JSON.parse(readFileSync("data/posts.json", "utf8"))`. The path is counted from the root of the project.
+
+You can import the file: `import posts from "../data/posts.json"`. Then it becomes part of the compiled code, and after changing it, the project needs to be compiled again. `shugo update` does it himself.
+
 ### What is worth knowing
 
 - Page code is executed for each page, component code is executed for each display. The request to the database in the product card code will be executed as many times as the cards on the site. The exception is common blocks: they are executed once.

@@ -31,14 +31,14 @@ const layouts = `
 func TestLayouts(t *testing.T) {
 	s := newSite(t, layouts)
 	report := s.build()
-	expect(t, s.page("/"), `<html><head><title>Home</title></head><body>
-<h1>home</h1></body></html>`)
+	expect(t, s.page("/"), `<html><head><title>Home</title>
+</head><body><h1>home</h1></body></html>`)
 	expect(t, s.page("/about"), `<html><head><title>Site</title></head><body><h1>about</h1></body></html>`)
 	expect(t, s.page("/docs"), `<html><head><title>Site</title></head><body><nav>docs</nav><main><p>docs home</p></main></body></html>`)
 	// A folder in parentheses adds a layout and no part of the address; what
 	// the page gives to "head" goes through both inner layouts to the outer one.
-	expect(t, s.page("/docs/start"), `<html><head><meta name="x" content="y"></head><body><nav>docs</nav><main><aside>guides</aside>
-<p>start</p></main></body></html>`)
+	expect(t, s.page("/docs/start"), `<html><head><meta name="x" content="y">
+</head><body><nav>docs</nav><main><aside>guides</aside><p>start</p></main></body></html>`)
 	if s.has("/_drafts/secret") || s.has("/blog/_card") || s.has("/docs/(guides)/start") {
 		t.Error("a file that is not a page got an address")
 	}

@@ -142,7 +142,12 @@ func (l *lowerer) list(nodes []syntax.Node, top, nested bool) []node {
 					}
 					l.provided[name] = n.Start
 				}
-				out = append(out, provide{fill{name, l.fillBody(n)}})
+				body := l.fillBody(n)
+				if space, ok := spaceAfter(nodes, i); ok {
+					body = append(body, markup{space})
+					i++
+				}
+				out = append(out, provide{fill{name, body}})
 				continue
 			} else if ok && nested {
 				l.errorf(n.Start, `slot="%s" works only on a tag that stands right inside the component, not inside <g-if> or <g-for>`, name)
@@ -399,7 +404,8 @@ func (l *lowerer) call(e *syntax.Element) node {
 	// slot="name" into that slot, everything else into the default one.
 	var rest []syntax.Node
 	named := map[string]int{}
-	for _, child := range e.Children {
+	for i := 0; i < len(e.Children); i++ {
+		child := e.Children[i]
 		element, _ := child.(*syntax.Element)
 		name, ok := "", false
 		if element != nil {
@@ -410,6 +416,10 @@ func (l *lowerer) call(e *syntax.Element) node {
 			continue
 		}
 		body := l.fillBody(element)
+		if space, ok := spaceAfter(e.Children, i); ok {
+			body = append(body, markup{space})
+			i++
+		}
 		if at, seen := named[name]; seen {
 			out.fills[at].body = append(out.fills[at].body, body...)
 			continue
@@ -426,6 +436,20 @@ func (l *lowerer) call(e *syntax.Element) node {
 		}
 	}
 	return out
+}
+
+// spaceAfter returns the white space that follows the node at the given
+// place, if white space is all that stands there. It goes into a slot with
+// the tag before it, so that tags written on lines of their own stay so.
+func spaceAfter(nodes []syntax.Node, at int) (string, bool) {
+	if at+1 >= len(nodes) {
+		return "", false
+	}
+	text, ok := nodes[at+1].(*syntax.Text)
+	if !ok || strings.TrimSpace(text.Value) != "" {
+		return "", false
+	}
+	return text.Value, true
 }
 
 // expr returns the expression of an attribute that must be written as name={…}.

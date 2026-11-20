@@ -34,7 +34,7 @@ The solutions are from the most important to the small.
 - he himself and everything he imports does not read `Shugo.url` and `Shugo.params` and does not pass the markup to layouts;
 - it is called with simple parameters: lines, numbers, `true`, `false`, `null` or without parameters.
 
-The name of the shared block is composed of the file path and parameters: `components/ProductCard.shugo{"id":"p7",}`.
+The name of the shared block is composed of the file path and parameters: `components/ProductCard.shugo{"id":"p7"}`.
 
 **Why not.** The agent does not need to mark anything. The header without parameters is general by itself. The card to which the product number was transferred is common for all pages with this product; the card to which the object of the goods was transferred is considered on each page anew.
 
@@ -260,3 +260,15 @@ The driver is `modernc.org/sqlite`, without cgo. It is hidden behind the `store`
 - **Module path Go** — `shugo`. Before publication, it must be replaced with the present one.
 - **Author of commits** is the name of `itareo` and the owner's mail, specified only in this repository.
 - **Page queue.** Simultaneously calculates the 32 page to wait for the data to go in parallel. The process of JS is one.
+
+## 24. Verification on agent
+
+**What's done.** The individual agent was given only [memo](../docs/authoring.md) and the `shugo` commandno source, examples, or specificationand the task: a blog with a breakdown into pages, tag pages, nested layout, three components given in JSON, styles, and script.
+
+**What happened.**
+- The site from 25 pages was collected on the first try. There were no build errors, HTML is checked for shielding, links and nesting layouts.
+- One real trap: the agent imported JSON with data like in Vite and Astro. The imported file becomes part of the code, and `shugo update` has not seen any changes to it. Fixed: `update` now notices himself that the project has changed, and compiles it again.
+- The update report named three changed pages, and the export recorded six files: another three pages showed a changed card. Fixed: the report appeared the number of pages on which HTML changed.
+- Spaces in the memo: addresses when broken down into pages, `page` fields, priority routes where to keep data files that types are not checked. Added.
+
+**What it does not show.** The agent did not need error messages, so they were not checked on the agent. The task was one, the model one.

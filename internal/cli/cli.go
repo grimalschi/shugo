@@ -142,17 +142,24 @@ func (c *command) rebuild(st *store.Store) error {
 	return c.print(report, func() string { return summary("built", report) })
 }
 
-// update computes the pages of a compiled project again.
+// update computes the pages of a compiled project again. If the project
+// itself has changed since it was compiled, it is compiled again first.
 func (c *command) update() error {
-	compiled, err := compile.Load(c.project)
-	if err != nil {
-		return err
-	}
 	st, err := c.open()
 	if err != nil {
 		return err
 	}
 	defer st.Close()
+	if changed, err := compile.Changed(c.project); err != nil {
+		return err
+	} else if changed {
+		fmt.Fprintln(c.stderr, "the project has changed since it was compiled: compiling it again")
+		return c.rebuild(st)
+	}
+	compiled, err := compile.Load(c.project)
+	if err != nil {
+		return err
+	}
 	report, err := evaluate.Run(c.project, compiled, st, evaluate.Options{Log: c.stderr})
 	if err != nil {
 		return err
@@ -191,6 +198,9 @@ func summary(verb string, r *evaluate.Report) string {
 	}
 	line("pages", r.Pages)
 	line("shared blocks", r.Shared)
+	if r.Render > r.Pages.Added+r.Pages.Changed {
+		fmt.Fprintf(&out, "\n  the HTML differs on %d pages: they show a shared block that has changed", r.Render)
+	}
 	if r.Pages.Added+r.Pages.Changed+r.Pages.Removed+r.Shared.Added+r.Shared.Changed+r.Shared.Removed == 0 {
 		out.WriteString("\n  nothing has changed")
 	}

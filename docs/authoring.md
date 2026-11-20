@@ -9,6 +9,7 @@ shugo.json       settings (optional)
 pages/           pages and layouts; the path of a file is its address
 components/      components
 lib/             shared TypeScript: data, helpers
+data/            data files, if the site has any
 styles/          style sheets
 public/          files served as they are: /robots.txt, /img/logo.svg
 _build/          written by shugo; never edit, never commit
@@ -16,17 +17,33 @@ _build/          written by shugo; never edit, never commit
 
 Only `pages/` is required. `@/` in an import is the root of the project.
 
+`shugo.json`, every field optional:
+
+```json
+{
+  "site": "https://example.com",
+  "redirects": { "/old": "/new" },
+  "runtime": "bun"
+}
+```
+
+`site` is where the site is published; `Shugo.url` is built from it (`http://localhost` without it). `runtime` is `bun` or `node`.
+
 ## Commands
 
 ```
 shugo build     compile the project and compute every page
 shugo update    compute the pages again after the data changed
 shugo dev       build, serve at http://localhost:4321, rebuild on every change
-shugo serve     serve the built site
+shugo serve     serve the site: every page is built on request from what build and update computed
 shugo export    write the site as files into _build/dist
 ```
 
 Run `shugo build` after every change and read the errors: each names a file, a line and a column.
+
+`shugo update` is for data that changed outside of the project's code: it runs the compiled code again and writes only what differs. If a file of the project changed, it compiles the project first, so it is always safe to run.
+
+`shugo export` writes `/about` as `about/index.html`, the page for missing addresses as `404.html`, and copies `public/` and the style sheet.
 
 ## A page
 
@@ -54,9 +71,11 @@ const total = products.reduce((sum, item) => sum + item.price, 0)
 </g-if>
 ```
 
+- The script is optional: a file may be markup alone.
 - The script runs once for every page the file gives. Everything it declares is visible in the markup: values, functions, imports.
 - Top-level `await` is fine. Top-level `return` is an error.
-- TypeScript everywhere: in the script and inside `{…}`.
+- TypeScript everywhere: in the script and inside `{…}`. Types are removed, not checked: a type error does not stop the build, and `post.titel` shows nothing.
+- Markup goes to the page as written, HTML entities included: `&nbsp;`, `&lt;`.
 
 ## Expressions
 
@@ -101,7 +120,7 @@ Addresses in `href`, `src`, `action` and the like are checked: `javascript:` and
 <g-else>On order</g-else>
 ```
 
-The branches stand next to each other with nothing but white space between them.
+The branches stand next to each other with nothing but white space between them. `cond` is any expression; it is taken the way `if` takes it, so `cond={user}` and `cond={items.length}` work.
 
 ## Loops
 
@@ -155,6 +174,8 @@ const { title, featured = false } = Shugo.props as Props
 
 - Attributes are the props: `title="text"` is a string, `featured` is `true`, `count={3}` is a value, `{...props}` gives every field of an object.
 - `slot="name"` works on a tag that stands right inside the component tag, not inside `<g-if>` or `<g-for>`. To pass several nodes without a tag of their own, wrap them in `<g-fragment slot="name">`.
+- Several tags may go to one slot; they are shown in their order. A tag without content can carry `slot` too: `<meta slot="head" …>`.
+- What stands inside `<g-slot>…</g-slot>` is shown only when nothing at all was put into the slot.
 - A component may show itself: `<Shugo.self node={child} />`.
 - A component may be picked at run time: `const View = compact ? List : Grid`, then `<View />`.
 
@@ -192,8 +213,9 @@ import "../styles/main.css"
 ```
 
 - `<g-slot />` is where the page goes. A layout must have it.
-- A page gives markup to its layout with `slot="name"` on a tag at the top level of the page: `<title slot="head">About</title>`. Giving markup for a slot that no layout around the page has is an error.
+- A page gives markup to its layout with `slot="name"` on a tag at the top level of the page: `<title slot="head">About</title>`. The nearest layout that has `<g-slot name="head">` shows it. Giving markup for a slot that no layout around the page has is an error.
 - Pages do not import or call layouts.
+- The script of a layout runs for every page it wraps, unless neither the layout nor any component it imports reads `Shugo.url` or `Shugo.params`: then it runs once. A layout whose header highlights the current page runs for every page, so do not load data in its script; put the loading into a module in `lib/`.
 
 ## Addresses
 
@@ -207,7 +229,9 @@ import "../styles/main.css"
 | `pages/_parts/x.shugo` | not a page |
 | `pages/404.shugo` | shown for addresses that have no page |
 
-Names that start with `+` are kept for the framework; only `+layout.shugo` exists. Addresses have no slash at the end. Redirects go into `shugo.json`: `{"redirects": {"/old": "/new"}}`.
+Names that start with `+` are kept for the framework; only `+layout.shugo` exists. Addresses have no slash at the end: the server sends `/about/` on to `/about`.
+
+When two files could give one address, the one that names more of it wins: `blog/new.shugo` over `blog/[slug].shugo` over `blog/[...path].shugo`. So `blog/[...page].shugo` and `blog/posts/[slug].shugo` live side by side.
 
 ## Pages from data
 
@@ -231,21 +255,53 @@ const { product } = Shugo.props as { product: Product }
 <h1>{product.title}</h1>
 ```
 
-`getStaticPaths` sees the imports and nothing else of the script. For lists split into pages name the file `[...page].shugo` and use `paginate`:
+`getStaticPaths` sees the imports and nothing else of the script. It runs once; the rest of the script runs for every item it returned, with that item's `params` in `Shugo.params` and its `props` in `Shugo.props`.
+
+For lists split into pages name the file `[...page].shugo` and use `paginate`, which works as in Astro:
 
 ```
-export async function getStaticPaths({ paginate }) {
+<!-- pages/blog/[...page].shugo gives /blog, /blog/2, /blog/3 … -->
+---
+export async function getStaticPaths({ paginate }: { paginate: Function }) {
   return paginate(await getPosts(), { pageSize: 10 })
 }
-const { page } = Shugo.props   // page.data, page.currentPage, page.lastPage, page.url.prev, page.url.next
+const { page } = Shugo.props
+---
+<g-for each={page.data} as="post">…</g-for>
+<g-if cond={page.url.prev}><a href={page.url.prev}>Newer</a></g-if>
+<g-if cond={page.url.next}><a href={page.url.next}>Older</a></g-if>
 ```
+
+| | |
+| --- | --- |
+| `page.data` | the items of this page |
+| `page.currentPage`, `page.lastPage` | numbers from 1 |
+| `page.total`, `page.size` | the number of all items, and of items on a page |
+| `page.start`, `page.end` | the places of the first and the last item of this page, from 0 |
+| `page.url.current`, `.prev`, `.next`, `.first`, `.last` | addresses; `undefined` where there is no such page |
+
+With `[page].shugo` the first page is `/blog/1`. `paginate(items, { pageSize, params, props })` adds `params` and `props` to every page, for a list inside something else: `pages/tags/[tag]/[...page].shugo`.
 
 ## Data
 
 There is no special data layer: load data with ordinary TypeScript.
 
+Read data files when the code runs, with a path from the root of the project:
+
+```ts
+// lib/posts.ts
+import { readFileSync } from "node:fs"
+
+export interface Post { slug: string; title: string; body: string }
+export const posts: Post[] = JSON.parse(readFileSync("data/posts.json", "utf8"))
+```
+
+`import posts from "../data/posts.json"` works too, but then the data is a part of the compiled code: every change of it means compiling the project again.
+
+The props of a page come from `getStaticPaths` and may be anything. The props of a component decide whether it is computed once:
+
 - **For many pages of one kind**, load once in `getStaticPaths` and hand every page its part through `props`.
-- **For what every page shows** (a menu, the settings of the site), load in a component without props, such as `<Header />`. A component that reads neither `Shugo.url` nor `Shugo.params`, called with plain values (strings, numbers, booleans) or without props, is computed once for the whole site.
+- **For what every page shows** (a menu, the settings of the site), load in a component without props, such as `<Header />`. A component is computed once for the whole site when neither it nor any component it imports reads `Shugo.url` or `Shugo.params`, and it is called with plain values (strings, numbers, booleans) or without props.
 - **Pass an id, not an object**, to a component that many pages show: `<ProductCard id={product.id} />`. Each card is then computed once, and when the product changes only the card changes, not the pages that show it.
 - **Put shared loading into a module** in `lib/`: a module runs once per build.
 - Create `Intl.NumberFormat`, `Intl.DateTimeFormat` and the like once in a module, not on every call: they are slow to make.
@@ -256,7 +312,8 @@ There is no special data layer: load data with ordinary TypeScript.
 - `import "../styles/main.css"` in a script adds a style sheet to the site. All style sheets and all `<style>` tags become one file, linked from every page.
 - `<style>` applies to the whole site, not only to its component. `<style is:inline>` stays in the page as written.
 - Tailwind works when it is installed in the project (`npm install tailwindcss @tailwindcss/cli`) and a style sheet has `@import "tailwindcss";`.
-- `<script>` goes to the page as written; braces inside it are text. Pass values through attributes: `<div id="map" data-places={JSON.stringify(places)}>`.
+- `<script>` goes to the page as written; braces inside `<script>` and `<style>` are text. Pass values through attributes: `<div id="map" data-places={JSON.stringify(places)}>`.
+- A component with a `<script>` shown ten times gives ten copies of the script. Keep such a script in the page or in the layout.
 
 ## Coming from Astro
 

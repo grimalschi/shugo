@@ -344,30 +344,26 @@ class Run {
 
 // A component that depends on nothing of the page and is called with plain
 // values shows the same wherever it stands, so it is computed once under a
-// name made of its file and those values. null means: not shared. JSON
-// writes every control character as an escape, so a name never holds one of
-// the separators.
+// name made of its file and those values: components/Card.shugo{"id":"p7"}.
+// null means: not shared. JSON writes every control character as an escape,
+// so a name never holds one of the separators.
 function sharedName(path, props, slots) {
   let key = "";
+  let count = 0;
   for (const name in props) {
     const value = props[name];
     if (value === undefined) continue;
     const type = typeof value;
     if (value !== null && type !== "string" && type !== "boolean" && !(type === "number" && Number.isFinite(value))) return null;
-    key += JSON.stringify(name) + ":" + JSON.stringify(value) + ",";
+    key += (count++ === 0 ? "" : ",") + JSON.stringify(name) + ":" + JSON.stringify(value);
   }
   // Parameters in another order are the same parameters.
-  if (key.indexOf(",") !== key.length - 1) key = sorted(props);
+  if (count > 1) {
+    key = Object.keys(props).filter((name) => props[name] !== undefined).sort()
+      .map((name) => JSON.stringify(name) + ":" + JSON.stringify(props[name])).join(",");
+  }
   if (slots !== null) key += "|" + [...slots.keys()].sort().join(",");
   return path + "{" + key + "}";
-}
-
-function sorted(props) {
-  let key = "";
-  for (const name of Object.keys(props).sort()) {
-    if (props[name] !== undefined) key += JSON.stringify(name) + ":" + JSON.stringify(props[name]) + ",";
-  }
-  return key;
 }
 
 // On the wire a record is its header and its blocks, split by \x01; fields

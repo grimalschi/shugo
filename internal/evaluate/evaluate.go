@@ -15,6 +15,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -45,6 +46,11 @@ type Report struct {
 		Added   int `json:"added"`
 		Removed int `json:"removed"`
 	} `json:"values"`
+	// Render counts the pages whose HTML is not what it was: the pages that
+	// are new or have changed themselves, and the pages that show a shared
+	// block that has. RenderNames are the first of them.
+	Render      int      `json:"render"`
+	RenderNames []string `json:"renderNames,omitempty"`
 	// Shadowed counts addresses that a dynamic page gave and a more exact
 	// page had already taken.
 	Shadowed int `json:"shadowed"`
@@ -116,7 +122,11 @@ func Run(p *project.Project, compiled *compile.Result, st *store.Store, options 
 			return nil, err
 		}
 	}
-	k := &keeper{site: compiled.Site, update: u, report: report, names: options.Names, numbers: map[int64]int64{}, live: map[record.Hash]struct{}{}}
+	k := &keeper{
+		site: compiled.Site, update: u, report: report, names: options.Names,
+		numbers: map[int64]int64{}, live: map[record.Hash]struct{}{},
+		pageShows: map[string][]int64{}, sharedShows: map[int64][]int64{}, fresh: map[int64]bool{}, touched: map[string]bool{},
+	}
 	if k.pages, err = u.KeptPages(); err != nil {
 		return nil, err
 	}
@@ -258,6 +268,14 @@ type keeper struct {
 	seenPages, seenShared map[string]struct{}
 	numbers               map[int64]int64 // the number a shared block has in this run → its number in the store
 	live                  map[record.Hash]struct{}
+
+	// Which shared blocks every page and every shared block shows, and
+	// which records are new or not what they were: together they tell on
+	// which pages the HTML differs.
+	pageShows   map[string][]int64
+	sharedShows map[int64][]int64
+	fresh       map[int64]bool  // shared blocks
+	touched     map[string]bool // pages
 }
 
 // keep takes one record as the project's code sent it: a header and blocks
@@ -297,6 +315,12 @@ func (k *keeper) keep(data []byte) error {
 	k.report.Blocks += len(rec.Blocks)
 	encoded := rec.Encode()
 	hash := record.HashOf(encoded)
+	var shows []int64
+	for i := range rec.Blocks {
+		if rec.Blocks[i].Use {
+			shows = append(shows, rec.Blocks[i].Shared)
+		}
+	}
 
 	// A record that is what it was needs nothing: its values are in the
 	// store already, and it was checked when it got there.
@@ -310,8 +334,12 @@ func (k *keeper) keep(data []byte) error {
 			return fmt.Errorf("the project's code sent %s twice", where)
 		}
 		k.seenPages[name] = struct{}{}
+		if shows != nil {
+			k.pageShows[name] = shows
+		}
 		kept, known := k.pages[name]
 		if changed = !known || kept != hash; changed {
+			k.touched[name] = true
 			if err := k.check(rec, values); err != nil {
 				return fmt.Errorf("%s: %w", where, err)
 			}
@@ -332,7 +360,11 @@ func (k *keeper) keep(data []byte) error {
 			}
 		}
 		k.numbers[origin] = kept.ID
+		if shows != nil {
+			k.sharedShows[kept.ID] = shows
+		}
 		if changed = !known || kept.Hash != hash; changed {
+			k.fresh[kept.ID] = true
 			if rec.Blocks[rec.Top].Use {
 				return fmt.Errorf("%s does not start with a template", where)
 			}
@@ -498,13 +530,39 @@ func (k *keeper) finish() error {
 		}
 	}
 	k.report.Pages.Total, k.report.Shared.Total, k.report.Values.Total = len(k.seenPages), len(k.seenShared), len(k.live)
+	k.rendered()
 	for _, names := range []*[]string{
+		&k.report.RenderNames,
 		&k.report.Pages.AddedNames, &k.report.Pages.ChangedNames, &k.report.Pages.RemovedNames,
 		&k.report.Shared.AddedNames, &k.report.Shared.ChangedNames, &k.report.Shared.RemovedNames,
 	} {
 		sort.Strings(*names)
 	}
 	return nil
+}
+
+// rendered counts the pages whose HTML differs from what it was. A shared
+// block that shows a changed shared block has changed too, for whoever
+// shows it.
+func (k *keeper) rendered() {
+	for spread := true; spread; {
+		spread = false
+		for id, shows := range k.sharedShows {
+			if !k.fresh[id] && slices.ContainsFunc(shows, func(shown int64) bool { return k.fresh[shown] }) {
+				k.fresh[id], spread = true, true
+			}
+		}
+	}
+	note := func(path string) {
+		if k.report.Render++; len(k.report.RenderNames) < k.names {
+			k.report.RenderNames = append(k.report.RenderNames, path)
+		}
+	}
+	for path := range k.seenPages {
+		if k.touched[path] || slices.ContainsFunc(k.pageShows[path], func(shown int64) bool { return k.fresh[shown] }) {
+			note(path)
+		}
+	}
 }
 
 // validPath tells whether text can be the address of a page.

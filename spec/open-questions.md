@@ -40,4 +40,4 @@ The list is compiled during the first version. Questions are arranged according 
 25. Compression of answers and `ETag`. — [Runtime](runtime.md)
 26. The language of the compiler messages. — [22](decisions.md#22-message-language)
 27. `shugo init` team with project example and agent memo. — [Command line](cli.md)
-28. Checking how agents write to `.shugo`: give the agent a task and memo and see where he is wrong. This was not done in the first version.
+28. Check how agents write on `.shugo`. Done once, see [24](decisions.md#24-verification-on-agent). Need other tasks and other models.

@@ -27,9 +27,10 @@ import (
 
 // The files a compiled project consists of, under the output folder.
 const (
-	Bundle = "eval.mjs"  // loads the data and computes the values of all pages
-	Site   = "site.json" // the program of the site: templates and routes
-	Assets = "assets"    // style sheets, published under AssetsURL
+	Bundle  = "eval.mjs"     // loads the data and computes the values of all pages
+	Site    = "site.json"    // the program of the site: templates and routes
+	Assets  = "assets"       // style sheets, published under AssetsURL
+	Sources = "sources.json" // what the project was compiled from
 )
 
 // AssetsURL is where the files of the Assets folder are published.
@@ -96,7 +97,11 @@ func Build(p *project.Project) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	for name, content := range map[string][]byte{Bundle: bundled.code, Bundle + ".map": bundled.smap, Site: data} {
+	sources, err := json.Marshal(b.sources(bundled.files))
+	if err != nil {
+		return nil, err
+	}
+	for name, content := range map[string][]byte{Bundle: bundled.code, Bundle + ".map": bundled.smap, Site: data, Sources: sources} {
 		if err := os.WriteFile(filepath.Join(output, name), content, 0o644); err != nil {
 			return nil, err
 		}
@@ -121,6 +126,62 @@ func Load(p *project.Project) (*Result, error) {
 		return nil, err
 	}
 	return &Result{Site: site, ID: digest(data, code)}, nil
+}
+
+// sources is the list of what a project was compiled from: its templates,
+// and every file that went into the bundle with a hash of its content.
+type sources struct {
+	Templates []string          `json:"templates"`
+	Files     map[string]string `json:"files"`
+}
+
+// sources hashes the files of the project that the compiled result depends on.
+func (b *builder) sources(bundled []string) sources {
+	out := sources{Templates: b.paths, Files: map[string]string{}}
+	for _, name := range append(bundled, project.Settings) {
+		out.Files[name] = hashFile(b.project.Path(filepath.FromSlash(name)))
+	}
+	return out
+}
+
+// hashFile returns a hash of the content of a file, or nothing if it cannot
+// be read: a file that is not there is a state of its own.
+func hashFile(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return digest(data)
+}
+
+// Changed tells whether the sources of the project are not what it was
+// compiled from: a template was added or removed, or a file that went into
+// the bundle has other content. Then the compiled project is out of date, and
+// computing it again would show the old code.
+func Changed(p *project.Project) (bool, error) {
+	data, err := os.ReadFile(p.Path(project.Output, Sources))
+	if errors.Is(err, fs.ErrNotExist) {
+		return true, nil
+	} else if err != nil {
+		return false, err
+	}
+	var compiled sources
+	if err := json.Unmarshal(data, &compiled); err != nil {
+		return true, nil
+	}
+	templates, err := p.Templates()
+	if err != nil {
+		return false, err
+	}
+	if !slices.Equal(templates, compiled.Templates) {
+		return true, nil
+	}
+	for name, hash := range compiled.Files {
+		if hashFile(p.Path(filepath.FromSlash(name))) != hash {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func digest(parts ...[]byte) string {
@@ -281,6 +342,7 @@ func (b *builder) provided(page *unit, layouts []int) Errors {
 // bundled is what the bundler made of the modules of all files.
 type bundled struct {
 	code, smap []byte
+	files      []string        // the files of the project that went into the bundle
 	shared     map[string]bool // which files can be computed once for all pages
 	styles     []style         // the style sheets in the order they apply
 	warnings   []string
@@ -440,6 +502,10 @@ func (b *builder) graph(metafile string, out *bundled) error {
 	names := make([]string, 0, len(meta.Inputs))
 	for name := range meta.Inputs {
 		names = append(names, name)
+		// The library of the framework and the entry are not files.
+		if !strings.Contains(name, ":") {
+			out.files = append(out.files, name)
+		}
 	}
 	sort.Strings(names)
 

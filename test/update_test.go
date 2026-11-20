@@ -103,10 +103,10 @@ func expectChanges(t *testing.T, r *evaluate.Report, pages, shared evaluate.Chan
 
 const (
 	header   = "components/Header.shugo{}"
-	cardJug  = `components/Card.shugo{"slug":"jug",}`
-	cardCup  = `components/Card.shugo{"slug":"cup",}`
-	cardTray = `components/Card.shugo{"slug":"tray",}`
-	cardPot  = `components/Card.shugo{"slug":"pot",}`
+	cardJug  = `components/Card.shugo{"slug":"jug"}`
+	cardCup  = `components/Card.shugo{"slug":"cup"}`
+	cardTray = `components/Card.shugo{"slug":"tray"}`
+	cardPot  = `components/Card.shugo{"slug":"pot"}`
 	layout   = "pages/+layout.shugo{|default}"
 )
 
@@ -128,8 +128,8 @@ func TestUpdates(t *testing.T) {
 	t.Run("nothing changed", func(t *testing.T) {
 		r := s.update()
 		expectChanges(t, r, evaluate.Changes{}, evaluate.Changes{})
-		if r.Values.Added != 0 || r.Values.Removed != 0 {
-			t.Errorf("values: %+v", r.Values)
+		if r.Values.Added != 0 || r.Values.Removed != 0 || r.Render != 0 {
+			t.Errorf("values: %+v, pages with new HTML: %d", r.Values, r.Render)
 		}
 	})
 
@@ -147,8 +147,14 @@ func TestUpdates(t *testing.T) {
 			data["motto"] = "Handmade"
 			return products
 		})
-		expectChanges(t, s.update(), evaluate.Changes{},
+		r := s.update()
+		expectChanges(t, r, evaluate.Changes{},
 			evaluate.Changes{Changed: 1, ChangedNames: []string{header}})
+		// No record of a page has changed, and the HTML of every page has:
+		// the layout of each shows the header.
+		if r.Render != 5 {
+			t.Errorf("pages with new HTML: %d %v", r.Render, r.RenderNames)
+		}
 		if !strings.Contains(s.page("/about"), "<header>Handmade · 3 products</header>") {
 			t.Errorf("the page shows the old header: %s", s.page("/about"))
 		}
@@ -161,9 +167,15 @@ func TestUpdates(t *testing.T) {
 			products[1]["price"] = 6
 			return products
 		})
-		expectChanges(t, s.update(),
+		r := s.update()
+		expectChanges(t, r,
 			evaluate.Changes{Changed: 1, ChangedNames: []string{"/products/cup"}},
 			evaluate.Changes{Changed: 1, ChangedNames: []string{cardCup}})
+		// The HTML differs on the page of the cup and on the two pages that
+		// show its card: the main page and the page of the jug.
+		if want := []string{"/", "/products/cup", "/products/jug"}; !reflect.DeepEqual(r.RenderNames, want) {
+			t.Errorf("pages with new HTML: %v, want %v", r.RenderNames, want)
+		}
 		if !strings.Contains(s.page("/products/jug"), "Cup — 6") || !strings.Contains(s.page("/"), "Cup — 6") {
 			t.Error("a page shows the old card")
 		}

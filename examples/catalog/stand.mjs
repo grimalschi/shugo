@@ -31,7 +31,10 @@ const run = (command, folder = here, ...more) =>
   JSON.parse(execFileSync(shugo, [command, "-json", ...(runtime ? ["-runtime", runtime] : []), ...more, folder], { encoding: "utf8", maxBuffer: 1 << 30 }));
 
 // Every change says what it does to the data and, where that is certain,
-// how many pages and shared blocks must differ afterwards.
+// how many records of pages and of shared blocks must differ afterwards.
+// The table also shows on how many pages the HTML differs: a page that
+// shows a changed shared block is such a page, though its own record is
+// what it was.
 const changes = [
   { name: "nothing", edit() {}, pages: 0, shared: 0 },
   { name: "a field no page shows, on every 20th product", edit() { data.products.forEach((p, i) => { if (i % 20 === 0) p.note = "checked"; }); }, pages: 0, shared: 0 },
@@ -98,6 +101,7 @@ for (const change of changes) {
     change: change.name,
     pages: `${pages}` + (report.pages.added || report.pages.removed ? ` (+${report.pages.added} −${report.pages.removed})` : ""),
     shared: `${shared}` + (report.shared.added || report.shared.removed ? ` (+${report.shared.added} −${report.shared.removed})` : ""),
+    "new HTML": report.render,
     values: `+${report.values.added} −${report.values.removed}`,
     "compute, ms": Math.round(report.time.compute),
     "save, ms": Math.round(report.time.save),

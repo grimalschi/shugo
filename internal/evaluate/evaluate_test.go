@@ -48,6 +48,7 @@ func newKeeper(t *testing.T) (*keeper, *store.Store) {
 		site: site, update: u, report: &Report{}, names: 10,
 		pages: map[string]record.Hash{}, shared: map[string]store.Kept{}, values: map[record.Hash]struct{}{},
 		seenPages: map[string]struct{}{}, seenShared: map[string]struct{}{}, numbers: map[int64]int64{}, live: map[record.Hash]struct{}{},
+		pageShows: map[string][]int64{}, sharedShows: map[int64][]int64{}, fresh: map[int64]bool{}, touched: map[string]bool{},
 	}, st
 }
 

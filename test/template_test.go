@@ -121,8 +121,8 @@ const name = "world"
 
   <p>Hello, world</p>
   
-
-<footer><small>footer world</small></footer>
+<footer><small>footer world</small>
+</footer>
 </section>
 <section class="card">
 <h2>C</h2>
