@@ -130,7 +130,13 @@ An index needs a query that searches for rows by column values or takes them in 
 
 Why it is necessary, measured on the example of a store without indexes, except for keys: the first assembly 1,000 Goods 0.7 s instead of 0.2 s, 2,000 — 1.9 s instead of 0.4 s, 5,000 — 11 s instead of 0.7 s. Time grows like a square of the number of records: each page goes through the whole table. Stands still worked with indexes that were created by the data generator.
 
-The implementation is done in the fifth trial branch, `lab/query-signals`.
+Made in the fifth trial branch, `lab/query-signals`:
+
+- JS base only reads, so asks for the index from Go and waits for an answer. Go builds an index if there is no suitable one: a key, a unique column, an index made by hands, its former.
+- On the example of the store, eight indexes are built. On 100,000 products, this is 0.8 s once per base. The first assembly with them was taken by 15.4 s on Bun; on hand-made indices, the 2 variant was collected by 13.9 s.
+- An index for a query with an order ending in a table key, and strings with the same order value going along the key. Otherwise, the new index would change the order of the rows on a page that is already computed.
+- To see the new index, JS starts reading the database again. If at this time the database is written, the page can show two data states; the next update corrects this because the journal space is remembered before reading.
+- Indices that are no longer needed by any query are not removed.
 
 Changed the scheme — changed the tables copy. The journal after that can not say what has changed in the data, and the site is calculated as a whole; so already works option with the database.
 

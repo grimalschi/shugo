@@ -19,7 +19,7 @@ The words of the author of the project, 20 November 2026 year.
 
 ## Trial implementations
 
-The author of the project asked to make two implementations for comparison, then a third one - "the second option with a dependency tree from the first" (20 November 2026 year). All done, pass all tests on Bun and Node and stand on a common basis. Which one to take is not decided. The 3 number in the discussion is occupied by [data Adapter](data-adapter.md): it is not a substitute for these options, but what brings data to the database of variants 2 and 4.
+The author of the project asked to make two implementations for comparison, then “the second option with a dependency tree from the first” and “the second with lines that remember what you read, without a tree” (20 November 2026). All done, pass all tests on Bun and Node and stand on a common basis. Which one to take is not decided. The 3 number in the discussion is occupied by [data Adapter](data-adapter.md): it is not a substitute for these options, but what brings data to the database of variants 2 and 4.
 
 | | Branch & Folder | Essence |
 | --- | --- | --- |
@@ -27,6 +27,7 @@ The author of the project asked to make two implementations for comparison, then
 | Variant 1 | `lab/fingerprints`, `../shugo-lab/fingerprints` | proposal from this document: data code is executed entirely, the imprint on the dependency tree, templates - only for the changed |
 | Variant 2 | `lab/query`, `../shugo-lab/query` | idea of the author: data is in SQLite under the framework control, read only through `Shugo.query`, dependencies are tied to base entries |
 | Variant 4 | `lab/query-tree`, `../shugo-lab/query-tree` | update as in 2, compiler and two sides as in 1; the string itself remembers which columns it has read |
+| Variant 5 | `lab/query-signals`, `../shugo-lab/query-signals` | version of 2, in which the string remembers what its columns are read by anyone; without a tree and without the rules of the version of 1. The base indexes are built by Shugo itself |
 
 Each option in the root branch is `VARIANT.md`: how it works, rules for the author of the site, taken along the way of the decision with the reasons and what is not.
 
@@ -138,7 +139,53 @@ What it does not give and what is worth:
 - The template is considered to read everything it can read, no matter what branch `g-if` goes into. Verified: the date of receipt of the product that is in stock and does not show it, still calculates the page; the record goes the same.
 - The compiler of the version 1 with all its complexity and three rules for the author.
 
-Test output. The accuracy was not given by the tree, but by the lines that remember what was read. The tree gives another: the pattern cannot depend on what is not passed to it. Lines with memory can be put on the 2 version without a tree: then the template reads them itself, the read is recorded in fact - with accuracy to the branch conditions and through functions and components - and the rules of the 1 variant are not needed. There is no combination in the tests.
+Test output. The accuracy was not given by the tree, but by the lines that remember what was read. The tree gives another: the pattern cannot depend on what is not passed to it. Lines with memory can be put on the 2 version without a tree: then the template reads them itself, the read is recorded in fact - with accuracy to the branch conditions and through functions and components - and the rules of the 1 variant are not needed. This combination is made as a variant of 5.
+
+### 5: lines that remember what you read without a tree
+
+A variant of 2 in which each line from `Shugo.query` records which columns it reads while the one who requested it is calculated: page code, template, functions, the usual components to which the line was passed. There is no dependency tree, two sides and three rules of the 1 variant. The compiler is not affected.
+
+Why do you think that's true. The calculation learns about the data in two ways: it sets a request and reads a column of a line. Both are recorded. While all the previous readings, the same code goes the same way in the same branches and the same calls and gives the same. In another branch, it can only send the value it has read. Also, signals are arranged in SolidJS.
+
+What it gave compared to the 4 variant:
+
+| What changed | Variant 4 | Variant 5 |
+| --- | --- | --- |
+| Product option column that no one shows; the option is passed to the component as a whole | page calculated, record old | nothing calculated |
+| The date of receipt of the goods that are available and does not show it | page calculated, record old | nothing calculated |
+| Price function in template: `{price(finalPrice(item))}` | the product is read in its entirety; in the example, the calculation is made in the data code | `price` and `discount` |
+| Rules for the author | three rules of the 1 variant and base rules | base rules only |
+
+Time, 100,000 products, my runs in turn:
+
+| | Variant 2 | Variant 4 | Variant 5 |
+| --- | ---: | ---: | ---: |
+| Price per item, Bun | 0.03 s | 0.04 s | 0.04 s |
+| Product name of the month, phone in the footer | 0.12 s | 0.12 s | 0.12 s |
+| Product added | 0.41 s | 0.46–0.58 s | 0.44 s |
+| Prices 20,000 items together | 4.9 s | 4.9 s | 5.5 s |
+| Prices of all 100,000 products | 22 s | 22 s | 24 s |
+| First Assembly, Bun | 13.9 s | 13.9 s | 15.4 s with index construction |
+| First Assembly, Node | 17.4 s | 17.0 s | 19.0 s with index construction |
+| Price per item, Node | 0.07 s | 0.08 s | 0.09 s |
+| Storage | 140 MB | 140 MB | 141 MB |
+| Changed lines regarding the base | 3 900 | 8 600 | 6 000 |
+
+2 and 4 variants measured on indexes that the data generator created with its hands; the 5 variant builds the indices itself, and this is included in its first build: 0.8 s from 15.4. According to the measurement of the branch, when the indexes are already there, the first build is 14.4–14.7 s.
+
+What else is done in the 5 variant:
+
+- **You can't read another line.** The string records what is read to the account of the person who requested it, and only he can read it and only while it is being calculated. A string left in a variable module for another page is an error, including when pages are waiting for data interspersed. The 2 variant did not notice this, the 4 variant was not always caught.
+- **`shugo update -check`**, as in the 4 variant: calculates everything and names pages that read something past the base. 7.6 s on 100,000 products.
+- **Shugo**: [Data adapter](data-adapter.md#indices).
+- **The strings come in the order of the query and then by key.** Variant 2 gave the strings without order as they found the base. With indexes that appear themselves, this has ceased to be harmless: the new index changed the order of the lines on the already calculated page, and it diverged from the build from scratch.
+
+What is weak:
+
+- Massive changes are a tenth more expensive: branch reading gives more types of reading, and for every line that has changed, Go looks for readers for each type.
+- The first build on Bun is longer than the 2 variant on 0.5–0.7 s from 14, not counting the construction of indices.
+- The template can read something past the database again file, network, time, module variable. Finds it only `-check`.
+- The weak one from the 2 option remains: a small query constructor and a route that is listed as a whole when the entry is added or deleted.
 
 ## Proposal, pending approval
 
@@ -379,7 +426,8 @@ Order of works:
 
 ## Open questions
 
-- Choose the option: second, fourth or second with lines that remember what you read, but without a tree (it is collected as a fifth sample).
+- Choose the option: second, fourth or fifth.
+- Approve the decision of the fifth option on the order of lines: in the order of the request, then by the key.
 - For the 1 variant: approve the mechanism and three rules for site authors.
 - For the 2 variant: what the query designer should be able to do. How external sources get into the database is in [Data Adapter](data-adapter.md).
 - Approve a copy of your part instead of Seroval.
