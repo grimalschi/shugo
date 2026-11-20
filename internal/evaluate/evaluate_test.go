@@ -455,3 +455,45 @@ func TestValidPath(t *testing.T) {
 		}
 	}
 }
+
+func TestFits(t *testing.T) {
+	special, slug, rest := &site.Routes[0], &site.Routes[1], &site.Routes[2]
+	nested := &program.Route{Segments: []program.Segment{{Text: "docs"}, {Rest: "path"}, {Text: "edit"}}}
+	for _, c := range []struct {
+		route *program.Route
+		path  string
+		fits  bool
+	}{
+		{special, "/special", true}, {special, "/other", false}, {special, "/special/more", false}, {special, "/", false},
+		{slug, "/special", true}, {slug, "/a/b", false}, {slug, "/", false},
+		{rest, "/", true}, {rest, "/a", true}, {rest, "/a/b/c", true},
+		{nested, "/docs/edit", true}, {nested, "/docs/a/b/edit", true}, {nested, "/docs", false}, {nested, "/blog/a/edit", false},
+	} {
+		if got := fits(c.route, c.path); got != c.fits {
+			t.Errorf("%s fits %s: %v", c.path, c.route.Pattern, got)
+		}
+	}
+}
+
+// What a reader read is kept with it, and only the difference from what it
+// read before is told to the store.
+func TestReadings(t *testing.T) {
+	kept, err := readingsOf(nil)
+	if err != nil || len(kept) != 0 {
+		t.Errorf("no readings: %v %v", kept, err)
+	}
+	var encoded []byte
+	for _, one := range []reading{{1, "a"}, {1, "b"}, {300, ""}, {300, "a longer key"}} {
+		encoded = binary.AppendUvarint(encoded, uint64(one.shape))
+		encoded = binary.AppendUvarint(encoded, uint64(len(one.key)))
+		encoded = append(encoded, one.key...)
+	}
+	if got, err := readingsOf(encoded); err != nil || len(got) != 4 || got[3] != (reading{300, "a longer key"}) || got[2].key != "" {
+		t.Errorf("%v %v", got, err)
+	}
+	for cut := 1; cut < len(encoded); cut++ {
+		if got, err := readingsOf(encoded[:cut]); err == nil && len(got) == 4 {
+			t.Errorf("readings cut at %d are read whole", cut)
+		}
+	}
+}

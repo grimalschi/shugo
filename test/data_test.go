@@ -11,6 +11,8 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/grimalschi/shugo/internal/compile"
+	"github.com/grimalschi/shugo/internal/evaluate"
 	"github.com/grimalschi/shugo/internal/store"
 )
 
@@ -271,4 +273,305 @@ func TestDataDatabase(t *testing.T) {
 	})
 
 	t.Run("the same as built from nothing", func(t *testing.T) { s.sameAsBuilt() })
+}
+
+// tryUpdate brings the site up to date, as update does, and returns the
+// failure instead of ending the test.
+func (s *site) tryUpdate() (*evaluate.Report, error) {
+	s.t.Helper()
+	p := s.project()
+	compiled, err := compile.Load(p)
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	defer s.pages.Refresh()
+	return evaluate.Run(p, compiled, s.store, evaluate.Options{Log: &s.printed})
+}
+
+const queryRows = `
+CREATE TABLE categories (id TEXT PRIMARY KEY, title TEXT);
+CREATE TABLE products (id TEXT PRIMARY KEY, slug TEXT UNIQUE, title TEXT, price INTEGER, category TEXT);
+CREATE VIEW cheap AS SELECT * FROM products WHERE price < 8;
+INSERT INTO categories VALUES ('c1', 'Kitchen'), ('c2', 'Garden');
+INSERT INTO products VALUES ('p1', 'jug', 'Jug', 10, 'c1'), ('p2', 'cup', 'Cup', 5, 'c1'), ('p3', 'tray', 'Tray', 7, 'c1'), ('p4', 'vase', 'Vase', 9, 'c2');
+`
+
+// Every page asks one question, so a test sees which questions a change of
+// the data reaches.
+func TestDataQueries(t *testing.T) {
+	s := newSite(t, `
+-- shugo.json --
+{"data": "data/shop.db"}
+-- pages/among.shugo --
+---
+const rows = Shugo.query("products").select("title").where("id", "in", ["p1", "p3"]).order("title").all()
+console.log("among")
+---
+<p>{rows.map((row) => row.title).join(", ")}</p>
+-- pages/cheap.shugo --
+---
+const rows = Shugo.query("products").select("title", "price").where("price", "<", 8).order("price", "desc").all()
+console.log("cheap")
+---
+<p>{rows.map((row) => row.title + " " + row.price).join(", ")}</p>
+-- pages/dearest.shugo --
+---
+const row = Shugo.query("products").select("title").where({ category: "c1" }).order("price", "desc").first()
+console.log("dearest")
+---
+<p>{row.title}</p>
+-- pages/joined.shugo --
+---
+const row = Shugo.query("products").select("title").join("categories", "category", { select: ["title"], as: "group" }).get("p4")
+const other = Shugo.query("categories").join("products", "id", { on: "slug", select: ["title"], as: "namesake" }).get("c1")
+console.log("joined")
+---
+<p>{row.title} in {row.group.title}; {String(other.namesake)}</p>
+-- pages/count.shugo --
+---
+const count = Shugo.query("products").where("price", ">=", 7).where("category", "!=", null).count()
+console.log("count")
+---
+<p>{count}</p>
+`)
+	s.sql(queryRows)
+	s.build()
+	s.computed()
+	expect(t, s.page("/among"), `<p>Jug, Tray</p>`)
+	expect(t, s.page("/cheap"), `<p>Tray 7, Cup 5</p>`)
+	expect(t, s.page("/dearest"), `<p>Jug</p>`)
+	expect(t, s.page("/joined"), `<p>Vase in Garden; null</p>`)
+	expect(t, s.page("/count"), `<p>3</p>`)
+
+	// A row that only one question took a column of.
+	s.changed(`UPDATE products SET title = 'Mug' WHERE id = 'p2'`, "cheap")
+	// A column that decides which rows two questions find.
+	s.changed(`UPDATE products SET price = 6 WHERE id = 'p4'`, "cheap", "count")
+	expect(t, s.page("/cheap"), `<p>Tray 7, Vase 6, Mug 5</p>`)
+	expect(t, s.page("/count"), `<p>2</p>`)
+	// The first of several rows is a reading of its own; a question without
+	// a limit reads every row its filter may find.
+	s.changed(`UPDATE products SET title = 'Big jug' WHERE id = 'p1'`, "among", "cheap", "dearest")
+	// A row a join found.
+	s.changed(`UPDATE categories SET title = 'Yard' WHERE id = 'c2'`, "joined")
+	expect(t, s.page("/joined"), `<p>Vase in Yard; null</p>`)
+	// A row a join looked for and did not find. A question that is not
+	// asked by equal values may find any new row, so it is asked again.
+	s.changed(`INSERT INTO products VALUES ('p5', 'c1', 'Namesake', 1, 'c2')`, "cheap", "count", "joined")
+	expect(t, s.page("/joined"), `<p>Vase in Yard; [object Object]</p>`)
+	// The order of the rows one question cuts.
+	s.changed(`UPDATE products SET price = 11 WHERE id = 'p3'`, "cheap", "count", "dearest")
+	expect(t, s.page("/dearest"), `<p>Tray</p>`)
+	// A row of a list of keys goes.
+	s.changed(`DELETE FROM products WHERE id = 'p3'`, "among", "cheap", "count", "dearest")
+	expect(t, s.page("/among"), `<p>Big jug</p>`)
+	expect(t, s.page("/dearest"), `<p>Big jug</p>`)
+	s.sameAsBuilt()
+}
+
+func TestDataQueryMistakes(t *testing.T) {
+	for name, mistake := range map[string][2]string{
+		"no table":                 {`Shugo.query("goods").all()`, `there is no table "goods" in the data database; it has: categories, products`},
+		"a view":                   {`Shugo.query("cheap").all()`, `cheap is a view`},
+		"the journal":              {`Shugo.query("_shugo_journal").all()`, `there is no table "_shugo_journal"`},
+		"no column":                {`Shugo.query("products").select("name").all()`, `there is no column "name" in the table products (select); it has: id, slug, title, price, category`},
+		"a number for a text":      {`Shugo.query("products").where({ category: 5 }).all()`, `products.category holds text, and it is compared with the number 5: write "5"`},
+		"a text for a number":      {`Shugo.query("products").where({ price: "5" }).all()`, `products.price holds numbers, and it is compared with the text "5": write 5`},
+		"a join to many rows":      {`Shugo.query("categories").join("products", "id", { on: "category" }).all()`, `products.category may hold the same value in several rows`},
+		"a column compared twice":  {`Shugo.query("products").where({ id: "p1" }).where({ id: "p2" }).all()`, `products.id is already compared with a value`},
+		"an unknown comparison":    {`Shugo.query("products").where("price", "~", 5).all()`, `the comparisons are =, !=, <, <=, >, >=, like, in`},
+		"a join that hides a name": {`Shugo.query("products").join("categories", "category", { as: "title" }).all()`, `a row already has "title"`},
+	} {
+		s := newSite(t, "-- shugo.json --\n{\"data\": \"data/shop.db\"}\n-- pages/index.shugo --\n---\nconst rows = "+mistake[0]+"\n---\n<p>{rows.length}</p>\n")
+		s.sql(queryRows)
+		if _, err := s.tryBuild(); err == nil || !strings.Contains(err.Error(), mistake[1]) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+
+	s := newSite(t, "-- pages/index.shugo --\n---\nconst rows = Shugo.query(\"products\").all()\n---\n<p>{rows.length}</p>\n")
+	if _, err := s.tryBuild(); err == nil || !strings.Contains(err.Error(), "this project names none") {
+		t.Errorf("no data database: %v", err)
+	}
+	s = newSite(t, "-- shugo.json --\n{\"data\": \"data/shop.db\"}\n-- pages/index.shugo --\n<p>Hi</p>\n")
+	if _, err := s.tryBuild(); err == nil || !strings.Contains(err.Error(), "is not there") {
+		t.Errorf("a data database that is not there: %v", err)
+	}
+	s.sql(`CREATE TABLE links (a TEXT, b TEXT, PRIMARY KEY (a, b))`)
+	if _, err := s.tryBuild(); err == nil || !strings.Contains(err.Error(), "the table links needs a primary key of one column") {
+		t.Errorf("a table without one key: %v", err)
+	}
+}
+
+// A route may give its pages their data. Then only the route knows what a
+// page shows, and all its pages are computed again when its list is.
+func TestDataFromGetStaticPaths(t *testing.T) {
+	s := newSite(t, `
+-- shugo.json --
+{"data": "data/shop.db"}
+-- pages/items/[id].shugo --
+---
+export const getStaticPaths = ({ query }) => query("products").select("title").all().map((item) => ({ params: { id: item.id }, props: { item } }))
+const { item } = Shugo.props
+console.log("item " + item.id)
+---
+<h1>{item.title}</h1>
+`)
+	s.sql(queryRows)
+	s.build()
+	s.computed()
+	s.sql(`UPDATE products SET title = 'Carafe' WHERE id = 'p1'`)
+	report := s.update()
+	if got := s.computed(); len(got) != 4 || report.Data.Routes != 1 || report.Pages.Changed != 1 {
+		t.Errorf("computed %q, routes listed %d, pages changed %d", got, report.Data.Routes, report.Pages.Changed)
+	}
+	expect(t, s.page("/items/p1"), `<h1>Carafe</h1>`)
+	// A column the route did not take.
+	s.changed(`UPDATE products SET price = 99`)
+	s.changed(`DELETE FROM products WHERE id = 'p2'`, "item p1", "item p3", "item p4")
+	if s.has("/items/p2") {
+		t.Errorf("pages: %v", s.addresses())
+	}
+	s.sameAsBuilt()
+}
+
+// A shared block that cannot be computed any more is an error as long as a
+// page shows it, and the site stays as it was.
+func TestSharedBlockThatFails(t *testing.T) {
+	s := newSite(t, `
+-- shugo.json --
+{"data": "data/shop.db"}
+-- components/Card.shugo --
+---
+const item = Shugo.query("products").select("title").get(Shugo.props.id)
+if (!item) throw new Error("there is no product " + Shugo.props.id)
+---
+<b>{item.title}</b>
+-- pages/index.shugo --
+---
+import Card from "../components/Card.shugo"
+const rows = Shugo.query("products").select("id").where({ category: "c2" }).all()
+---
+<Card id="p1" /><g-for each={rows} as="row"><Card id={row.id} /></g-for>
+`)
+	s.sql(queryRows)
+	s.build()
+	expect(t, s.page("/"), `<b>Jug</b><b>Vase</b>`)
+
+	// The page stops showing the card of a product that is gone: no error.
+	s.sql(`DELETE FROM products WHERE id = 'p4'`)
+	if report := s.update(); report.Shared.Removed != 1 {
+		t.Errorf("shared blocks: %+v", report.Shared)
+	}
+	expect(t, s.page("/"), `<b>Jug</b>`)
+
+	// The page still shows the other card, whatever the data says.
+	s.sql(`DELETE FROM products WHERE id = 'p1'`)
+	if _, err := s.tryUpdate(); err == nil || !strings.Contains(err.Error(), "there is no product p1") || !strings.Contains(err.Error(), "components/Card.shugo") {
+		t.Errorf("the update: %v", err)
+	}
+	expect(t, s.page("/"), `<b>Jug</b>`)
+	// The change is not forgotten: the next update meets it again.
+	if _, err := s.tryUpdate(); err == nil {
+		t.Error("the second update went through")
+	}
+	s.sql(`INSERT INTO products VALUES ('p1', 'jug', 'New jug', 10, 'c1')`)
+	s.update()
+	expect(t, s.page("/"), `<b>New jug</b>`)
+}
+
+// When the journal cannot tell what has changed, everything is computed.
+func TestDataJournalStartsAnew(t *testing.T) {
+	s := newSite(t, `
+-- shugo.json --
+{"data": "data/shop.db"}
+-- pages/index.shugo --
+---
+const rows = Shugo.query("products").select("title").order("title").all()
+---
+<p>{rows.map((row) => row.title).join(", ")}</p>
+`)
+	s.sql(queryRows)
+	s.build()
+	if report := s.update(); report.Data.Whole || report.Computed.Pages != 0 {
+		t.Errorf("an update without changes: %+v", report.Data)
+	}
+
+	// A table is added: rows may have changed before it got its triggers.
+	s.sql(`CREATE TABLE notes (id INTEGER PRIMARY KEY, text TEXT); UPDATE products SET title = 'Carafe' WHERE id = 'p1'`)
+	if report := s.update(); !report.Data.Whole || report.Computed.Pages != 1 {
+		t.Errorf("after a table was added: %+v, computed %+v", report.Data, report.Computed)
+	}
+	expect(t, s.page("/"), `<p>Carafe, Cup, Tray, Vase</p>`)
+	s.sql(`UPDATE products SET title = 'Beaker' WHERE id = 'p2'`)
+	if report := s.update(); report.Data.Whole || report.Data.Rows != 1 || report.Computed.Pages != 1 {
+		t.Errorf("the update after: %+v, computed %+v", report.Data, report.Computed)
+	}
+
+	// Another database stands in place of the one the site was computed from.
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		os.Remove(filepath.Join(s.root, "data", "shop.db"+suffix))
+	}
+	s.sql(queryRows)
+	if report := s.update(); !report.Data.Whole {
+		t.Errorf("after the database was replaced: %+v", report.Data)
+	}
+	expect(t, s.page("/"), `<p>Cup, Jug, Tray, Vase</p>`)
+}
+
+// What a page reads from elsewhere than the data database is not tracked:
+// an update does not see it change, a build reads it again.
+func TestDataOutsideTheDatabase(t *testing.T) {
+	s := newSite(t, `
+-- shugo.json --
+{"data": "data/shop.db"}
+-- note.txt --
+old
+-- pages/index.shugo --
+---
+import { readFileSync } from "node:fs"
+const note = readFileSync("note.txt", "utf8")
+const count = Shugo.query("products").count()
+---
+<p>{note}: {count}</p>
+`)
+	s.sql(queryRows)
+	s.build()
+	s.write("-- note.txt --\nnew\n")
+	if report := s.update(); report.Computed.Pages != 0 {
+		t.Errorf("computed %+v", report.Computed)
+	}
+	expect(t, s.page("/"), `<p>old: 4</p>`)
+	s.build()
+	expect(t, s.page("/"), `<p>new: 4</p>`)
+}
+
+// A page that stands at an address of its own hides the page a route with
+// a parameter would give there, also when that page comes later.
+func TestDataPageBehindAnother(t *testing.T) {
+	s := newSite(t, `
+-- shugo.json --
+{"data": "data/shop.db"}
+-- pages/products/special.shugo --
+<h1>Special</h1>
+-- pages/products/[slug].shugo --
+---
+export const getStaticPaths = ({ query }) => query("products").select("slug").all().map(({ slug }) => ({ params: { slug } }))
+const item = Shugo.query("products").select("title").where({ slug: Shugo.params.slug }).first()
+console.log("page " + item.id)
+---
+<h1>{item.title}</h1>
+`)
+	s.sql(queryRows)
+	s.build()
+	s.computed()
+	s.sql(`INSERT INTO products VALUES ('p9', 'special', 'Not special', 1, 'c1')`)
+	report := s.update()
+	if got := s.computed(); len(got) != 0 || report.Shadowed != 1 || report.Pages.Added != 0 {
+		t.Errorf("computed %q, shadowed %d, pages %+v", got, report.Shadowed, report.Pages)
+	}
+	expect(t, s.page("/products/special"), `<h1>Special</h1>`)
+	s.changed(`UPDATE products SET slug = 'plain' WHERE id = 'p9'`, "page p9")
+	expect(t, s.page("/products/plain"), `<h1>Not special</h1>`)
+	s.sameAsBuilt()
 }

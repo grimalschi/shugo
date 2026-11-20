@@ -351,7 +351,9 @@ func part(w *worker, k *keeper, readers map[string]struct{}, took func(string)) 
 
 // relist reads again which pages routes have. A page a route no longer
 // gives is dropped, and a page it gives for the first time is added to
-// pages, to be computed. So is a page it takes over from a less exact route.
+// pages, to be computed. So is a page it takes over from a less exact
+// route, and every page of a route that gives its pages more than their
+// addresses.
 func relist(w *worker, k *keeper, routes []int, pages map[string]int) error {
 	done := map[int]bool{}
 	for len(routes) > 0 {
@@ -401,8 +403,18 @@ func relist(w *worker, k *keeper, routes []int, pages map[string]int) error {
 					}
 				}
 			}
+			// What the route gives its pages beside their addresses may be
+			// other than it was, and only the route knows: all its pages are
+			// computed again.
+			props, _, _, err := k.update.Route(route)
+			if err != nil {
+				return err
+			}
 			for path := range given[route] {
 				if _, had := before[path]; had {
+					if props {
+						pages[path] = route
+					}
 					continue
 				}
 				kept, known, err := k.update.PageKept(path)

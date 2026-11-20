@@ -153,6 +153,10 @@ func (c *command) update() error {
 		return err
 	}
 	defer st.Close()
+	return c.renew(st)
+}
+
+func (c *command) renew(st *store.Store) error {
 	if changed, err := compile.Changed(c.project); err != nil {
 		return err
 	} else if changed {

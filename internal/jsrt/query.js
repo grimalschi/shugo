@@ -30,7 +30,18 @@ export async function open(path, declare) {
     const { DatabaseSync } = await import("node:sqlite");
     const db = new DatabaseSync(path, { readOnly: true });
     db.exec("BEGIN");
-    prepare = (sql) => db.prepare(sql);
+    // Node gives rows without the methods every object has; templates may
+    // count on them, so rows are made the objects they are on Bun.
+    prepare = (sql) => {
+      const statement = db.prepare(sql);
+      return {
+        all: (...values) => statement.all(...values).map((row) => ({ ...row })),
+        get: (...values) => {
+          const row = statement.get(...values);
+          return row === undefined ? undefined : { ...row };
+        },
+      };
+    };
   }
   return new Data(prepare, declare);
 }
