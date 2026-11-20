@@ -658,7 +658,9 @@ class Run {
             continue;
           }
           props ||= entry.props != null && Object.keys(entry.props).length > 0;
-          this.pages.set(path, { index, route, entry });
+          // A page is given the parameters its address holds, and no more:
+          // so it is, too, when it is computed from its address alone.
+          this.pages.set(path, { index, route, entry: { params: parameters(route, path), props: entry.props } });
           if (lines.push(index + "\x02" + path) === 4096) {
             this.send("P", lines.join("\x03"));
             lines = [];
@@ -763,7 +765,7 @@ class Run {
     if (route === undefined) throw new Error(`the page ${path} was asked for under route ${index}, which this project's compiled code does not have: build the project again`);
     const listed = this.pages.get(path);
     const entry = listed !== undefined && listed.index === index ? listed.entry : { params: parameters(route, path) };
-    const params = Object.freeze({ ...entry.params });
+    const params = Object.freeze(entry.params);
     const page = { params, path, route, origin: this.site.origin, url: undefined };
     const reads = new Reads();
     const own = this.script(route.file, new Context(entry.props ?? {}, page, null, reads));

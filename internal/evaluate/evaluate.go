@@ -180,7 +180,7 @@ func Run(p *project.Project, compiled *compile.Result, st *store.Store, options 
 	w := &worker{project: p, log: options.Log}
 	defer w.stop()
 	if path := p.Data(); path == "" {
-		err = printed(w, k, took)
+		err = fingerprinted(w, k, took)
 	} else {
 		err = tracked(w, k, path, options.Whole || kept != compiled.ID, took)
 	}
@@ -211,11 +211,11 @@ func Run(p *project.Project, compiled *compile.Result, st *store.Store, options 
 	return report, nil
 }
 
-// printed brings a project without a data database up to date. It has the
+// fingerprinted brings a project without a data database up to date. It has the
 // scripts of all pages and of the shared blocks the store knows run, and
 // computes those whose fingerprint is not what the store has. The pages the
 // project no longer has are dropped.
-func printed(w *worker, k *keeper, took func(step string)) error {
+func fingerprinted(w *worker, k *keeper, took func(step string)) error {
 	pages, err := w.list(nil, k)
 	if err != nil {
 		return err

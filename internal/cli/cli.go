@@ -25,8 +25,9 @@ const usage = `shugo builds a static site and shows it.
 
   shugo build  [folder]   compile the project and compute every page
   shugo update [folder]   bring the site up to date after the data has changed:
-                          with a data database, only what read a changed row
-                          is computed; without one, everything is
+                          with a data database, what read a changed row is
+                          computed; without one, every script runs again, and
+                          what shows something that has changed is computed
   shugo serve  [folder]   show the site, building every page on request
   shugo export [folder]   write the site as files for any web server
   shugo dev    [folder]   build, show, and build again whenever a file changes
@@ -36,7 +37,7 @@ The folder is the project; without it, the current one. Options:
   -json          print the report of build, update and export as JSON
   -check         with update: compute every page, whatever has changed, and
                  tell which pages came out different although nothing they
-                 read did
+                 are seen to read did
   -runtime NAME  what runs the JavaScript of the project: bun or node
                  (default: the "runtime" of shugo.json, else bun if installed)
   -addr ADDRESS  where serve and dev listen (default localhost:4321)
@@ -181,9 +182,19 @@ func (c *command) renew(st *store.Store) error {
 	if len(report.Unseen) > 0 {
 		// The store is right now: everything was computed. But the next
 		// plain update would again leave such a page as it is.
-		return fmt.Errorf("%d pages or shared blocks came out different although nothing they are seen to read has changed; the first: %s.\nTheir templates, or components that only show what they are given, read something past Shugo: a package that reads a file or a database by itself is the usual cause. Load that in the script of the page and pass it on", len(report.Unseen), report.Unseen[0])
+		return fmt.Errorf("%d pages or shared blocks came out different although nothing they are seen to read has changed; the first: %s.\n%s", len(report.Unseen), report.Unseen[0], unseenCause(report))
 	}
 	return nil
+}
+
+// unseenCause says where to look for what a page reads unseen. A project
+// with a data database is followed by the rows its scripts ask for; one
+// without, by what its templates read of its scripts.
+func unseenCause(r *evaluate.Report) string {
+	if r.Data != nil {
+		return "They read data past the data database — a file, the network, something another page left in a module — or a package does so for them. Put that data into the database and ask for it with Shugo.query; until then only `shugo build` reads it again"
+	}
+	return "Their templates, or components that only show what they are given, read something past Shugo: a package that reads a file or a database by itself is the usual cause. Load that in the script of the page and pass it on"
 }
 
 // print writes a report: as JSON for programs, in words for people.

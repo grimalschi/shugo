@@ -245,20 +245,21 @@ class Asked {
 // -1. covered are columns that another reading of the same question
 // accounts for already.
 //
-// The same script reads the same columns of row after row, in the same
-// order, so a shape is remembered by the names as they were noted.
+// A script reads the same few sets of columns of row after row, so the
+// shape of each set is worked out once.
 function shaper(data, table, by, taken, always, covered = []) {
   const counted = taken.filter((column) => column !== table.key && !by.includes(column) && !covered.includes(column));
   const known = new Map();
   return (seen, whole) => {
     const all = whole || seen.has(everything);
-    const noted = all ? everything : [...seen].join(",");
-    let shape = known.get(noted);
+    let read = "";
+    for (let i = 0; i < counted.length; i++) if (all || seen.has(counted[i])) read += i + ",";
+    let shape = known.get(read);
     if (shape === undefined) {
       const columns = new Set(always ?? []);
       for (const column of counted) if (all || seen.has(column)) columns.add(column);
       shape = columns.size === 0 && always === null ? -1 : data.shape(table.name, by, [...columns].sort());
-      known.set(noted, shape);
+      known.set(read, shape);
     }
     return shape;
   };
