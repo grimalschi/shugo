@@ -230,6 +230,13 @@ func changed(s *session, k *keeper, pages []listed, took func(step string)) erro
 	// computed record shows is computed only if the store does not have it.
 	// A check computes everything it meets.
 	k.again = func(string, bool) bool { return k.check }
+	for _, u := range compute {
+		if u.shared {
+			if err := k.expect(u.name); err != nil {
+				return err
+			}
+		}
+	}
 	if err := s.compute(compute, k); err != nil {
 		return err
 	}

@@ -173,6 +173,14 @@ func (k *keeper) loads(name string) bool {
 	return k.loading[path]
 }
 
+// expect notes that a shared block is being computed already, so that a
+// record which shows it does not have it computed once more.
+func (k *keeper) expect(name string) error {
+	m, err := k.meet(name)
+	k.asked[m.id] = struct{}{}
+	return err
+}
+
 // take returns the shared blocks that records of this run show and that
 // are to be computed next.
 func (k *keeper) take() []string {

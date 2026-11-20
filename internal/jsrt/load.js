@@ -265,11 +265,11 @@ const whole = {
   part: copy,
 };
 
-// Of a value that is only asked whether it is there, the template gets an
-// empty one of its kind.
+// Of a value that is only asked whether it is there, the template gets
+// true in its place. What is not there stays as it is.
 const presence = {
   print: (h, v) => h.truth(v),
-  part: (v) => (v ? (typeof v === "object" ? (Array.isArray(v) ? [] : {}) : true) : v),
+  part: (v) => (v ? true : v),
 };
 
 function members(names, readers) {
@@ -292,12 +292,13 @@ function members(names, readers) {
 function items(reader) {
   return {
     print(h, v) {
+      // The template gets a list of the items whatever they were kept in.
       if (Array.isArray(v)) {
         h.word(18);
         h.word(v.length);
         for (let i = 0; i < v.length; i++) reader.print(h, v[i]);
       } else if (v instanceof Set || v instanceof Map) {
-        h.word(19);
+        h.word(18);
         h.word(v.size);
         for (const item of v) reader.print(h, item);
       } else {
@@ -311,7 +312,7 @@ function items(reader) {
         for (let i = 0; i < v.length; i++) out[i] = reader.part(v[i]);
         return out;
       }
-      if (v instanceof Set || v instanceof Map) return Array.from(v, reader.part);
+      if (v instanceof Set || v instanceof Map) return Array.from(v, (item) => reader.part(item));
       return copy(v);
     },
   };
