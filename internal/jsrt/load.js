@@ -38,6 +38,20 @@ const halves = new Uint32Array(float.buffer);
 const seedA = 0;
 const seedB = 0x9747b28c | 0;
 
+// How deep data may go. Data that contains itself goes deeper than anything.
+const deepest = 500;
+
+// The two digits of every byte, for writing a fingerprint as text.
+const digits = Array.from({ length: 256 }, (_, byte) => byte.toString(16).padStart(2, "0"));
+
+// hex writes the two halves of a fingerprint as sixteen digits.
+export function hex(a, b) {
+  return (
+    digits[a >>> 24] + digits[(a >>> 16) & 255] + digits[(a >>> 8) & 255] + digits[a & 255] +
+    digits[b >>> 24] + digits[(b >>> 16) & 255] + digits[(b >>> 8) & 255] + digits[b & 255]
+  );
+}
+
 // Hasher makes a fingerprint of 64 bits out of the values fed to it:
 // MurmurHash3 (x86, 32 bits) of the same words under two seeds. The words
 // are the values themselves, each after a word that tells its kind, so that
@@ -45,12 +59,6 @@ const seedB = 0x9747b28c | 0;
 // turned into text on the way.
 export class Hasher {
   constructor() {
-    // Values read whole are hashed once: the same object, shown on many
-    // pages, costs one lookup after the first time.
-    this.kept = new Map();
-    this.keptA = [];
-    this.keptB = [];
-    this.open = new Set();
     this.reset();
   }
 
@@ -58,6 +66,7 @@ export class Hasher {
     this.a = seedA;
     this.b = seedB;
     this.words = 0;
+    this.depth = 0;
   }
 
   // word takes the next four bytes.
@@ -74,17 +83,38 @@ export class Hasher {
     this.words++;
   }
 
-  // hex returns the fingerprint of what was fed since reset.
-  hex() {
+  // finish makes the fingerprint of what was fed since reset: its two
+  // halves are left in a and b.
+  finish() {
     const length = this.words << 2;
-    return ((mix(this.a ^ length) >>> 0).toString(16).padStart(8, "0") + (mix(this.b ^ length) >>> 0).toString(16).padStart(8, "0"));
+    this.a = mix(this.a ^ length);
+    this.b = mix(this.b ^ length);
   }
 
+  // string takes text: its length, then two of its characters in a word.
+  // This is where most of the time of a fingerprint goes, so the loop is
+  // word() written out, with the two halves kept at hand.
   string(s) {
     const length = s.length;
     this.word(length);
+    let a = this.a;
+    let b = this.b;
     let i = 0;
-    for (; i + 1 < length; i += 2) this.word(s.charCodeAt(i) | (s.charCodeAt(i + 1) << 16));
+    for (; i + 1 < length; i += 2) {
+      let k = s.charCodeAt(i) | (s.charCodeAt(i + 1) << 16);
+      k = Math.imul(k, 0xcc9e2d51);
+      k = (k << 15) | (k >>> 17);
+      k = Math.imul(k, 0x1b873593);
+      a ^= k;
+      a = (a << 13) | (a >>> 19);
+      a = (Math.imul(a, 5) + 0xe6546b64) | 0;
+      b ^= k;
+      b = (b << 13) | (b >>> 19);
+      b = (Math.imul(b, 5) + 0xe6546b64) | 0;
+    }
+    this.a = a;
+    this.b = b;
+    this.words += length >> 1;
     if (i < length) this.word(s.charCodeAt(i));
   }
 
@@ -122,19 +152,11 @@ export class Hasher {
         return;
       case "object":
         if (v === null) this.word(8);
-        else if (v instanceof Loader) this.component(v);
-        else this.whole(v);
+        else this.inside(v);
         return;
       default:
         throw new NotData(v);
     }
-  }
-
-  // component takes a component that a script has chosen for its template
-  // to show: which file it is.
-  component(v) {
-    this.word(20);
-    this.word(v.file);
   }
 
   // truth takes only whether a value is there. What is not there — null,
@@ -145,63 +167,46 @@ export class Hasher {
     else this.value(v);
   }
 
-  // whole takes an object with everything in it, by a fingerprint of its
-  // own that is made once.
-  whole(v) {
-    let at = this.kept.get(v);
-    if (at === undefined) {
-      if (this.open.has(v)) throw new NotData(v);
-      const { a, b, words } = this;
-      this.reset();
-      this.open.add(v);
-      this.inside(v);
-      this.open.delete(v);
-      const length = this.words << 2;
-      at = this.keptA.length;
-      this.kept.set(v, at);
-      this.keptA.push(mix(this.a ^ length));
-      this.keptB.push(mix(this.b ^ length));
-      this.a = a;
-      this.b = b;
-      this.words = words;
-    }
-    this.word(9);
-    this.word(this.keptA[at]);
-    this.word(this.keptB[at]);
-  }
-
+  // inside takes an object with everything in it.
   inside(v) {
+    if (++this.depth > deepest) throw new NotData(v);
     if (Array.isArray(v)) {
       this.word(10);
       this.word(v.length);
       for (let i = 0; i < v.length; i++) this.value(v[i]);
-      return;
-    }
-    const kind = Object.getPrototypeOf(v);
-    if (kind === Object.prototype || kind === null) {
-      this.word(11);
-      for (const key in v) {
-        this.string(key);
-        this.value(v[key]);
-      }
-      this.word(12);
-    } else if (v instanceof Date) {
-      this.word(13);
-      this.number(v.getTime());
-    } else if (v instanceof Map) {
-      this.word(14);
-      this.word(v.size);
-      for (const [key, value] of v) {
-        this.value(key);
-        this.value(value);
-      }
-    } else if (v instanceof Set) {
-      this.word(15);
-      this.word(v.size);
-      for (const value of v) this.value(value);
     } else {
-      throw new NotData(v);
+      const kind = Object.getPrototypeOf(v);
+      if (kind === Object.prototype || kind === null) {
+        this.word(11);
+        for (const key in v) {
+          this.string(key);
+          this.value(v[key]);
+        }
+        this.word(12);
+      } else if (v instanceof Date) {
+        this.word(13);
+        this.number(v.getTime());
+      } else if (v instanceof Map) {
+        this.word(14);
+        this.word(v.size);
+        for (const [key, value] of v) {
+          this.value(key);
+          this.value(value);
+        }
+      } else if (v instanceof Set) {
+        this.word(15);
+        this.word(v.size);
+        for (const value of v) this.value(value);
+      } else if (v instanceof Loader) {
+        // A component that a script has chosen for its template to show:
+        // which file it is.
+        this.word(20);
+        this.word(v.file);
+      } else {
+        throw new NotData(v);
+      }
     }
+    this.depth--;
   }
 }
 
@@ -214,21 +219,19 @@ function mix(h) {
   return h ^ (h >>> 16);
 }
 
-// The fingerprint of a block that has nothing to load: its name says all
-// that it shows.
-const nothing = "0000000000000000";
+
 
 // ---------------------------------------------------------------------------
 // What a template reads
 
-// copy copies data with everything in it. It takes what Hasher.value takes.
+// copy copies data with everything in it. It takes what Hasher.value takes;
+// the fingerprint of a value is always made before the value is copied, so
+// data that contains itself never comes this far.
 function copy(v) {
   if (v === null || typeof v !== "object") {
     if (typeof v === "function" || typeof v === "symbol") throw new NotData(v);
     return v;
   }
-  // A component is code: the render side has its own. It is told which.
-  if (v instanceof Loader) return { shugoComponent: v.file };
   if (Array.isArray(v)) {
     const out = new Array(v.length);
     for (let i = 0; i < v.length; i++) out[i] = copy(v[i]);
@@ -242,7 +245,9 @@ function copy(v) {
   }
   if (v instanceof Date) return new Date(v.getTime());
   if (v instanceof Map) return new Map(Array.from(v, ([key, value]) => [copy(key), copy(value)]));
-  if (v instanceof Set) return new Set(Array.from(v, copy));
+  if (v instanceof Set) return new Set(Array.from(v, (value) => copy(value)));
+  // A component is code: the render side has its own. It is told which.
+  if (v instanceof Loader) return { shugoComponent: v.file };
   throw new NotData(v);
 }
 
@@ -341,7 +346,7 @@ function fault(v, shape, path, seen = new Set()) {
     return null;
   }
   // The value whole.
-  if (seen.has(v)) return `${path}, which contains itself`;
+  if (seen.has(v)) return `${path}, which contains itself: data must end somewhere`;
   seen.add(v);
   const kind = Object.getPrototypeOf(v);
   let entries;
@@ -501,6 +506,12 @@ async function entries(route, module) {
 // only lets them wait for their data together.
 const concurrency = 32;
 
+// after hands a value to next. The value may be a promise of it — the script
+// of a page waits only if it has await in it — and only then is it waited for.
+function after(value, next) {
+  return value instanceof Promise ? value.then(next) : next(value);
+}
+
 // placed notes what was being computed when an error came up.
 function placed(error, place) {
   const failure = error instanceof Error ? error : new Error(String(error));
@@ -517,9 +528,14 @@ class Run {
     this.render = render; // the render side: it computes a page or a block from what it is given
     this.send = send;
     this.files = new Map(site.files.map((file, number) => [file.path, number]));
-    this.pages = new Map(); // address → { index, route, entry }, once the pages are listed
-    this.loaded = new Map(); // unit → what its scripts gave, until the unit is computed
+    // address → { index, route, entry }, once the pages are listed; then
+    // also loaded: what the scripts of the page gave, until it is computed.
+    this.pages = new Map();
+    this.blocks = new Map(); // name → the same for a shared block
     this.given = new Map(); // route → the slots every layout of it is given
+    // The layouts that are computed with the pages of every route: those
+    // that read the page. The others are shared blocks.
+    this.own = site.routes.map((route) => route.layouts.filter((layout) => !site.files[layout].shared));
     this.hasher = new Hasher();
     this.batch = [];
     this.batchSize = 0;
@@ -561,14 +577,16 @@ class Run {
     return { shadowed };
   }
 
-  // each runs work for every unit, several at a time.
+  // each runs work for every unit, several at a time where work waits. work
+  // is given the unit and its place among the units.
   async each(units, work) {
     let next = 0;
     const worker = async () => {
       while (next < units.length) {
         const unit = units[next++];
         try {
-          await work(unit);
+          const done = work(unit, next - 1);
+          if (done instanceof Promise) await done;
         } catch (error) {
           next = units.length; // the others stop after the unit they are at
           throw placed(error, this.place(unit));
@@ -578,81 +596,101 @@ class Run {
     await Promise.all(Array.from({ length: concurrency }, worker));
   }
 
-  // prints runs the scripts of the units and sends the fingerprint of each.
-  // A shared block whose script fails is sent with its failure: the store may
-  // know a block that nothing shows any more, and whose data is gone.
+  // prints runs the scripts of the units and sends their fingerprints: eight
+  // bytes for every unit, in the order of the units. A shared block whose
+  // script fails is sent with its failure, by its place among the units: the
+  // store may know a block that nothing shows any more, and whose data is gone.
   async prints(units) {
-    let lines = [];
-    await this.each(units, async (unit) => {
-      let line;
+    const out = Buffer.alloc(units.length * 8);
+    const done = (place, loaded) => {
+      out.writeInt32LE(loaded.a, place * 8 + 4);
+      out.writeInt32LE(loaded.b, place * 8);
+    };
+    const failed = (unit, place, error) => {
+      if (unit[0] !== "s") throw error;
+      this.send("X", place + "\x02" + JSON.stringify({ message: String(error?.message ?? error), stack: String(error?.stack ?? ""), place: this.place(unit) }));
+    };
+    await this.each(units, (unit, place) => {
+      let loaded;
       try {
-        line = unit + "\x02" + (await this.load(unit)).print;
+        loaded = this.load(unit);
       } catch (error) {
-        if (unit[0] !== "s") throw error;
-        line = unit + "\x02!\x02" + JSON.stringify({ message: String(error?.message ?? error), stack: String(error?.stack ?? ""), place: this.place(unit) });
+        return failed(unit, place, error);
       }
-      if (lines.push(line) === 4096) {
-        this.send("F", lines.join("\x03"));
-        lines = [];
-      }
+      if (loaded instanceof Promise) return loaded.then((loaded) => done(place, loaded), (error) => failed(unit, place, error));
+      done(place, loaded);
     });
-    if (lines.length > 0) this.send("F", lines.join("\x03"));
+    this.send("F", out);
   }
 
   // compute sends the records of the units. A unit that the Go side has not
   // asked the fingerprint of — a shared block met for the first time — is
   // loaded here.
   async compute(units) {
-    await this.each(units, async (unit) => {
-      const loaded = this.loaded.get(unit) ?? (await this.load(unit));
-      this.loaded.delete(unit);
+    await this.each(units, (unit) => {
       const name = unit.slice(2);
-      const parts = this.parts(loaded.values);
-      this.emit(
-        unit[0] === "p"
-          ? this.render.page(name, loaded.index, loaded.params, parts, loaded.print)
-          : this.render.block(name, parts?.get(loaded.values[0][0]), loaded.print),
-      );
+      const page = unit[0] === "p";
+      const kept = page ? this.pages.get(name)?.loaded : this.blocks.get(name);
+      return after(kept ?? this.load(unit), (loaded) => {
+        // What the scripts gave is not needed once the unit is computed.
+        if (page) this.pages.get(name).loaded = undefined;
+        else this.blocks.delete(name);
+        const parts = this.parts(loaded.values);
+        const print = hex(loaded.a, loaded.b);
+        this.emit(page ? this.render.page(name, loaded.index, loaded.params, parts, print) : this.render.block(name, parts?.get(loaded.values[0][0]), print));
+      });
     });
     this.flush();
   }
 
   // load runs the scripts of a unit and makes the fingerprint of what its
-  // templates read of them.
-  async load(unit) {
-    const loaded = unit[0] === "p" ? await this.loadPage(unit.slice(2)) : await this.loadBlock(unit.slice(2));
-    this.loaded.set(unit, loaded);
-    return loaded;
+  // templates read of them. What the scripts gave is kept until the unit
+  // is computed.
+  load(unit) {
+    return unit.charCodeAt(0) === 112 ? this.loadPage(unit.slice(2)) : this.loadBlock(unit.slice(2));
   }
 
-  async loadPage(path) {
+  loadPage(path) {
     const listed = this.pages.get(path);
     if (listed === undefined) throw new Error(`the page ${path} was asked for, and the project does not have it`);
     const { index, route, entry } = listed;
     const params = Object.freeze({ ...entry.params });
     const page = { params, path, origin: this.site.origin, url: undefined };
-    // The page itself, then every layout that is computed with it: one
-    // that reads the page. The other layouts are shared blocks.
-    const values = [[route.file, await this.script(route.file, new Context(entry.props ?? {}, page, null))]];
-    for (const layout of route.layouts) {
-      if (!this.site.files[layout].shared) values.push([layout, await this.script(layout, new Context({}, page, this.slots(index, layout)))]);
-    }
-    return { index, params, values, print: this.print(values) };
+    const own = this.script(route.file, new Context(entry.props ?? {}, page, null));
+    // Most pages are computed alone. Some have layouts that are computed
+    // with them: those that read the page. The other layouts are shared blocks.
+    if (this.own[index].length === 0) return after(own, (got) => (listed.loaded = this.printed({ index, params, values: [[route.file, got]] })));
+    return this.withLayouts(listed, params, page, own);
   }
 
-  async loadBlock(name) {
+  async withLayouts(listed, params, page, own) {
+    const { index, route } = listed;
+    const values = [[route.file, await own]];
+    for (const layout of this.own[index]) values.push([layout, await this.script(layout, new Context({}, page, this.slots(index, layout)))]);
+    return (listed.loaded = this.printed({ index, params, values }));
+  }
+
+  loadBlock(name) {
     const { path, props, slots } = this.render.unnamed(name);
     const file = this.files.get(path);
     if (file === undefined) throw new Error(`there is no file ${path} to compute the shared block from`);
-    // A component that only shows what it is given has nothing to load.
-    if (!this.site.files[file].loads) return { values: null, print: nothing };
-    const values = [[file, await this.script(file, new Context(props, null, slots === null ? null : new Set(slots.keys())))]];
-    return { values, print: this.print(values) };
+    const keep = (loaded) => {
+      this.blocks.set(name, loaded);
+      return loaded;
+    };
+    // A component that only shows what it is given has nothing to load: its
+    // name says all that it shows, and its fingerprint is that of nothing.
+    if (!this.site.files[file].loads) return keep({ values: null, a: 0, b: 0 });
+    const own = this.script(file, new Context(props, null, slots === null ? null : new Set(slots.keys())));
+    return after(own, (got) => keep(this.printed({ values: [[file, got]] })));
   }
 
+  // script runs the script of a file. It returns the variables the template
+  // reads, or a promise of them if the script waits.
   script(file, context) {
     return this.modules.get(file).default.load(context);
   }
+
 
   // slots returns the names of the slots that a layout of a route is given:
   // the page in the default one, and what the page or a layout inside gave
@@ -677,11 +715,12 @@ class Run {
     return given.get(layout);
   }
 
-  // print makes the fingerprint of what the templates of a unit read.
-  print(values) {
+  // printed makes the fingerprint of what the templates of a unit read of
+  // what its scripts gave, and leaves its two halves in a and b.
+  printed(loaded) {
     const h = this.hasher;
     h.reset();
-    for (const [file, got] of values) {
+    for (const [file, got] of loaded.values) {
       const { readers } = this.modules.get(file).default;
       h.word(file);
       try {
@@ -690,7 +729,10 @@ class Run {
         throw this.explained(error, file, got);
       }
     }
-    return h.hex();
+    h.finish();
+    loaded.a = h.a;
+    loaded.b = h.b;
+    return loaded;
   }
 
   // parts copies for every template of a unit what it reads.
@@ -745,10 +787,12 @@ export async function run(modules) {
     console.error("This file is a part of a Shugo project and is run by the shugo command: `shugo build` or `shugo update`.");
     process.exit(2);
   }
-  const send = (kind, text) => {
-    const body = Buffer.from(kind + text);
-    const head = Buffer.allocUnsafe(4);
-    head.writeUInt32LE(body.length, 0);
+  // The body of a message is text, or bytes as they are.
+  const send = (kind, body) => {
+    const head = Buffer.allocUnsafe(5);
+    if (typeof body === "string") body = Buffer.from(body);
+    head.writeUInt32LE(body.length + 1, 0);
+    head.write(kind, 4, "latin1");
     for (const buffer of [head, body]) {
       for (let sent = 0; sent < buffer.length; ) sent += writeSync(output, buffer, sent, buffer.length - sent);
     }

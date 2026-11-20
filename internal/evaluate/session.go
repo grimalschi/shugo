@@ -25,10 +25,11 @@ import (
 //
 //	to the project's code           from it
 //	L  list the pages               P  pages: route \x02 address, split by \x03
-//	F  run the scripts of units     F  fingerprints: unit \x02 sixteen digits, split
-//	   and tell their fingerprints     by \x03; or unit \x02 ! \x02 the failure of
-//	C  compute the records of units    the script of a shared block
-//	Q  nothing more                 R  records, split by \x03
+//	F  run the scripts of units     F  fingerprints: eight bytes for every unit,
+//	   and tell their fingerprints     in the order they were named
+//	C  compute the records of units X  the script of a shared block failed: its
+//	Q  nothing more                    place among the units \x02 the failure
+//	                                R  records, split by \x03
 //	                                E  it failed: { message, stack, place }
 //	                                D  the request is done: what it has to add
 //
@@ -168,47 +169,42 @@ func named(units []unit) []byte {
 
 // prints has the scripts of units run and hands the fingerprint of each to
 // got. The script of a shared block may fail without failing the request:
-// then got is given the failure. Every unit asked for must come back.
+// then got is given the failure.
 func (w *wire) prints(units []unit, got func(u unit, print uint64, failure *ScriptError) error) error {
 	if len(units) == 0 {
 		return nil
 	}
-	count := 0
+	failures := map[int]*ScriptError{}
+	answered := false
 	_, err := w.ask('F', named(units), func(kind byte, body []byte) error {
-		if kind != 'F' {
-			return errorf("a message of the kind %q where fingerprints were asked for", kind)
-		}
-		for len(body) > 0 {
-			var one []byte
-			one, body, _ = bytes.Cut(body, []byte{3})
-			fields := bytes.SplitN(one, []byte{2}, 4)
-			if len(fields) < 3 || len(fields[0]) != 1 || (fields[0][0] != 'p' && fields[0][0] != 's') {
-				return errorf("a damaged fingerprint")
+		switch kind {
+		case 'X':
+			number, report, found := bytes.Cut(body, []byte{2})
+			at, err := strconv.Atoi(string(number))
+			if !found || err != nil || at < 0 || at >= len(units) || !units[at].shared {
+				return errorf("a damaged failure of a script")
 			}
-			u := unit{shared: fields[0][0] == 's', name: string(fields[1])}
-			count++
-			if len(fields) == 4 && string(fields[2]) == "!" && u.shared {
-				failure := &ScriptError{}
-				if err := json.Unmarshal(fields[3], failure); err != nil {
-					return fmt.Errorf("the script of %s failed, and its report cannot be read: %w", u, err)
-				}
-				if err := got(u, 0, failure); err != nil {
+			failures[at] = &ScriptError{}
+			if err := json.Unmarshal(report, failures[at]); err != nil {
+				return fmt.Errorf("the script of %s failed, and its report cannot be read: %w", units[at], err)
+			}
+		case 'F':
+			if len(body) != len(units)*8 || answered {
+				return errorf("fingerprints of %d bytes for %d pages and shared blocks", len(body), len(units))
+			}
+			answered = true
+			for i, u := range units {
+				if err := got(u, binary.LittleEndian.Uint64(body[i*8:]), failures[i]); err != nil {
 					return err
 				}
-				continue
 			}
-			print, err := parsePrint(fields[2])
-			if err != nil || len(fields) != 3 {
-				return errorf("a damaged fingerprint of %s", u)
-			}
-			if err := got(u, print, nil); err != nil {
-				return err
-			}
+		default:
+			return errorf("a message of the kind %q where fingerprints were asked for", kind)
 		}
 		return nil
 	})
-	if err == nil && count != len(units) {
-		return errorf("%d fingerprints where %d were asked for", count, len(units))
+	if err == nil && !answered {
+		return errorf("no fingerprints where they were asked for")
 	}
 	return err
 }

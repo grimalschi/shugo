@@ -35,9 +35,13 @@ type keeper struct {
 
 	// What the store had before the run, if the whole of it was read at
 	// once: see preload. Otherwise the store is asked one record at a time.
-	pages  map[string]store.Kept
+	pages  map[string]record.Hash
 	shared map[string]store.Kept
 	whole  bool
+	// prints are the fingerprints of what every page and shared block was
+	// computed from, as the store has them and as this run changes them.
+	prints      store.Prints
+	printsMoved bool
 	// anew tells that the records of another compiled project were dropped.
 	anew   bool
 	totals store.Totals
@@ -79,7 +83,6 @@ type keeper struct {
 type met struct {
 	id    int64
 	hash  record.Hash
-	print uint64
 	known bool // the store had its record before the run
 }
 
@@ -88,12 +91,16 @@ func newKeeper(site *program.Site, u *store.Update, report *Report, limit int) (
 	if err != nil {
 		return nil, err
 	}
+	prints, err := u.Prints()
+	if err != nil {
+		return nil, err
+	}
 	loading := map[string]bool{}
 	for _, file := range site.Files {
 		loading[file.Path] = file.Loads
 	}
 	return &keeper{
-		site: site, update: u, report: report, limit: limit, totals: totals, loading: loading,
+		site: site, update: u, report: report, limit: limit, totals: totals, loading: loading, prints: prints,
 		again:     func(string, bool) bool { return false },
 		seenPages: map[string]struct{}{}, seenShared: map[int64]struct{}{},
 		met: map[string]met{}, named: map[int64]string{}, asked: map[int64]struct{}{}, blank: map[int64]struct{}{},
@@ -110,6 +117,7 @@ func newKeeper(site *program.Site, u *store.Update, report *Report, limit int) (
 // most of them will be computed again as they were.
 func (k *keeper) clear() error {
 	k.anew, k.totals = true, store.Totals{}
+	k.prints, k.printsMoved = store.Prints{Pages: map[string]uint64{}, Shared: map[string]uint64{}}, true
 	return k.update.ClearRecords()
 }
 
@@ -124,12 +132,12 @@ func (k *keeper) preload() (err error) {
 	return err
 }
 
-func (k *keeper) page(path string) (kept store.Kept, known bool, err error) {
+func (k *keeper) page(path string) (hash record.Hash, known bool, err error) {
 	if k.whole {
-		kept, known = k.pages[path]
-		return kept, known, nil
+		hash, known = k.pages[path]
+		return hash, known, nil
 	}
-	return k.update.KeptPage(path)
+	return k.update.PageHash(path)
 }
 
 // meet finds a shared block by its name, giving it a number if the store
@@ -153,7 +161,7 @@ func (k *keeper) meet(name string) (met, error) {
 		kept.ID = id
 		k.blank[id] = struct{}{}
 	}
-	m := met{kept.ID, kept.Hash, kept.Print, known}
+	m := met{kept.ID, kept.Hash, known}
 	k.met[name], k.named[kept.ID] = m, name
 	return m, nil
 }
@@ -257,26 +265,30 @@ func (k *keeper) put(data []byte) error {
 	encoded := rec.Encode()
 	hash := record.HashOf(encoded)
 
-	// What the store has of the unit.
-	kept, known := store.Kept{ID: self.id, Hash: self.hash, Print: self.print}, self.known
+	// The fingerprint goes with the record, whatever becomes of it: a record
+	// that came out the same may have been computed from something else.
+	list := k.prints.Pages
+	if u.shared {
+		list = k.prints.Shared
+	}
+	before, printed := list[u.name]
+	if !printed || before != print {
+		list[u.name], k.printsMoved = print, true
+	}
+
+	// What the store has of the unit. A record that is what it was needs
+	// nothing more: what it shows is in the store already, and it was
+	// checked when it got there.
+	kept, known := self.hash, self.known
 	if u.shared {
 		k.uses[self.id] = shows
 	} else if kept, known, err = k.page(u.name); err != nil {
 		return err
 	}
-	// A record that is what it was needs nothing: what it shows is in the
-	// store already, and it was checked when it got there. It may have been
-	// computed from something else this time; then that is what is kept.
-	if known && kept.Hash == hash {
-		switch {
-		case kept.Print == print:
-			return nil
-		case u.shared:
-			return k.update.SetSharedPrint(self.id, print)
-		}
-		return k.update.SetPagePrint(u.name, print)
+	if known && kept == hash {
+		return nil
 	}
-	if known && k.check && kept.Print == print {
+	if known && k.check && printed && before == print {
 		k.report.Unseen = append(k.report.Unseen, u.String())
 	}
 
@@ -305,11 +317,11 @@ func (k *keeper) put(data []byte) error {
 		delete(k.blank, self.id)
 		k.fresh[self.id] = true
 		k.noted(&k.report.Shared, u.name, known)
-		return k.update.PutShared(self.id, hash, print, encoded)
+		return k.update.PutShared(self.id, hash, encoded)
 	}
 	k.touched[u.name] = true
 	k.noted(&k.report.Pages, u.name, known)
-	return k.update.PutPage(u.name, hash, print, encoded)
+	return k.update.PutPage(u.name, hash, encoded)
 }
 
 // parsePrint reads a fingerprint as it is sent: sixteen digits of sixteen.
@@ -484,6 +496,8 @@ func (k *keeper) remove(path string) error {
 	if err := k.change(store.PageUser(path), old, nil, nil); err != nil {
 		return fmt.Errorf("the page %s: %w", path, err)
 	}
+	delete(k.prints.Pages, path)
+	k.printsMoved = true
 	k.report.Pages.note(&k.report.Pages.Removed, &k.report.Pages.RemovedNames, path, k.limit)
 	return k.update.DeletePage(path)
 }
@@ -529,6 +543,11 @@ func (k *keeper) finish() error {
 	r.Pages.Total, r.Shared.Total, r.Values.Total = k.totals.Pages, k.totals.Shared, k.totals.Values
 	if err := k.update.SetTotals(k.totals); err != nil {
 		return err
+	}
+	if k.printsMoved {
+		if err := k.update.SetPrints(k.prints); err != nil {
+			return err
+		}
 	}
 	if err := k.rendered(); err != nil {
 		return err
@@ -664,6 +683,8 @@ func (k *keeper) sweep() error {
 				return err
 			}
 			delete(k.fresh, id)
+			delete(k.prints.Shared, name)
+			k.printsMoved = true
 			k.report.Shared.note(&k.report.Shared.Removed, &k.report.Shared.RemovedNames, name, k.limit)
 		}
 	}

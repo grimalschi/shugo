@@ -106,7 +106,13 @@ func (u *unit) loadModule() *module {
 		m.script(u.script, top.span)
 	}
 	m.add(`import { loader as $$loader } from "shugo:load";`)
-	m.add("export default $$loader(%d, async function (Shugo) {", u.id)
+	// A script that does not wait is a plain function: its variables are
+	// there at once, and a hundred thousand such pages are loaded in a row.
+	async := ""
+	if u.names.waits {
+		async = "async "
+	}
+	m.add("export default $$loader(%d, %sfunction (Shugo) {", u.id, async)
 	for _, lines := range u.script.body() {
 		m.script(u.script, lines)
 	}

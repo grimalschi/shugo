@@ -1,13 +1,18 @@
 ---
-import { finalPrice, price, product } from "../lib/catalog"
+import { product } from "../lib/catalog"
+import { finalPrice, price } from "../lib/money"
 
 // The card takes the number of a product, not the product: called with a
 // plain value, it is computed and kept once for every product, however many
-// pages show it.
+// pages show it. It finds the product itself, so it is computed again only
+// when what it shows of the product has changed.
 const { id } = Shugo.props as { id: string }
 const item = product(id)
+// The price is worked out here, so that the template reads one number and
+// not the whole product.
+const cost = finalPrice(item)
 ---
 <a class="card" href={`/products/${item.slug}`}>
   <b>{item.title}</b>
-  <span class="price">{price(finalPrice(item))}</span>
+  <span class="price">{price(cost)}</span>
 </a>

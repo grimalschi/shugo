@@ -1,8 +1,9 @@
 // A stand for point updates. It makes a shop of the given size, builds it,
 // then changes the data in twenty ways, one after another. After every
-// change it runs `shugo update` and prints what the update touched and how
-// long it took. At the end it builds the same data from scratch and checks
-// that the site updated step by step is the same, file for file.
+// change it runs `shugo update` and prints what the update computed, what
+// it changed and how long it took. At the end it builds the same data from
+// scratch and checks that the site updated step by step is the same, file
+// for file.
 //
 //   node stand.mjs --size 10000 [--runtime bun|node] [--shugo ../../bin/shugo]
 
@@ -32,10 +33,12 @@ const run = (command, folder = here, ...more) =>
   JSON.parse(execFileSync(shugo, [command, "-json", ...(runtime ? ["-runtime", runtime] : []), ...more, folder], { encoding: "utf8", maxBuffer: 1 << 30 }));
 
 // Every change says what it does to the data and, where that is certain,
-// how many records of pages and of shared blocks must differ afterwards.
-// The table also shows on how many pages the HTML differs: a page that
-// shows a changed shared block is such a page, though its own record is
-// what it was.
+// how many pages and shared blocks the update must compute: those whose
+// templates read something that has changed. Where nothing is said, the
+// number depends on the size of the shop. The records that differ
+// afterwards are never more than what was computed. The table also shows on
+// how many pages the HTML differs: a page that shows a changed shared block
+// is such a page, though it was not computed.
 const changes = [
   { name: "nothing", edit() {}, pages: 0, shared: 0 },
   { name: "a field no page shows, on every 20th product", edit() { data.products.forEach((p, i) => { if (i % 20 === 0) p.note = "checked"; }); }, pages: 0, shared: 0 },
@@ -50,9 +53,10 @@ const changes = [
   { name: "the text of an approved review", edit() { product(7).reviews = [{ author: "Jane", text: "Excellent", approved: true }]; }, pages: 1, shared: 0 },
   { name: "the text of a hidden review", edit() { product(8).reviews.push({ author: "Spam", text: "Buy now", approved: false }); }, pages: 0, shared: 0 },
   { name: "the stock of one variant", edit() { product(9).variants[0].stock += 50; }, pages: 1, shared: 0 },
+  { name: "the article of one variant, which no page shows", edit() { product(9).variants[0].sku += "-x"; }, pages: 1, shared: 0, same: true },
   { name: "a variant is added first", edit() { product(9).variants.unshift({ sku: "p9-0", title: "tiny", stock: 1 }); }, pages: 1, shared: 0 },
   { name: "the first variant is removed", edit() { product(9).variants.shift(); }, pages: 1, shared: 0 },
-  { name: "the badges of one product", edit() { product(10).badges = ["one of a kind"]; }, pages: 1 },
+  { name: "the badges of one product", edit() { product(10).badges = ["one of a kind"]; }, pages: 1, shared: 1 },
   { name: "two related products change places", edit() { product(11).related.reverse(); }, pages: 1, shared: 0 },
   { name: "a related product is removed", edit() { product(12).related.pop(); }, pages: 1, shared: 0 },
   {
@@ -86,7 +90,7 @@ rmSync(join(here, "_build"), { recursive: true, force: true });
 save();
 const first = run("build");
 console.log(`${size} products: ${first.pages.total} pages, ${first.shared.total} shared blocks, ${first.blocks} blocks, ${first.values.total} distinct values`);
-console.log(`first build ${Math.round(first.time.total)} ms: compile ${Math.round(first.time.compile)}, compute ${Math.round(first.time.compute)}, save ${Math.round(first.time.save)}\n`);
+console.log(`first build ${Math.round(first.time.total)} ms: compile ${Math.round(first.time.compile)}, list ${Math.round(first.time.list)}, scripts and fingerprints ${Math.round(first.time.load)}, compute ${Math.round(first.time.compute)}, save ${Math.round(first.time.save)}\n`);
 
 const rows = [];
 let failed = 0;
@@ -96,18 +100,24 @@ for (const change of changes) {
   const report = run("update");
   const pages = report.pages.added + report.pages.changed + report.pages.removed;
   const shared = report.shared.added + report.shared.changed + report.shared.removed;
-  const ok = (change.pages === undefined || change.pages === pages) && (change.shared === undefined || change.shared === shared);
+  // A page that was computed and came out the same is no surprise only
+  // where the change says so: there the template reads more than it shows.
+  const ok = (change.pages === undefined || change.pages === report.computed.pages) && (change.shared === undefined || change.shared === report.computed.shared) &&
+    (change.same ? pages + shared === 0 : true);
   if (!ok) failed++;
   rows.push({
     change: change.name,
-    pages: `${pages}` + (report.pages.added || report.pages.removed ? ` (+${report.pages.added} −${report.pages.removed})` : ""),
-    shared: `${shared}` + (report.shared.added || report.shared.removed ? ` (+${report.shared.added} −${report.shared.removed})` : ""),
+    "computed pages": report.computed.pages,
+    "computed shared": report.computed.shared,
+    "changed pages": `${pages}` + (report.pages.added || report.pages.removed ? ` (+${report.pages.added} −${report.pages.removed})` : ""),
+    "changed shared": `${shared}` + (report.shared.added || report.shared.removed ? ` (+${report.shared.added} −${report.shared.removed})` : ""),
     "new HTML": report.render,
-    values: `+${report.values.added} −${report.values.removed}`,
+    "list, ms": Math.round(report.time.list),
+    "scripts, ms": Math.round(report.time.load),
     "compute, ms": Math.round(report.time.compute),
     "save, ms": Math.round(report.time.save),
     "total, ms": Math.round(report.time.total),
-    check: ok ? "ok" : `expected ${change.pages ?? "any"} pages, ${change.shared ?? "any"} shared`,
+    check: ok ? "ok" : `expected to compute ${change.pages ?? "any"} pages, ${change.shared ?? "any"} shared`,
   });
 }
 console.table(rows);
@@ -124,6 +134,6 @@ let different = Math.abs(stepByStep.size - fromScratch.size);
 for (const [path, hash] of fromScratch) if (stepByStep.get(path) !== hash) different++;
 console.log(`\nexport: ${exported.pages} pages. Updated step by step against built from scratch: ${different === 0 ? "the same, file for file" : different + " files differ"}`);
 if (failed || different) {
-  console.error(`FAILED: ${failed} changes touched something else than expected, ${different} files differ`);
+  console.error(`FAILED: ${failed} changes computed something else than expected, ${different} files differ`);
   process.exit(1);
 }

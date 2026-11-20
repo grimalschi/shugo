@@ -156,7 +156,7 @@ func Run(p *project.Project, compiled *compile.Result, st *store.Store, options 
 	took("list")
 
 	k.check, report.Checked = options.Check, options.Check
-	if err := changed(s, k, pages); err != nil {
+	if err := changed(s, k, pages, took); err != nil {
 		return nil, err
 	}
 	if err := s.end(); err != nil {
@@ -180,13 +180,8 @@ func Run(p *project.Project, compiled *compile.Result, st *store.Store, options 
 
 // changed computes the pages and shared blocks whose fingerprint is not
 // what the store has, and drops the pages the project no longer has.
-func changed(s *session, k *keeper, pages []listed) error {
-	// Every page is compared, so the whole of what the store has is read
-	// at once.
-	if err := k.preload(); err != nil {
-		return err
-	}
-	units := make([]unit, 0, len(pages)+len(k.shared))
+func changed(s *session, k *keeper, pages []listed, took func(step string)) error {
+	units := make([]unit, 0, len(pages)+len(k.prints.Shared))
 	there := make(map[string]struct{}, len(pages))
 	for _, page := range pages {
 		units = append(units, unit{name: page.path})
@@ -195,7 +190,7 @@ func changed(s *session, k *keeper, pages []listed) error {
 	// A shared block the store knows may show something else by now, if its
 	// script loads data. One that only shows what it is given cannot: its
 	// name says all that it shows.
-	for name := range k.shared {
+	for name := range k.prints.Shared {
 		if k.loads(name) {
 			units = append(units, unit{shared: true, name: name})
 		}
@@ -207,20 +202,29 @@ func changed(s *session, k *keeper, pages []listed) error {
 			k.failed[u.name] = failure
 			return nil
 		}
-		kept, known := k.shared[u.name]
+		kept, known := k.prints.Shared[u.name]
 		if u.shared {
 			k.report.Loaded.Shared++
 		} else {
 			k.report.Loaded.Pages++
-			kept, known = k.pages[u.name]
+			kept, known = k.prints.Pages[u.name]
 		}
-		if !known || kept.Print != print || k.check {
+		if !known || kept != print || k.check {
 			compute = append(compute, u)
 		}
 		return nil
 	})
 	if err != nil {
 		return err
+	}
+	took("load")
+
+	// Where much is computed, what the store has of every record is read
+	// at once; the records of a few are asked one by one.
+	if len(compute) > len(units)/8 {
+		if err := k.preload(); err != nil {
+			return err
+		}
 	}
 	// The shared blocks of the store have just been compared, so one that a
 	// computed record shows is computed only if the store does not have it.
@@ -239,11 +243,15 @@ func changed(s *session, k *keeper, pages []listed) error {
 			return err
 		}
 	}
-	for path := range k.pages {
+	var gone []string
+	for path := range k.prints.Pages {
 		if _, still := there[path]; !still {
-			if err := k.remove(path); err != nil {
-				return err
-			}
+			gone = append(gone, path)
+		}
+	}
+	for _, path := range gone {
+		if err := k.remove(path); err != nil {
+			return err
 		}
 	}
 	return nil

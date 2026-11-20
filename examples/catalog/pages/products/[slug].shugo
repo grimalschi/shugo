@@ -2,7 +2,8 @@
 import Badge from "../../components/Badge.shugo"
 import ProductCard from "../../components/ProductCard.shugo"
 import Variant from "../../components/Variant.shugo"
-import { finalPrice, price, products, type Product } from "../../lib/catalog"
+import { products, type Product } from "../../lib/catalog"
+import { finalPrice, price } from "../../lib/money"
 
 export function getStaticPaths() {
   return products.map((item) => ({ params: { slug: item.slug }, props: { item } }))
@@ -10,6 +11,7 @@ export function getStaticPaths() {
 
 const { item } = Shugo.props as { item: Product }
 const reviews = item.reviews.filter((review) => review.approved)
+const cost = finalPrice(item)
 ---
 <title slot="head">{item.title} — Measure</title>
 <h1>{item.title}</h1>
@@ -17,7 +19,7 @@ const reviews = item.reviews.filter((review) => review.approved)
 <p class="price">
   <g-if cond={item.discount}>
     <s>{price(item.price)}</s>
-    <strong>{price(finalPrice(item))}</strong>
+    <strong>{price(cost)}</strong>
     <span>−{item.discount!.percent}% to {item.discount!.until}</span>
   </g-if>
   <g-else><strong>{price(item.price)}</strong></g-else>

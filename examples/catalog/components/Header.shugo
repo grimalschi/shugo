@@ -8,6 +8,7 @@ const menu = categories.slice(0, 8).map((category) => ({
   title: category.title,
   count: inCategory(category.id).length,
 }))
+const featured = shop.featured ? product(shop.featured) : null
 ---
 <header>
   <a class="brand" href="/">{shop.name}</a>
@@ -16,8 +17,8 @@ const menu = categories.slice(0, 8).map((category) => ({
       <a href={item.href}>{item.title} <small>{item.count}</small></a>
     </g-for>
   </nav>
-  <g-if cond={shop.featured}>
-    <p>Product of the month: {product(shop.featured!).title}</p>
-    <ProductCard id={shop.featured} />
+  <g-if cond={featured}>
+    <p>Product of the month: {featured.title}</p>
+    <ProductCard id={featured.id} />
   </g-if>
 </header>

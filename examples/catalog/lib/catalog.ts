@@ -1,4 +1,6 @@
-// The data of the shop. It is read once, when the pages are computed.
+// The data of the shop. It is read once, when the pages are computed. Only
+// scripts import this module: a template is given what its script took from
+// here, and what templates call lives in money.ts, which loads nothing.
 import { readFileSync } from "node:fs"
 
 export interface Variant { sku: string; title: string; stock: number }
@@ -36,16 +38,4 @@ export function product(id: string): Product {
 
 export function inCategory(id: string): Product[] {
   return products.filter((product) => product.category === id)
-}
-
-// Making a formatter is slow, so there is one for all prices.
-const dollars = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 3 })
-
-export function price(value: number): string {
-  return dollars.format(value)
-}
-
-// The price after the discount, if there is one.
-export function finalPrice(product: Product): number {
-  return product.discount ? Math.round(product.price * (100 - product.discount.percent) / 100) : product.price
 }
