@@ -95,7 +95,7 @@ In the catalog example a product page makes five readings and a card one. The wh
 14. **The list of pages of a route is a reader like any other.** Only routes whose readings were reached are listed again; new pages are computed, missing ones removed. A page is computed from its address alone (Go knows its route, the JS side reads the parameters from the address). A more exact page still hides a dynamic one when its address appears later.
 15. **A shared block that fails after a change of data is an error only if something still shows it** when the update is over. A product is deleted: its card is reached, cannot be computed, and is dropped because no page shows it any more. If a page does still show it, the update fails and the store stays as it was — and the next update meets the change again.
 16. **A project without `data` in shugo.json is computed whole on every update**, as before: there is nothing to tell what changed. All earlier tests run this way.
-17. **`shugo build` computes everything**; `shugo update` follows the journal; `shugo dev` follows the journal when only the database file changed.
+17. **`shugo build` computes everything**; `shugo update` follows the journal; `shugo dev` follows the journal when only the database file changed. In dev mode one connection to the database stays open: SQLite removes and re-creates its side files when the last connection closes, and every update would look like a change of the data and set off the next.
 18. **The store keeps what every reader read** (`reads` column of pages, shared blocks and routes) and the same turned around (`reads` table). The first is what makes replacing a reader's readings cheap; the second is what a changed row is looked up in.
 
 ## Results
@@ -159,7 +159,7 @@ Run it: `go build -o bin/shugo ./cmd/shugo && node examples/catalog/stand.mjs --
 - **The writer's SQLite must have the JSON functions** (built in since 3.38): the triggers use `json_array`.
 - **The journal grows between updates** by a line for every touch of a row, also for upserts that change nothing.
 - **Pages with new HTML** are counted by walking from the changed shared blocks to their pages: 90 ms when that is all 104 202 of them.
-- **Dev mode** follows the journal on a change of the database file; this path has no automatic test.
+- **Dev mode** follows the journal on a change of the database file; tried by hand, this path has no automatic test. After an update that trimmed the journal one more empty update runs (8 ms).
 - The first build is 1.5 times slower than without tracking.
 
 ## Where to look first

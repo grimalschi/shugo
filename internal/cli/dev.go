@@ -11,6 +11,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 
+	"github.com/grimalschi/shugo/internal/data"
 	"github.com/grimalschi/shugo/internal/project"
 	"github.com/grimalschi/shugo/internal/server"
 )
@@ -25,6 +26,15 @@ func (c *command) dev() error {
 		return err
 	}
 	defer st.Close()
+	// SQLite removes the files it keeps beside a database when its last
+	// connection closes, and makes them again for the next one. Every update
+	// would then look like a change of the data and set off another. One
+	// connection held open keeps the files where they are.
+	if path := c.project.Data(); path != "" {
+		if held, err := data.Open(path); err == nil {
+			defer held.Close()
+		}
+	}
 	live := &server.Live{}
 	pages := server.NewPages(st)
 	pages.Mounts = map[string]string{"body": server.LiveScript}
