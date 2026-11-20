@@ -213,7 +213,7 @@ What follows:
 Found on the go:
 
 - **More questions for storage.** When many pages are affected, Go asks the storage for each of its route, and then again about the settings of this route - the same. If you ask about the route once, 20,000 pages are updated for 1.4 s instead of 1.65 s, 100,000 - for 6.2 s instead of 7.5 s; checked. The code is taken from the 2 variant and is available in all three base variants. Not corrected.
-- **The server re-reads the entire site after each update.** It keeps records of all pages and common blocks in memory. Seeing a new version of the repository, he reads them all over again, even if one price has changed; the first request after the update is waiting for this reading. Nothing accumulates: from update to update, the expectation is the same and depends only on the size of the site. Fixed by the fact that the server takes from the storage only records that have changed from the previous version. Not corrected.
+- **The server re-reads the entire site after each update.** It keeps records of all pages and common blocks in memory. Seeing a new version of the repository, he reads them all over again, even if one price has changed; the first request after the update is waiting for this reading. Nothing accumulates: from update to update, the expectation is the same and depends only on the size of the site. It is corrected by the fact that the server takes only records from the storage that have changed from the previous version: [Runtime](runtime.md#what-the-server-answers). Not corrected.
 
   | Products | Pages | First request after update, ten updates in a row | The following requests |
   | ---: | ---: | ---: | ---: |

@@ -42,6 +42,22 @@ The entire page is assembled from one state: the update that ended in the middle
 
 The server notices the update of the storage itself. The update made by another process, it sees no later than through 50 ms and re-reads the structure of the site; before that corresponds to the previous state.
 
+**The flaw was found by 20 on November 2026.** A copy of the records in the memory of the server after each update builds anew completely, although two records have changed. On 100,000 pages, this is 0.2 s work for every update, and the first request after the update is waiting for them. Time grows with the size of the site, not changes it’s against the main property of the framework.
+
+Copy is needed for speed: measured on the same store, 20,000 random pages.
+
+| Where does the server get records | Values not yet read | Meaning is already in memory |
+| --- | ---: | ---: |
+| From a copy in memory | 67–70 µs per page | 9 µs |
+| Direct from SQLite: one transaction reading per query, page writing and writing each shared block on it | 156–162 µs | 100–104 µs |
+
+How to fix - two ways:
+
+1. **No copy.** Each request reads the necessary entries from SQLite; there is nothing to update, fresh data is visible immediately. Page in 10 is more expensive.
+2. **Update the copy for changes.** Update leaves a list of entries changed in its version in the repository. The server reads only them and replaces them in the copy so that the page that is going at this moment does not mix the two states. The request speed is the same, the work after the update is by the size of the change.
+
+Second way suggested. Not done.
+
 ### What Rantime Doesn't Trust
 
 Values came from the stage that executed the project code. Therefore:
