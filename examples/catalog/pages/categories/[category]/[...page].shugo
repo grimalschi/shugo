@@ -5,13 +5,13 @@ import ProductCard from "../../../components/ProductCard.shugo"
 // the products to know how many pages there are; every page asks for its
 // own products.
 export function getStaticPaths({ query, paginate }) {
-  return query("categories").select("id").all().flatMap(({ id }) =>
+  return query("categories").all().flatMap(({ id }) =>
     paginate(query("products").where({ category: id }).count(), { pageSize: 24, params: { category: id } }),
   )
 }
 
-const category = Shugo.query("categories").select("title").get(Shugo.params.category)
-const page = Shugo.paginate(Shugo.query("products").select("id").where({ category: category.id }).order("position"), { pageSize: 24 })
+const category = Shugo.query("categories").get(Shugo.params.category)
+const page = Shugo.paginate(Shugo.query("products").where({ category: category.id }).order("position"), { pageSize: 24 })
 ---
 <title slot="head">{category.title} — Measure</title>
 <h1>{category.title}</h1>

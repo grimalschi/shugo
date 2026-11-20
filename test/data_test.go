@@ -279,13 +279,20 @@ func TestDataDatabase(t *testing.T) {
 // failure instead of ending the test.
 func (s *site) tryUpdate() (*evaluate.Report, error) {
 	s.t.Helper()
+	return s.run(evaluate.Options{})
+}
+
+// run updates the site the way the options say.
+func (s *site) run(options evaluate.Options) (*evaluate.Report, error) {
+	s.t.Helper()
 	p := s.project()
 	compiled, err := compile.Load(p)
 	if err != nil {
 		s.t.Fatal(err)
 	}
 	defer s.pages.Refresh()
-	return evaluate.Run(p, compiled, s.store, evaluate.Options{Log: &s.printed})
+	options.Log = &s.printed
+	return evaluate.Run(p, compiled, s.store, options)
 }
 
 const queryRows = `

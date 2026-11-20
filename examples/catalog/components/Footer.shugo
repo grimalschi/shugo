@@ -1,4 +1,4 @@
 ---
-const shop = Shugo.query("shop").select("name", "phone").get(1)
+const shop = Shugo.query("shop").get(1)
 ---
 <footer>{shop.name} · {shop.phone}</footer>

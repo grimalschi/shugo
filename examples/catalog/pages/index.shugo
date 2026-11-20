@@ -1,7 +1,7 @@
 ---
 import ProductCard from "../components/ProductCard.shugo"
 
-const first = Shugo.query("products").select("id").order("position").limit(24).all()
+const first = Shugo.query("products").order("position").limit(24).all()
 ---
 <title slot="head">Measure — handmade tableware</title>
 <h1>New in the catalog</h1>

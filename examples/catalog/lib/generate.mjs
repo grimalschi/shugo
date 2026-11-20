@@ -17,7 +17,7 @@ CREATE TABLE products (
   discount INTEGER, discount_until TEXT, available INTEGER NOT NULL, arrival TEXT NOT NULL,
   description TEXT NOT NULL, category TEXT NOT NULL, note TEXT NOT NULL, position INTEGER NOT NULL
 );
-CREATE TABLE variants (sku TEXT PRIMARY KEY, product TEXT NOT NULL, title TEXT NOT NULL, stock INTEGER NOT NULL, position INTEGER NOT NULL);
+CREATE TABLE variants (sku TEXT PRIMARY KEY, product TEXT NOT NULL, title TEXT NOT NULL, stock INTEGER NOT NULL, position INTEGER NOT NULL, shelf TEXT NOT NULL);
 CREATE TABLE reviews (id INTEGER PRIMARY KEY, product TEXT NOT NULL, author TEXT NOT NULL, text TEXT NOT NULL, approved INTEGER NOT NULL);
 CREATE TABLE badges (id INTEGER PRIMARY KEY, product TEXT NOT NULL, text TEXT NOT NULL, position INTEGER NOT NULL);
 CREATE TABLE related (id INTEGER PRIMARY KEY, product TEXT NOT NULL, other TEXT NOT NULL, position INTEGER NOT NULL);
@@ -88,13 +88,13 @@ export async function write(path, shop) {
   const category = db.prepare("INSERT INTO categories VALUES (?, ?, ?)");
   shop.categories.forEach((c, i) => category.run(c.id, c.title, i + 1));
   const product = db.prepare("INSERT INTO products VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-  const variant = db.prepare("INSERT INTO variants VALUES (?, ?, ?, ?, ?)");
+  const variant = db.prepare("INSERT INTO variants VALUES (?, ?, ?, ?, ?, ?)");
   const review = db.prepare("INSERT INTO reviews (product, author, text, approved) VALUES (?, ?, ?, ?)");
   const badge = db.prepare("INSERT INTO badges (product, text, position) VALUES (?, ?, ?)");
   const related = db.prepare("INSERT INTO related (product, other, position) VALUES (?, ?, ?)");
   shop.products.forEach((p, i) => {
     product.run(p.id, p.slug, p.title, p.price, p.discount?.percent ?? null, p.discount?.until ?? null, p.available ? 1 : 0, p.arrival, p.description, p.category, p.note, i + 1);
-    p.variants.forEach((v, at) => variant.run(v.sku, p.id, v.title, v.stock, at + 1));
+    p.variants.forEach((v, at) => variant.run(v.sku, p.id, v.title, v.stock, at + 1, "A1"));
     p.reviews.forEach((r) => review.run(p.id, r.author, r.text, r.approved ? 1 : 0));
     p.badges.forEach((text, at) => badge.run(p.id, text, at + 1));
     p.related.forEach((other, at) => related.run(p.id, other, at + 1));

@@ -159,13 +159,17 @@ const comparisons = new Set(["=", "!=", "<", "<=", ">", ">=", "like", "in"]);
 
 // Reads collects what one page, shared block or list of pages asked of the
 // data while it was computed.
+//
+// It belongs to that computation alone. A question asked, or a column read,
+// by another computation or after this one is over would leave nobody
+// depending on the answer; so both are refused, with what to do instead.
 export class Reads {
   constructor() {
     this.asked = [];
-    // Once the readings are told, a column read of these rows would be read
-    // unseen. closed tells the rows to refuse it; handed tells that the rows
-    // went on to others with every column counted, and stay readable.
-    this.closed = false;
+    // settled tells that the readings are told: nothing more may be asked
+    // or read. handed tells that the rows went on to others with every
+    // column counted as read, and stay readable.
+    this.settled = false;
     this.handed = false;
   }
 
@@ -173,17 +177,30 @@ export class Reads {
   // of the number of a shape and the values of its key, one reading after
   // another; the shape tells how many values a key has.
   //
-  // It is asked for when the page or shared block is fully computed, and
-  // from then on its rows are closed. whole tells that the rows went on to
-  // others who may read anything of them — a list of pages hands them to
-  // its pages — and counts every column as read.
+  // It is asked for when the page or shared block is fully computed. whole
+  // tells that the rows go on to others who may read anything of them — a
+  // list of pages hands them to its pages — and counts every column as read.
   text(whole = false) {
-    this.closed = !whole;
+    this.settled = true;
     this.handed = whole;
     if (this.asked.length === 0) return "";
     const list = [];
     for (const one of this.asked) one.settle(list, whole);
     return JSON.stringify(list);
+  }
+
+  // mine tells whether the computation running now is the one these
+  // readings are of, and is not over.
+  mine() {
+    return !this.settled && computing.getStore() === this;
+  }
+
+  // late says why a question or a read is refused.
+  late(what) {
+    return (
+      `${what} ${this.settled ? "when the page, shared block or list of pages it belongs to is already computed" : "by another page, shared block or list of pages than the one it belongs to"}, ` +
+      "so whoever reads it now would not be computed again when the data changes. "
+    );
   }
 }
 
@@ -191,7 +208,7 @@ export class Reads {
 // list of pages, through every await of its script and template.
 const computing = new AsyncLocalStorage();
 
-// during runs compute as the computation that reads asked its rows for.
+// during runs compute as the computation that reads belongs to.
 export function during(reads, compute) {
   return computing.run(reads, compute);
 }
@@ -214,16 +231,14 @@ class Watcher {
     this.seen = seen;
   }
 
-  // note notes a column that is read. A row belongs to the computation that
-  // asked for it: read by another one, or after its own is over, it would be
-  // read with nobody depending on it.
+  // note notes a column that is read. Rows handed on to others have every
+  // column counted already.
   note(name) {
     const reads = this.reads;
     if (reads.handed) return;
-    if (reads.closed || computing.getStore() !== reads) {
+    if (!reads.mine()) {
       throw new Error(
-        `a row of the table ${this.table.name} is read ${reads.closed ? "when the page, shared block or list of pages that asked for it is already computed" : "by another page, shared block or list of pages than the one that asked for it"}, ` +
-          "so whoever reads it now would not be computed again when the row changes. " +
+        reads.late(`a row of the table ${this.table.name} is read`) +
           "A row is for the script that asked for it: do not keep it in a variable of a module for others, let every script ask for the rows it uses",
       );
     }
@@ -471,9 +486,20 @@ export class Query {
   count() {
     const plan = this.#plan("count");
     const values = this.#values;
+    this.#mine();
     const found = plan.statement.get(...plan.places.map((at) => values[at]));
     this.#reads.asked.push(new Asked(plan, values));
     return found.count;
+  }
+
+  // mine makes sure that the question is asked by the computation it was
+  // made for: its answer is noted there and nowhere else.
+  #mine() {
+    if (this.#reads.mine()) return;
+    throw new Error(
+      this.#reads.late(`the table ${this.#table.name} is asked`) +
+        "Shugo.query belongs to the script it is called in: do not keep Shugo, or a query made of it, in a variable of a module for others",
+    );
   }
 
   // rows asks the question and returns its rows, each of them noting what
@@ -481,6 +507,7 @@ export class Query {
   #rows(plan) {
     const values = this.#values;
     const reads = this.#reads;
+    this.#mine();
     const rows = plan.statement.all(...plan.places.map((at) => values[at]));
     const asked = new Asked(plan, values);
     for (const join of plan.joins) {

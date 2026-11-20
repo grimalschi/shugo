@@ -1,5 +1,5 @@
 // A stand for point updates. It makes a shop of the given size, builds it,
-// then changes the data in twenty ways, one after another, the way any
+// then changes the data in twenty-one ways, one after another, the way any
 // program would: with SQL against the data database. After every change it
 // runs `shugo update` and prints what the update computed, what it changed
 // and how long it took. At the end it builds the same data from scratch and
@@ -69,7 +69,10 @@ const changes = [
   { name: "the text of an approved review", statements: ["DELETE FROM reviews WHERE product = 'p7'", "INSERT INTO reviews (product, author, text, approved) VALUES ('p7', 'Jane', 'Excellent', 1)"], computed: [1, 0], pages: 1, shared: 0 },
   { name: "the text of a hidden review", statements: ["INSERT INTO reviews (product, author, text, approved) VALUES ('p8', 'Spam', 'Buy now', 0)"], computed: [0, 0], pages: 0, shared: 0 },
   { name: "the stock of one variant", statements: ["UPDATE variants SET stock = stock + 50 WHERE sku = 'p9-1'"], computed: [1, 0], pages: 1, shared: 0 },
-  { name: "a variant is added first", statements: ["INSERT INTO variants VALUES ('p9-0', 'p9', 'tiny', 1, 0)"], computed: [1, 0], pages: 1, shared: 0 },
+  // The page hands every variant whole to a component. The component reads
+  // the title and the stock, so the shelf reaches nobody.
+  { name: "the shelf of one variant, which no page shows", statements: ["UPDATE variants SET shelf = 'B7' WHERE sku = 'p9-1'"], computed: [0, 0], pages: 0, shared: 0 },
+  { name: "a variant is added first", statements: ["INSERT INTO variants VALUES ('p9-0', 'p9', 'tiny', 1, 0, 'A1')"], computed: [1, 0], pages: 1, shared: 0 },
   { name: "the first variant is removed", statements: ["DELETE FROM variants WHERE sku = 'p9-0'"], computed: [1, 0], pages: 1, shared: 0 },
   { name: "the badges of one product", statements: ["DELETE FROM badges WHERE product = 'p10'", "INSERT INTO badges (product, text, position) VALUES ('p10', 'one of a kind', 1)"], computed: [1, 1], pages: 1 },
   { name: "two related products change places", statements: ["UPDATE related SET position = 5 - position WHERE product = 'p11'"], computed: [1, 0], pages: 1, shared: 0 },
@@ -86,7 +89,7 @@ const changes = [
     name: "a product is added",
     statements: [
       [`INSERT INTO products SELECT ?, ?, 'New item', price, discount, discount_until, available, arrival, description, category, note, ? FROM products WHERE id = 'p4'`, added, "product-" + (size + 1), size + 1],
-      [`INSERT INTO variants SELECT ? || substr(sku, 3), ?, title, stock, position FROM variants WHERE product = 'p4'`, added, added],
+      [`INSERT INTO variants SELECT ? || substr(sku, 3), ?, title, stock, position, shelf FROM variants WHERE product = 'p4'`, added, added],
       [`INSERT INTO reviews (product, author, text, approved) SELECT ?, author, text, approved FROM reviews WHERE product = 'p4'`, added],
       [`INSERT INTO badges (product, text, position) SELECT ?, text, position FROM badges WHERE product = 'p4'`, added],
     ],
