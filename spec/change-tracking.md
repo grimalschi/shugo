@@ -14,6 +14,99 @@ The words of the author of the project, 20 November 2026 year.
 - The template can see data code variables not in pure form, but through serialization. The author named Seroval for this; what exactly to copy is discussed below.
 - How data gets into pages and components can be changed for the sake of a simple and quick comparison. The main thing is the effectiveness of updates.
 
+## Two trial implementations
+
+The author of the project asked to make two implementations (20 November 2026 years) for comparison. Both are made, pass all tests on Bun and Node and stand on a common basis. Which one to take is not decided.
+
+| | Branch & Folder | Essence |
+| --- | --- | --- |
+| Base | `lab/base`, `../shugo-lab/base` | Go himself names which pages and common blocks to calculate, and injects a partial result into the repository. She calculates everything |
+| Variant 1 | `lab/fingerprints`, `../shugo-lab/fingerprints` | proposal from this document: data code is executed entirely, the imprint on the dependency tree, templates - only for the changed |
+| Variant 2 | `lab/query`, `../shugo-lab/query` | idea of the author: data is in SQLite under the framework control, read only through `Shugo.query`, dependencies are tied to base entries |
+
+Each option in the root branch is `VARIANT.md`: how it works, rules for the author of the site, taken along the way of the decision with the reasons and what is not.
+
+### Variant 2 in two words
+
+- The framework puts triggers on each table of the database and maintains a log: inserting, changing and deleting the record leaves a string with the same value. Mandatory `updated_at` is not needed: the log sees and deletes, and you can not forget it.
+- Each query through `Shugo.query` leaves a page or general block with a “read”: which rows of which table with what values in which columns it searched and which columns it took.
+- The update reads the journal, finds by reading who was touched by the changed lines, and calculates only them. If no one is hurt, JS does not start at all.
+- The route pages list (`getStaticPaths`) is the same reader: the route is re-listed only when what he read has changed.
+
+### What is calculated
+
+Both options calculate the same thing: the price of one product - its page and its card; the name of the product of the month - page, cap and card; phone in the footer - footer; field, which is not shown anywhere - nothing. Both implementations undergo twenty bench changes on 1,000, 10,000 and 100,000 products, and the site updated in steps coincides with the build from scratch, file by file.
+
+On top of the stands each is checked separately: two dozen changes that are not in the stands (change of product address, reshuffle of categories, change of key of record, 300 prices together, rollback of transaction, record of the same value, re-creation of table). After each change, the site coincided with the build from scratch.
+
+### Time
+
+Xeon E3-1270 v6, Go 1.27.4, Bun 1.4.4, Node 24.22.1. 100,000 Products: 104,202 Pages and 100,009 common blocks. Stands were in turn. Time — the whole team `shugo update`.
+
+| Update after change, Bun | First version | Variant 1 | Variant 2 |
+| --- | ---: | ---: | ---: |
+| Price of one product | 3.2–3.7 s | 1.28 s | 0.03 s |
+| Prices 20 products | 3.2–3.7 s | 1.21 s | 0.04 s |
+| Review, option, icon, recommendation | 3.2–3.7 s | 1.2–1.3 s | 0.03 s |
+| Product name of the month, phone in the footer | 3.2–3.7 s | 1.27–1.29 s | 0.12 s |
+| This product has been moved to another category, 168 pages | 3.2–3.7 s | 1.38 s | 0.26 s |
+| Product added or deleted | 3.2–3.7 s | 1.31–1.38 s | 0.41–0.42 s |
+| What has changed is what no page shows. | 3.2–3.7 s | 1.16–1.28 s | 0.01–0.16 s |
+
+| Many records together, Bun | Variant 1 | Variant 2 |
+| --- | ---: | ---: |
+| Prices 100 products, 0.1% | 1.4 s | 0.17 s |
+| Prices 1,000 products, 1% | 1.7 s | 0.5 s |
+| Prices 5,000 products, 5% | 2.5 s | 1.6 s |
+| Prices 20,000 products, 20% | 4.3 s | 4.9 s |
+| Prices of all 100,000 products | 14 s | 22 s |
+
+| The rest | Base | Variant 1 | Variant 2 |
+| --- | ---: | ---: | ---: |
+| First Assembly, Bun | 8.8–9.0 s | 9.1 s | 13.8–13.9 s |
+| First Assembly, Node | — | 9.8 s | 17.4 s |
+| Update on Node | — | 1.9–2.2 s | 0.07–0.75 s |
+| Storage | 103 MB | 112 MB | 140 MB |
+| Stand Data | JSON, 62 MB | JSON, 62 MB | base, 80 MB |
+| 10,000 products: first assembly and update, Bun | — | 1.0 s and 0.14–0.17 s | 1.5 s and 0.02–0.08 s |
+
+- The time of the 1 variant is almost independent of what has changed: 0.62–0.77 s takes the data loading with the example code, 0.47–0.56 s takes the data code and 204 thousand fingerprints of pages and blocks. It grows with the site.
+- The time of the 2 variant depends on the size of the change, not the site. When a fifth of the entries change and more, it is slower than the 1 variant: each calculated page makes its requests.
+- The data code and fingerprints in the 1 variant were three times more expensive than in the model below: 2.5 µs per page or block instead of 0.6–0.9 µs.
+
+### What is changing for the author
+
+| | Variant 1 | Variant 2 |
+| --- | --- | --- |
+| Where data comes from | from anywhere: file, database, API | only from the project database |
+| How they are read | normal TypeScript | `Shugo.query("products").select(…).where(…)` |
+| What is rewritten in the example of the store | price functions are rendered in `lib/money.ts`, one call is transferred from template to data code | data transferred to database, the code of pages and components data rewritten to requests |
+| Limitations | template does not see functions from the data code; component with object in parameters does not load anything; module with functions for templates does not load data | table has one key; request to one table, conditions through "and", of aggregates only `count`; `join` finds one line; views not supported |
+| What depends on accuracy | from what reads the template: displays the compiler | from column list in `select`: writes the author |
+| What happens in violation | build error with prompt | data past the database and the memory of the module between pages is not tracked, and no one will say |
+
+### What is not and what is weak
+
+Variant 1:
+
+- The data code of all pages is executed at each update. The request for each page will be executed for each page.
+- Accuracy stops at the function call and on the usual component: the object transmitted to them is read in its entirety.
+- A package from npm that reads the file in synchronous form inside the template is not visible; only finds this full check of `shugo update -check`.
+- The compiler is much more complicated: parsing expressions, two builds, a new dependence of `tdewolff/parse`. Changed 4,300 lines.
+
+Variant 2:
+
+- The main thing around it is not done: how external sources get into the base. At the stand, the base writes a generator.
+- The query constructor is small: see the restrictions above.
+- The first build is one and a half times longer: 620 thousand queries and 610 thousand reads in storage.
+- The route is listed as a whole when the entry has been added or deleted: 0.25 s on 100,000 pages.
+- The route that distributes `props` pages calculates all its pages when it changes.
+- Changed 3,900 lines; compiler not touched, new dependencies in Go no.
+
+### They can be connected
+
+The options answer different questions. The 2 version knows which entries have changed and who requested them. The 1 variant knows what the template actually shows. The dependency tree on top of the queries will narrow down reading to the columns that the template reads, and the list in `select` will become optional. It's not done.
+
 ## Proposal, pending approval
 
 ### Essence
@@ -253,7 +346,9 @@ Order of works:
 
 ## Open questions
 
-- Approve the mechanism and three rules for authors of the site.
+- Choose the option: first, second or second with the dependency tree from the first.
+- For the 1 variant: approve the mechanism and three rules for site authors.
+- For the 2 variant: how external sources get into the database; what the query builder should be able to do.
 - Approve a copy of your part instead of Seroval.
 - Comparison of prints on Go: he owns the storage and knows what common blocks someone else needs. You can compare in JS, the price is the same.
 - Accuracy through functions: `{finalPrice(item)}` now means "goods as a whole". The compiler can look into the function of the project and find out that it reads `price` and `discount`. Do it right away.
