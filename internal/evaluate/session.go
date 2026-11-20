@@ -25,10 +25,15 @@ import (
 //
 //	to the project's code           from it
 //	L  list the pages               P  pages: route \x02 address, split by \x03
-//	C  compute: units, split by     R  records, split by \x03
-//	   \x03; a unit is p or s,      E  it failed: { message, stack, place }
-//	   \x02, the address or name    D  the request is done: what it has to add
-//	Q  nothing more
+//	F  run the scripts of units     F  fingerprints: unit \x02 sixteen digits, split
+//	   and tell their fingerprints     by \x03; or unit \x02 ! \x02 the failure of
+//	C  compute the records of units    the script of a shared block
+//	Q  nothing more                 R  records, split by \x03
+//	                                E  it failed: { message, stack, place }
+//	                                D  the request is done: what it has to add
+//
+// Units are split by \x03; a unit is p or s, \x02, and the address of a
+// page or the name of a shared block.
 type wire struct {
 	asks    io.Writer
 	answers *bufio.Reader
@@ -145,25 +150,77 @@ func (w *wire) list(report *Report) ([]listed, error) {
 	return pages, nil
 }
 
+// named writes units the way they are sent.
+func named(units []unit) []byte {
+	var out []byte
+	for i, u := range units {
+		if i > 0 {
+			out = append(out, 3)
+		}
+		kind := byte('p')
+		if u.shared {
+			kind = 's'
+		}
+		out = append(append(append(out, kind), 2), u.name...)
+	}
+	return out
+}
+
+// prints has the scripts of units run and hands the fingerprint of each to
+// got. The script of a shared block may fail without failing the request:
+// then got is given the failure. Every unit asked for must come back.
+func (w *wire) prints(units []unit, got func(u unit, print uint64, failure *ScriptError) error) error {
+	if len(units) == 0 {
+		return nil
+	}
+	count := 0
+	_, err := w.ask('F', named(units), func(kind byte, body []byte) error {
+		if kind != 'F' {
+			return errorf("a message of the kind %q where fingerprints were asked for", kind)
+		}
+		for len(body) > 0 {
+			var one []byte
+			one, body, _ = bytes.Cut(body, []byte{3})
+			fields := bytes.SplitN(one, []byte{2}, 4)
+			if len(fields) < 3 || len(fields[0]) != 1 || (fields[0][0] != 'p' && fields[0][0] != 's') {
+				return errorf("a damaged fingerprint")
+			}
+			u := unit{shared: fields[0][0] == 's', name: string(fields[1])}
+			count++
+			if len(fields) == 4 && string(fields[2]) == "!" && u.shared {
+				failure := &ScriptError{}
+				if err := json.Unmarshal(fields[3], failure); err != nil {
+					return fmt.Errorf("the script of %s failed, and its report cannot be read: %w", u, err)
+				}
+				if err := got(u, 0, failure); err != nil {
+					return err
+				}
+				continue
+			}
+			print, err := parsePrint(fields[2])
+			if err != nil || len(fields) != 3 {
+				return errorf("a damaged fingerprint of %s", u)
+			}
+			if err := got(u, print, nil); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err == nil && count != len(units) {
+		return errorf("%d fingerprints where %d were asked for", count, len(units))
+	}
+	return err
+}
+
 // compute asks for the records of units and hands them to the keeper. Every
 // unit asked for must come back.
 func (w *wire) compute(units []unit, k *keeper) error {
 	if len(units) == 0 {
 		return nil
 	}
-	var request []byte
-	for i, u := range units {
-		if i > 0 {
-			request = append(request, 3)
-		}
-		kind := byte('p')
-		if u.shared {
-			kind = 's'
-		}
-		request = append(append(append(request, kind), 2), u.name...)
-	}
 	before := k.count()
-	_, err := w.ask('C', request, func(kind byte, body []byte) error {
+	_, err := w.ask('C', named(units), func(kind byte, body []byte) error {
 		if kind != 'R' {
 			return errorf("a message of the kind %q where records were asked for", kind)
 		}
@@ -210,7 +267,7 @@ func start(p *project.Project, log io.Writer) (*session, error) {
 		answersIn.Close()
 		return nil, err
 	}
-	command := exec.Command(p.Runtime(), p.Path(project.Output, compile.Bundle))
+	command := exec.Command(p.Runtime(), p.Path(project.Output, compile.LoadBundle))
 	command.Dir = p.Root
 	command.Stdout, command.Stderr = log, log
 	// Requests and answers go through pipes of their own, so that whatever
@@ -252,6 +309,15 @@ func (s *session) told(err error) error {
 func (s *session) list(report *Report) ([]listed, error) {
 	pages, err := s.wire.list(report)
 	return pages, s.told(err)
+}
+
+func (s *session) prints(units []unit, got func(u unit, print uint64, failure *ScriptError) error) error {
+	return s.told(s.wire.prints(units, func(u unit, print uint64, failure *ScriptError) error {
+		if failure != nil {
+			failure.locate(s.project)
+		}
+		return got(u, print, failure)
+	}))
 }
 
 func (s *session) compute(units []unit, k *keeper) error {

@@ -27,16 +27,19 @@ func frame(kind byte, body string) []byte {
 	return append(append(out, kind), body...)
 }
 
+// The fingerprint that the records below carry.
+const print = "00000000000000a1"
+
 // What the JavaScript side sends for a page with a leaf inside it.
 func pageRecord(path, text string) string {
-	return "p\x02" + path + "\x020\x020" +
+	return "p\x02" + path + "\x020\x020\x02" + print +
 		"\x01b\x020\x020\x021\x02\x02\x00" + text +
 		"\x01b\x021\x020\x02\x02\x02\x00leaf"
 }
 
 // The same page showing a shared block in place of its own leaf.
 func pageWith(path, text, shared string) string {
-	return "p\x02" + path + "\x020\x020" +
+	return "p\x02" + path + "\x020\x020\x02" + print +
 		"\x01b\x020\x020\x021\x02\x02\x00" + text +
 		"\x01u\x02" + shared + "\x02"
 }
@@ -44,11 +47,11 @@ func pageWith(path, text, shared string) string {
 // A shared block: a leaf, or a page of the first template that shows
 // another shared block.
 func leafRecord(name, text string) string {
-	return "s\x02" + name + "\x020\x020\x01b\x021\x020\x02\x02\x02\x00" + text
+	return "s\x02" + name + "\x020\x020\x02" + print + "\x01b\x021\x020\x02\x02\x02\x00" + text
 }
 
 func wrapRecord(name, text, shared string) string {
-	return "s\x02" + name + "\x020\x020\x01b\x020\x020\x021\x02\x02\x00" + text + "\x01u\x02" + shared + "\x02"
+	return "s\x02" + name + "\x020\x020\x02" + print + "\x01b\x020\x020\x021\x02\x02\x00" + text + "\x01u\x02" + shared + "\x02"
 }
 
 // A lab is a store with updates run against it by hand.
@@ -175,7 +178,9 @@ func TestComputeRejects(t *testing.T) {
 		"an unknown kind":           frame('X', good),
 		"an unknown record":         frame('R', strings.Replace(good, "p\x02", "q\x02", 1)),
 		"a header without fields":   frame('R', "p\x02/"),
-		"a top that is not there":   frame('R', strings.Replace(good, "\x020\x020\x01", "\x020\x029\x01", 1)),
+		"a top that is not there":   frame('R', strings.Replace(good, "\x020\x020\x02", "\x020\x029\x02", 1)),
+		"a header without print":    frame('R', strings.Replace(good, "\x02"+print, "", 1)),
+		"a print that is not one":   frame('R', strings.Replace(good, print, "xyz", 1)),
 		"an address without /":      frame('R', pageRecord("about", "x")),
 		"an address with ..":        frame('R', pageRecord("/a/../b", "x")),
 		"a page twice":              frame('R', good+"\x03"+good),
@@ -188,7 +193,7 @@ func TestComputeRejects(t *testing.T) {
 		"no values":                 frame('R', strings.Replace(good, "\x00home", "", 1)),
 		"a negative child":          frame('R', strings.Replace(good, "\x021\x02\x02\x00home", "\x02-1\x02\x02\x00home", 1)),
 		"damaged slots":             frame('R', strings.Replace(good, "\x021\x02\x02\x00home", "\x021\x02=\x02\x00home", 1)),
-		"a shared block of a use":   frame('R', "s\x02name\x020\x020\x01u\x02other\x02"),
+		"a shared block of a use":   frame('R', "s\x02name\x020\x020\x02"+print+"\x01u\x02other\x02"),
 		"a damaged error":           frame('E', "{"),
 		"a message of a gigabyte+":  {0xff, 0xff, 0xff, 0x7f, 'R'},
 		"another page than asked":   append(frame('R', pageRecord("/other", "x")), done...),

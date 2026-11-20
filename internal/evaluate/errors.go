@@ -42,24 +42,31 @@ func (e *ScriptError) Error() string {
 	return out.String()
 }
 
-// A line of a stack that points into the bundle: "at name (file:///…/eval.mjs:12:34)".
-var bundleFrame = regexp.MustCompile(regexp.QuoteMeta(compile.Bundle) + `:(\d+):(\d+)`)
+// A line of a stack that points into one of the two bundles:
+// "at name (file:///…/load.mjs:12:34)".
+var bundleFrame = regexp.MustCompile(`(` + regexp.QuoteMeta(compile.LoadBundle) + `|` + regexp.QuoteMeta(compile.RenderBundle) + `):(\d+):(\d+)`)
 
 // locate finds the places in the project's files that the stack went
-// through. The stack names lines of the bundle; the source map of the bundle
-// says which file every one of them was made from.
+// through. The stack names lines of the bundles; the source map of each
+// bundle says which file every one of them was made from.
 func (e *ScriptError) locate(p *project.Project) {
-	data, err := os.ReadFile(p.Path(project.Output, compile.Bundle+".map"))
-	if err != nil {
-		return
-	}
-	smap, err := sourcemap.Parse(data)
-	if err != nil {
-		return
+	maps := map[string]*sourcemap.Map{}
+	for _, bundle := range []string{compile.LoadBundle, compile.RenderBundle} {
+		data, err := os.ReadFile(p.Path(project.Output, bundle+".map"))
+		if err != nil {
+			continue
+		}
+		if smap, err := sourcemap.Parse(data); err == nil {
+			maps[bundle] = smap
+		}
 	}
 	for _, match := range bundleFrame.FindAllStringSubmatch(e.Stack, -1) {
-		line, _ := strconv.Atoi(match[1])
-		column, _ := strconv.Atoi(match[2])
+		smap := maps[match[1]]
+		if smap == nil {
+			continue
+		}
+		line, _ := strconv.Atoi(match[2])
+		column, _ := strconv.Atoi(match[3])
 		source, sourceLine, sourceColumn, found := smap.Find(line-1, column-1)
 		// The library of the framework is not a file of the project.
 		if !found || strings.Contains(source, ":") {

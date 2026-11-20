@@ -82,7 +82,7 @@ func (b *builder) styles(sheets []style) ([]byte, error) {
 		Charset:          api.CharsetUTF8,
 	})
 	if len(result.Errors) > 0 {
-		return nil, b.diagnoseAll(result.Errors)
+		return nil, b.diagnoseAll(result.Errors, renderSide)
 	}
 	var sheet []byte
 	for _, file := range result.OutputFiles {

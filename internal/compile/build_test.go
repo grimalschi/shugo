@@ -50,8 +50,10 @@ func TestBuildExample(t *testing.T) {
 		}
 	}
 	if os.Getenv("SHUGO_SHOW") != "" {
-		code, _ := os.ReadFile(filepath.Join(root, project.Output, Bundle))
-		t.Logf("\n%s", code)
+		for _, bundle := range []string{LoadBundle, RenderBundle} {
+			code, _ := os.ReadFile(filepath.Join(root, project.Output, bundle))
+			t.Logf("\n%s", code)
+		}
 		site, _ := os.ReadFile(filepath.Join(root, project.Output, Site))
 		t.Logf("\n%s", site)
 	}

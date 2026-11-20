@@ -33,6 +33,9 @@ const usage = `shugo builds a static site and shows it.
 The folder is the project; without it, the current one. Options:
 
   -json          print the report of build, update and export as JSON
+  -check         with update: compute every page, whatever has changed, and
+                 tell which pages came out different although nothing they
+                 read did
   -runtime NAME  what runs the JavaScript of the project: bun or node
                  (default: the "runtime" of shugo.json, else bun if installed)
   -addr ADDRESS  where serve and dev listen (default localhost:4321)
@@ -52,6 +55,7 @@ func Main(arguments []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet(arguments[0], flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.BoolVar(&c.json, "json", false, "")
+	flags.BoolVar(&c.check, "check", false, "")
 	flags.StringVar(&c.addr, "addr", "localhost:4321", "")
 	flags.StringVar(&c.out, "out", "", "")
 	flags.StringVar(&c.runtime, "runtime", "", "")
@@ -100,7 +104,7 @@ func Main(arguments []string, stdout, stderr io.Writer) int {
 type command struct {
 	stdout, stderr io.Writer
 	project        *project.Project
-	json           bool
+	json, check    bool
 	addr, out      string
 	runtime        string
 }
@@ -160,11 +164,19 @@ func (c *command) update() error {
 	if err != nil {
 		return err
 	}
-	report, err := evaluate.Run(c.project, compiled, st, evaluate.Options{Log: c.stderr})
+	report, err := evaluate.Run(c.project, compiled, st, evaluate.Options{Log: c.stderr, Check: c.check})
 	if err != nil {
 		return err
 	}
-	return c.print(report, func() string { return summary("updated", report) })
+	if err := c.print(report, func() string { return summary("updated", report) }); err != nil {
+		return err
+	}
+	if len(report.Unseen) > 0 {
+		// The store is right now: everything was computed. But the next
+		// plain update would again leave such a page as it is.
+		return fmt.Errorf("%d pages or shared blocks came out different although nothing they are seen to read has changed; the first: %s.\nTheir templates, or components that only show what they are given, read something past Shugo: a package that reads a file or a database by itself is the usual cause. Load that in the script of the page and pass it on", len(report.Unseen), report.Unseen[0])
+	}
+	return nil
 }
 
 // print writes a report: as JSON for programs, in words for people.
@@ -182,7 +194,8 @@ func (c *command) print(report any, words func() string) error {
 func summary(verb string, r *evaluate.Report) string {
 	var out strings.Builder
 	fmt.Fprintf(&out, "%s in %.0f ms: %d pages, %d shared blocks, %d values", verb, r.Time["total"], r.Pages.Total, r.Shared.Total, r.Values.Total)
-	fmt.Fprintf(&out, "\n  computed %d pages and %d shared blocks, %d blocks in all", r.Computed.Pages, r.Computed.Shared, r.Blocks)
+	fmt.Fprintf(&out, "\n  ran the scripts of %d pages and %d shared blocks; computed %d pages and %d shared blocks, %d blocks in all",
+		r.Loaded.Pages, r.Loaded.Shared, r.Computed.Pages, r.Computed.Shared, r.Blocks)
 	if r.Rebuilt {
 		out.WriteString("\n  the project was compiled anew, so everything was computed from scratch")
 	}

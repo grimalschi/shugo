@@ -3,6 +3,9 @@
 // of blocks by their content. All of it is one SQLite file, so that a server
 // reads one consistent state while an update writes the next one.
 //
+// Next to every record the store keeps the fingerprint of what the record
+// was computed from: an update computes a page again only when that differs.
+//
 // The store also knows who shows what: which pages and shared blocks show a
 // shared block, and how many records use the values kept under a name. An
 // update that computed a part of the site can therefore say on which pages
@@ -26,12 +29,12 @@ import (
 
 // layout names the set of tables below. A store laid out in another way is
 // emptied: it holds nothing that a build cannot make again.
-const layout = "2"
+const layout = "3"
 
 const schema = `
 CREATE TABLE meta   (name TEXT PRIMARY KEY, value BLOB NOT NULL) WITHOUT ROWID;
-CREATE TABLE page   (path TEXT PRIMARY KEY, hash BLOB NOT NULL, record BLOB NOT NULL) WITHOUT ROWID;
-CREATE TABLE shared (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, hash BLOB NOT NULL, record BLOB NOT NULL);
+CREATE TABLE page   (path TEXT PRIMARY KEY, hash BLOB NOT NULL, print INTEGER NOT NULL, record BLOB NOT NULL) WITHOUT ROWID;
+CREATE TABLE shared (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, hash BLOB NOT NULL, print INTEGER NOT NULL, record BLOB NOT NULL);
 CREATE TABLE value  (hash BLOB PRIMARY KEY, data BLOB NOT NULL, uses INTEGER NOT NULL) WITHOUT ROWID;
 CREATE TABLE shows  (shared INTEGER NOT NULL, user TEXT NOT NULL, PRIMARY KEY (shared, user)) WITHOUT ROWID;
 `
@@ -313,7 +316,7 @@ func (s *Store) View(read func(*View) error) error {
 // anyone else until Commit, and nothing remains of it after Rollback.
 type Update struct {
 	reader
-	hashPage, named, putPage, putShared    *sql.Stmt
+	keptPage, named, putPage, putShared    *sql.Stmt
 	show, unshow, shown                    *sql.Stmt
 	useKept, newValues, dropUses, dropKept *sql.Stmt
 }
@@ -326,10 +329,10 @@ func (s *Store) Update() (*Update, error) {
 	}
 	u := &Update{reader: s.reads[1].within(tx)}
 	for statement, query := range map[**sql.Stmt]string{
-		&u.hashPage:  "SELECT hash FROM page WHERE path = ?",
-		&u.named:     "SELECT id, hash FROM shared WHERE name = ?",
-		&u.putPage:   "INSERT INTO page (path, hash, record) VALUES (?, ?, ?) ON CONFLICT (path) DO UPDATE SET hash = excluded.hash, record = excluded.record",
-		&u.putShared: "UPDATE shared SET hash = ?, record = ? WHERE id = ?",
+		&u.keptPage:  "SELECT hash, print FROM page WHERE path = ?",
+		&u.named:     "SELECT id, hash, print FROM shared WHERE name = ?",
+		&u.putPage:   "INSERT INTO page (path, hash, print, record) VALUES (?, ?, ?, ?) ON CONFLICT (path) DO UPDATE SET hash = excluded.hash, print = excluded.print, record = excluded.record",
+		&u.putShared: "UPDATE shared SET hash = ?, print = ?, record = ? WHERE id = ?",
 		&u.show:      "INSERT OR IGNORE INTO shows (shared, user) VALUES (?, ?)",
 		&u.unshow:    "DELETE FROM shows WHERE shared = ? AND user = ?",
 		&u.shown:     "SELECT 1 FROM shows WHERE shared = ? LIMIT 1",
@@ -347,48 +350,48 @@ func (s *Store) Update() (*Update, error) {
 }
 
 // Kept is a record as the store has it: under which number, for a shared
-// block, and with which content.
+// block, with which content, and computed from what.
 type Kept struct {
 	ID   int64
 	Hash record.Hash
+	// Print is the fingerprint of what the record was computed from.
+	Print uint64
 }
 
-// KeptPages returns the content of the record of every page. It reads the
-// whole table: an update that computes a few pages asks PageHash instead.
-func (u *Update) KeptPages() (map[string]record.Hash, error) {
-	out := map[string]record.Hash{}
-	err := u.each("SELECT path, 0, hash FROM page", func(path string, _ int64, hash record.Hash) { out[path] = hash })
-	return out, err
+// KeptPages returns what the store has of every page, by its address. It
+// reads the whole table: an update that computes a few pages asks KeptPage.
+func (u *Update) KeptPages() (map[string]Kept, error) {
+	return u.all("SELECT path, 0, hash, print FROM page")
 }
 
-// KeptShared returns the number and the content of every shared block by
-// its name. It reads the whole table: see SharedNamed.
+// KeptShared returns what the store has of every shared block, by its
+// name. It reads the whole table: see SharedNamed.
 func (u *Update) KeptShared() (map[string]Kept, error) {
-	out := map[string]Kept{}
-	err := u.each("SELECT name, id, hash FROM shared", func(name string, id int64, hash record.Hash) { out[name] = Kept{id, hash} })
-	return out, err
+	return u.all("SELECT name, id, hash, print FROM shared")
 }
 
-func (u *Update) each(query string, visit func(name string, id int64, hash record.Hash)) error {
+func (u *Update) all(query string) (map[string]Kept, error) {
 	rows, err := u.tx.Query(query)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer rows.Close()
+	out := map[string]Kept{}
 	for rows.Next() {
 		var name string
-		var id int64
+		var kept Kept
 		var hash []byte
-		if err := rows.Scan(&name, &id, &hash); err != nil {
-			return err
+		var print int64
+		if err := rows.Scan(&name, &kept.ID, &hash, &print); err != nil {
+			return nil, err
 		}
-		kept, err := hashOf(hash)
-		if err != nil {
-			return err
+		if kept.Hash, err = hashOf(hash); err != nil {
+			return nil, err
 		}
-		visit(name, id, kept)
+		kept.Print = uint64(print)
+		out[name] = kept
 	}
-	return rows.Err()
+	return out, rows.Err()
 }
 
 // hashOf reads the content of a record as the store keeps it. A shared
@@ -401,27 +404,31 @@ func hashOf(kept []byte) (hash record.Hash, err error) {
 	return hash, nil
 }
 
-// PageHash returns the content of the record of one page.
-func (u *Update) PageHash(path string) (hash record.Hash, found bool, err error) {
-	var kept []byte
-	if err := u.hashPage.QueryRow(path).Scan(&kept); errors.Is(err, sql.ErrNoRows) {
-		return hash, false, nil
-	} else if err != nil {
-		return hash, false, err
-	}
-	hash, err = hashOf(kept)
-	return hash, err == nil, err
-}
-
-// SharedNamed returns the number and the content of one shared block.
-func (u *Update) SharedNamed(name string) (kept Kept, found bool, err error) {
+// KeptPage returns what the store has of one page.
+func (u *Update) KeptPage(path string) (kept Kept, found bool, err error) {
 	var hash []byte
-	if err := u.named.QueryRow(name).Scan(&kept.ID, &hash); errors.Is(err, sql.ErrNoRows) {
+	var print int64
+	if err := u.keptPage.QueryRow(path).Scan(&hash, &print); errors.Is(err, sql.ErrNoRows) {
 		return kept, false, nil
 	} else if err != nil {
 		return kept, false, err
 	}
 	kept.Hash, err = hashOf(hash)
+	kept.Print = uint64(print)
+	return kept, err == nil, err
+}
+
+// SharedNamed returns what the store has of one shared block.
+func (u *Update) SharedNamed(name string) (kept Kept, found bool, err error) {
+	var hash []byte
+	var print int64
+	if err := u.named.QueryRow(name).Scan(&kept.ID, &hash, &print); errors.Is(err, sql.ErrNoRows) {
+		return kept, false, nil
+	} else if err != nil {
+		return kept, false, err
+	}
+	kept.Hash, err = hashOf(hash)
+	kept.Print = uint64(print)
 	return kept, err == nil, err
 }
 
@@ -431,16 +438,29 @@ func (u *Update) SharedName(id int64) (name string, err error) {
 	return name, err
 }
 
-// PutPage keeps the record of a page in place of the one it had.
-func (u *Update) PutPage(path string, hash record.Hash, data []byte) error {
-	_, err := u.putPage.Exec(path, hash[:], data)
+// PutPage keeps the record of a page in place of the one it had, with the
+// fingerprint of what it was computed from.
+func (u *Update) PutPage(path string, hash record.Hash, print uint64, data []byte) error {
+	_, err := u.putPage.Exec(path, hash[:], int64(print), data)
+	return err
+}
+
+// SetPagePrint and SetSharedPrint keep another fingerprint with a record
+// that came out the same.
+func (u *Update) SetPagePrint(path string, print uint64) error {
+	_, err := u.tx.Exec("UPDATE page SET print = ? WHERE path = ?", int64(print), path)
+	return err
+}
+
+func (u *Update) SetSharedPrint(id int64, print uint64) error {
+	_, err := u.tx.Exec("UPDATE shared SET print = ? WHERE id = ?", int64(print), id)
 	return err
 }
 
 // NewShared gives a number to a shared block that the store has not had.
 // Its record follows with PutShared.
 func (u *Update) NewShared(name string) (int64, error) {
-	result, err := u.tx.Exec("INSERT INTO shared (name, hash, record) VALUES (?, x'', x'')", name)
+	result, err := u.tx.Exec("INSERT INTO shared (name, hash, print, record) VALUES (?, x'', 0, x'')", name)
 	if err != nil {
 		return 0, err
 	}
@@ -448,8 +468,8 @@ func (u *Update) NewShared(name string) (int64, error) {
 }
 
 // PutShared keeps the record of a shared block in place of the one it had.
-func (u *Update) PutShared(id int64, hash record.Hash, data []byte) error {
-	_, err := u.putShared.Exec(hash[:], data, id)
+func (u *Update) PutShared(id int64, hash record.Hash, print uint64, data []byte) error {
+	_, err := u.putShared.Exec(hash[:], int64(print), data, id)
 	return err
 }
 

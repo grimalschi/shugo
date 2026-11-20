@@ -35,8 +35,18 @@ type File struct {
 	// called with the same parameters: it reads nothing of the page it is on.
 	// Such a block is computed and kept once for the whole site.
 	Shared bool `json:"shared,omitempty"`
+	// Loads tells that the file is computed in two steps: its script runs
+	// with the data of the project, and its template is given a copy of what
+	// it reads of the script's variables. Every page and layout is such a
+	// file, and so is a component whose script loads data.
+	Loads bool `json:"loads,omitempty"`
+	// Why says what makes a component load data, for the one who gets a
+	// message about it: "imports lib/shop.ts, which reads files (node:fs)".
+	Why string `json:"why,omitempty"`
 	// Slots are the names of the slots the template shows with <g-slot>.
+	// Gives are the slots it fills for the layouts around it.
 	Slots []string `json:"slots,omitempty"`
+	Gives []string `json:"gives,omitempty"`
 	// Parts are the template itself and then every piece of markup it puts
 	// inside the components it calls.
 	Parts [][]Op `json:"parts"`

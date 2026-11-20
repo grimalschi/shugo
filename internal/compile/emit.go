@@ -13,7 +13,8 @@ import (
 //
 // In the JavaScript "$$" is the block being computed. A piece of markup put
 // into a component is a function that takes its own "$$", so the same code
-// writes to the right block wherever it stands.
+// writes to the right block wherever it stands. Nothing here waits: a
+// template works on data that is already there.
 type emitter struct {
 	m *module
 	// parts are the operations of the template and of every fill in it.
@@ -57,7 +58,7 @@ func (e *emitter) nodes(list []node) []program.Op {
 			ops = append(ops, e.outlet(n))
 		case provide:
 			e.provides = true
-			e.m.add("await $$.provide(%s, %d, async ($$) => {", quote(n.name), len(e.parts))
+			e.m.add("$$.provide(%s, %d, ($$) => {", quote(n.name), len(e.parts))
 			e.part(n.body)
 			e.m.add("});")
 		case mount:
@@ -126,7 +127,7 @@ func (e *emitter) loop(n loop) program.Op {
 // component writes the call of a component with its parameters and with the
 // markup put inside it.
 func (e *emitter) component(n call) {
-	e.call("await $$.call((", n.target, "), {")
+	e.call("$$.call((", n.target, "), {")
 	for _, p := range n.props {
 		switch {
 		case p.spread:
@@ -144,7 +145,7 @@ func (e *emitter) component(n call) {
 	e.m.add("}, [")
 	for _, f := range n.fills {
 		// The number of the part is known before its body is written.
-		e.m.add("[%s, %d, async ($$) => {", quote(f.name), len(e.parts))
+		e.m.add("[%s, %d, ($$) => {", quote(f.name), len(e.parts))
 		e.part(f.body)
 		e.m.add("}],")
 	}

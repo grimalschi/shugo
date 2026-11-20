@@ -5,32 +5,27 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"slices"
 	"sort"
 	"strings"
 	"sync"
 
-	"github.com/evanw/esbuild/pkg/api"
-
-	"github.com/grimalschi/shugo/internal/jsrt"
 	"github.com/grimalschi/shugo/internal/program"
 	"github.com/grimalschi/shugo/internal/project"
 	"github.com/grimalschi/shugo/internal/route"
-	"github.com/grimalschi/shugo/internal/syntax"
 )
 
 // The files a compiled project consists of, under the output folder.
 const (
-	Bundle  = "eval.mjs"     // loads the data and computes the values of all pages
-	Site    = "site.json"    // the program of the site: templates and routes
-	Assets  = "assets"       // style sheets, published under AssetsURL
-	Sources = "sources.json" // what the project was compiled from
+	LoadBundle   = "load.mjs"     // the scripts: they load the data, and lead the computation of pages
+	RenderBundle = "render.cjs"   // the templates: they compute values from what they are given
+	Site         = "site.json"    // the program of the site: templates and routes
+	Assets       = "assets"       // style sheets, published under AssetsURL
+	Sources      = "sources.json" // what the project was compiled from
 )
 
 // AssetsURL is where the files of the Assets folder are published.
@@ -54,23 +49,47 @@ func Build(p *project.Project) (*Result, error) {
 	for id, path := range paths {
 		b.ids[path] = id
 	}
-	if err := b.compile(); err != nil {
+	if err := b.read(); err != nil {
 		return nil, err
 	}
 	routes, err := b.routes()
 	if err != nil {
 		return nil, err
 	}
-	bundled, err := b.bundle(routes)
+	// The scripts are bundled first: what they import tells which files
+	// load data, and that decides how every template is written.
+	loaded, err := b.bundle(loadSide, routes)
 	if err != nil {
 		return nil, err
 	}
+	b.sort(loaded.meta)
+	for _, u := range b.units {
+		u.renderModule()
+	}
+	rendered, err := b.bundle(renderSide, routes)
+	if err != nil {
+		return nil, err
+	}
+	if err := b.sealed(rendered.meta); err != nil {
+		return nil, err
+	}
+	shared, styles, err := b.graph(rendered.meta)
+	if err != nil {
+		return nil, err
+	}
+
 	site := &program.Site{Origin: p.Config.Site, Redirects: p.Config.Redirects, Routes: routes}
 	if site.Origin == "" {
 		site.Origin = "http://localhost"
 	}
 	for i, path := range paths {
-		site.Files = append(site.Files, program.File{Path: path, Parts: b.units[i].parts, Slots: b.units[i].outlets, Shared: bundled.shared[path]})
+		u := b.units[i]
+		gives := make([]string, 0, len(u.provided))
+		for name := range u.provided {
+			gives = append(gives, name)
+		}
+		sort.Strings(gives)
+		site.Files = append(site.Files, program.File{Path: path, Parts: u.parts, Slots: u.outlets, Shared: shared[path], Loads: u.loads, Why: u.why, Gives: gives})
 	}
 
 	output := p.Path(project.Output)
@@ -81,7 +100,7 @@ func Build(p *project.Project) (*Result, error) {
 	if err := os.MkdirAll(assets, 0o755); err != nil {
 		return nil, err
 	}
-	sheet, err := b.styles(bundled.styles)
+	sheet, err := b.styles(styles)
 	if err != nil {
 		return nil, err
 	}
@@ -97,16 +116,20 @@ func Build(p *project.Project) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	sources, err := json.Marshal(b.sources(bundled.files))
+	sources, err := json.Marshal(b.sources(append(loaded.meta.files(), rendered.meta.files()...)))
 	if err != nil {
 		return nil, err
 	}
-	for name, content := range map[string][]byte{Bundle: bundled.code, Bundle + ".map": bundled.smap, Site: data, Sources: sources} {
+	for name, content := range map[string][]byte{
+		LoadBundle: loaded.code, LoadBundle + ".map": loaded.smap,
+		RenderBundle: rendered.code, RenderBundle + ".map": rendered.smap,
+		Site: data, Sources: sources,
+	} {
 		if err := os.WriteFile(filepath.Join(output, name), content, 0o644); err != nil {
 			return nil, err
 		}
 	}
-	return &Result{Site: site, ID: digest(data, bundled.code), Warnings: bundled.warnings}, nil
+	return &Result{Site: site, ID: digest(data, loaded.code, rendered.code), Warnings: append(loaded.warnings, rendered.warnings...)}, nil
 }
 
 // Load reads a project that Build has compiled before.
@@ -117,7 +140,11 @@ func Load(p *project.Project) (*Result, error) {
 	} else if err != nil {
 		return nil, err
 	}
-	code, err := os.ReadFile(p.Path(project.Output, Bundle))
+	load, err := os.ReadFile(p.Path(project.Output, LoadBundle))
+	if err != nil {
+		return nil, err
+	}
+	render, err := os.ReadFile(p.Path(project.Output, RenderBundle))
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +152,7 @@ func Load(p *project.Project) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Result{Site: site, ID: digest(data, code)}, nil
+	return &Result{Site: site, ID: digest(data, load, render)}, nil
 }
 
 // sources is the list of what a project was compiled from: its templates,
@@ -214,8 +241,8 @@ func roleOf(path string) role {
 	return page
 }
 
-// compile compiles every file, several at a time.
-func (b *builder) compile() error {
+// read reads every file, several at a time.
+func (b *builder) read() error {
 	b.units = make([]*unit, len(b.paths))
 	failures := make([]error, len(b.paths))
 	next := make(chan int)
@@ -226,7 +253,7 @@ func (b *builder) compile() error {
 				path := b.paths[id]
 				source, err := os.ReadFile(b.project.Path(filepath.FromSlash(path)))
 				if err == nil {
-					b.units[id], err = compileFile(path, string(source), id, roleOf(path))
+					b.units[id], err = readFile(path, string(source), id, roleOf(path))
 				}
 				failures[id] = err
 			}
@@ -337,233 +364,4 @@ func (b *builder) provided(page *unit, layouts []int) Errors {
 		check(b.units[layout], layouts[:i])
 	}
 	return errs
-}
-
-// bundled is what the bundler made of the modules of all files.
-type bundled struct {
-	code, smap []byte
-	files      []string        // the files of the project that went into the bundle
-	shared     map[string]bool // which files can be computed once for all pages
-	styles     []style         // the style sheets in the order they apply
-	warnings   []string
-}
-
-// bundle links the modules of all files, the code they import and the
-// library of the framework into one file.
-func (b *builder) bundle(routes []program.Route) (*bundled, error) {
-	root := b.project.Root
-	// The entry names the module of every file: a page is computed from its
-	// route, and a shared block from its name alone, so any file may be what
-	// a computation starts from. The rest of what the run needs to know is
-	// in the program of the site.
-	//
-	// Pages and layouts come first, in their order: style sheets apply in
-	// the order of imports, and that order starts from the pages.
-	routed := map[int]bool{}
-	for _, r := range routes {
-		routed[r.File] = true
-		for _, layout := range r.Layouts {
-			routed[layout] = true
-		}
-	}
-	var entry strings.Builder
-	entry.WriteString("import { run } from \"shugo:runtime\";\n")
-	var table []string
-	for _, first := range []bool{true, false} {
-		for id, path := range b.paths {
-			if routed[id] == first {
-				fmt.Fprintf(&entry, "import * as $%d from %s;\n", id, quote("./"+path))
-				table = append(table, fmt.Sprintf("[%d, $%d]", id, id))
-			}
-		}
-	}
-	fmt.Fprintf(&entry, "await run([%s]);\n", strings.Join(table, ", "))
-
-	plugin := api.Plugin{Name: "shugo", Setup: func(build api.PluginBuild) {
-		build.OnResolve(api.OnResolveOptions{Filter: `^shugo:`}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
-			return api.OnResolveResult{Path: args.Path, Namespace: "shugo"}, nil
-		})
-		build.OnLoad(api.OnLoadOptions{Filter: `.*`, Namespace: "shugo"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
-			contents := jsrt.Source
-			if args.Path == "shugo:entry" {
-				contents = entry.String()
-			}
-			return api.OnLoadResult{Contents: &contents, Loader: api.LoaderJS, ResolveDir: root}, nil
-		})
-		build.OnLoad(api.OnLoadOptions{Filter: `\.shugo$`}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
-			id, known := b.ids[b.relative(args.Path)]
-			if !known {
-				return api.OnLoadResult{}, fmt.Errorf("this file is not among the sources of the project")
-			}
-			u := b.units[id]
-			contents := u.module.text(u.script)
-			return api.OnLoadResult{Contents: &contents, Loader: api.LoaderTS, ResolveDir: filepath.Dir(args.Path)}, nil
-		})
-		// Style sheets do not go into JavaScript: they are collected and
-		// built into a file of their own.
-		build.OnLoad(api.OnLoadOptions{Filter: `\.css$`}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
-			empty := ""
-			return api.OnLoadResult{Contents: &empty, Loader: api.LoaderJS}, nil
-		})
-	}}
-	result := api.Build(api.BuildOptions{
-		EntryPoints:   []string{"shugo:entry"},
-		Bundle:        true,
-		Format:        api.FormatESModule,
-		Platform:      api.PlatformNode,
-		Target:        api.ESNext,
-		Charset:       api.CharsetUTF8,
-		Packages:      api.PackagesExternal,
-		Alias:         map[string]string{"@": root},
-		Plugins:       []api.Plugin{plugin},
-		AbsWorkingDir: root,
-		Outfile:       filepath.Join(root, project.Output, Bundle),
-		Sourcemap:     api.SourceMapLinked,
-		LegalComments: api.LegalCommentsNone,
-		Metafile:      true,
-		Write:         false,
-		LogLevel:      api.LogLevelSilent,
-	})
-	if len(result.Errors) > 0 {
-		return nil, b.diagnoseAll(result.Errors)
-	}
-	out := &bundled{}
-	for _, file := range result.OutputFiles {
-		if strings.HasSuffix(file.Path, ".map") {
-			out.smap = file.Contents
-		} else {
-			out.code = file.Contents
-		}
-	}
-	for _, message := range result.Warnings {
-		// A page without getStaticPaths is what most pages are.
-		if message.ID != "import-is-undefined" {
-			out.warnings = append(out.warnings, b.diagnoseAll([]api.Message{message}).Error())
-		}
-	}
-	if err := b.graph(result.Metafile, out); err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-// relative returns the path of a file of the project as the units know it.
-func (b *builder) relative(path string) string {
-	if !filepath.IsAbs(path) {
-		return filepath.ToSlash(path)
-	}
-	rel, err := filepath.Rel(b.project.Root, path)
-	if err != nil {
-		return filepath.ToSlash(path)
-	}
-	return filepath.ToSlash(rel)
-}
-
-var markupInCode = regexp.MustCompile(`<[A-Za-z/][^<>]*>`)
-
-// diagnoseAll turns the messages of the bundler into errors in the files
-// of the project.
-func (b *builder) diagnoseAll(messages []api.Message) error {
-	var errs Errors
-	for _, message := range messages {
-		if message.Location == nil {
-			return errors.New(message.Text)
-		}
-		errs = append(errs, b.diagnose(message))
-	}
-	return errs
-}
-
-// diagnose turns a message of the bundler about a place in a file into an
-// error at that place. A place in a generated module becomes the place in
-// the template that the code was written from.
-func (b *builder) diagnose(message api.Message) *syntax.Error {
-	at := message.Location
-	id, known := b.ids[b.relative(at.File)]
-	if !known {
-		return &syntax.Error{Path: at.File, Line: at.Line, Column: at.Column + 1, Message: message.Text}
-	}
-	u := b.units[id]
-	text := message.Text
-	if line := at.Line - 1; line < len(u.module.from) && u.module.from[line].kind == 't' && markupInCode.MatchString(u.module.lines[line]) {
-		text += "; markup cannot stand inside {…}: put <g-if> or <g-for> around it instead"
-	}
-	return u.file.Errorf(u.module.locate(u.script, at.Line-1, at.Column), "%s", text)
-}
-
-// graph reads from the bundler which module imports which. It gives the
-// order of style sheets and tells which files can be computed once for all
-// pages: those that do not depend on the page themselves and import nothing
-// that does.
-func (b *builder) graph(metafile string, out *bundled) error {
-	var meta struct {
-		Inputs map[string]struct {
-			Imports []struct {
-				Path string `json:"path"`
-			} `json:"imports"`
-		} `json:"inputs"`
-	}
-	if err := json.Unmarshal([]byte(metafile), &meta); err != nil {
-		return err
-	}
-	names := make([]string, 0, len(meta.Inputs))
-	for name := range meta.Inputs {
-		names = append(names, name)
-		// The library of the framework and the entry are not files.
-		if !strings.Contains(name, ":") {
-			out.files = append(out.files, name)
-		}
-	}
-	sort.Strings(names)
-
-	// A file that depends on the page passes that on to all that import it.
-	own := map[string]bool{}
-	for _, name := range names {
-		if id, known := b.ids[name]; known {
-			own[name] = b.units[id].own
-		}
-	}
-	for changed := true; changed; {
-		changed = false
-		for _, name := range names {
-			for _, imported := range meta.Inputs[name].Imports {
-				if own[imported.Path] && !own[name] {
-					own[name], changed = true, true
-				}
-			}
-		}
-	}
-	out.shared = map[string]bool{}
-	for name := range meta.Inputs {
-		if id, known := b.ids[name]; known && b.units[id].role != page {
-			out.shared[name] = !own[name]
-		}
-	}
-
-	// Style sheets apply in the order of imports, a module's own after
-	// those of the modules it imports.
-	seen := map[string]bool{}
-	var visit func(name string)
-	visit = func(name string) {
-		if seen[name] {
-			return
-		}
-		seen[name] = true
-		for _, imported := range meta.Inputs[name].Imports {
-			visit(imported.Path)
-		}
-		if strings.HasSuffix(name, ".css") {
-			out.styles = append(out.styles, style{path: b.project.Path(filepath.FromSlash(name))})
-		} else if id, known := b.ids[name]; known {
-			for _, text := range b.units[id].styles {
-				out.styles = append(out.styles, style{text: text, from: name})
-			}
-		}
-	}
-	for _, name := range names {
-		if strings.HasSuffix(name, "shugo:entry") {
-			visit(name)
-		}
-	}
-	return nil
 }

@@ -17,13 +17,20 @@ import (
 type script struct {
 	lines []string       // the JavaScript, by line
 	smap  *sourcemap.Map // where every line came from in the .shugo file
-	top   []span         // imports and exports, as ranges of lines
+	top   []toplevel     // imports and exports, as ranges of lines
 	// paths tells that the script exports getStaticPaths.
 	paths bool
 }
 
 // span is lines[from:to].
 type span struct{ from, to int }
+
+// toplevel is an import or an export of a script: a statement that cannot
+// stand inside a function.
+type toplevel struct {
+	span
+	export bool
+}
 
 // What makes esbuild keep every import that is not marked as a type: the
 // template may use a name the script itself never mentions.
@@ -124,7 +131,7 @@ func (s *script) split(f *syntax.File, code string) error {
 		if text == "export" && strings.HasPrefix(code[token.End:], " default") {
 			return f.Errorf(f.Script.Start, `the script cannot have "export default": the file itself is what it exports`)
 		}
-		s.top = append(s.top, span{from, to})
+		s.top = append(s.top, toplevel{span{from, to}, text == "export"})
 		*scan = *syntax.NewScanner(code, end)
 		after = ""
 	}

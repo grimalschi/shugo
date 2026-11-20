@@ -2,11 +2,14 @@
 // project compute pages and shared blocks, and keeps the result in the
 // store.
 //
-// Go leads: it asks the JavaScript side which pages there are, names the
-// pages and the shared blocks to compute, and takes their records. What it
-// takes is compared with what the store has, and only what differs is
-// written. An update may compute any part of the site: everything it does
-// not name stays in the store as it is.
+// Go leads. It asks the JavaScript side which pages there are; then for the
+// fingerprint of every page and of every shared block the store knows. The
+// JavaScript side runs their scripts to answer: that loads all the data. A
+// fingerprint covers exactly what the template of a page reads of its
+// script, so a page whose fingerprint is what the store has would come out
+// the same, and is left alone. Go names the rest, and only their templates
+// are computed. What comes back is compared with the store once more, and
+// only what differs is written.
 package evaluate
 
 import (
@@ -27,16 +30,17 @@ type Report struct {
 	Build   string `json:"build"`
 	Rebuilt bool   `json:"rebuilt"`
 
-	// Computed counts the pages and the shared blocks the update computed,
-	// Blocks the blocks they consist of. Pages and Shared tell what became
-	// of the records: computing a record again often gives the same one.
-	Computed struct {
-		Pages  int `json:"pages"`
-		Shared int `json:"shared"`
-	} `json:"computed"`
-	Blocks int     `json:"blocks"`
-	Pages  Changes `json:"pages"`
-	Shared Changes `json:"shared"`
+	// Loaded counts the pages and the shared blocks whose scripts ran and
+	// whose fingerprints were compared. Computed counts those whose
+	// templates were computed after that: the ones that are new or whose
+	// fingerprint differs. Blocks is how many blocks those consist of. Pages
+	// and Shared tell what became of the records: computing a record again
+	// may give the same one.
+	Loaded   Counts  `json:"loaded"`
+	Computed Counts  `json:"computed"`
+	Blocks   int     `json:"blocks"`
+	Pages    Changes `json:"pages"`
+	Shared   Changes `json:"shared"`
 	// Values counts the distinct values of blocks that are kept.
 	Values struct {
 		Total   int `json:"total"`
@@ -51,8 +55,20 @@ type Report struct {
 	// Shadowed counts addresses that a dynamic page gave and a more exact
 	// page had already taken.
 	Shadowed int `json:"shadowed"`
+	// Checked tells that everything was computed to check the fingerprints.
+	// Unseen are the pages and shared blocks whose record came out
+	// different although their fingerprint did not: they show something
+	// that Shugo does not see them read.
+	Checked bool     `json:"checked,omitempty"`
+	Unseen  []string `json:"unseen,omitempty"`
 	// Time is how long every step took, in milliseconds.
 	Time map[string]float64 `json:"time"`
+}
+
+// Counts is a number of pages and a number of shared blocks.
+type Counts struct {
+	Pages  int `json:"pages"`
+	Shared int `json:"shared"`
 }
 
 // Changes tells what happened to the pages or to the shared blocks.
@@ -80,6 +96,10 @@ type Options struct {
 	Log io.Writer
 	// Names is how many names of pages a report lists at most.
 	Names int
+	// Check computes every page and shared block, whatever the fingerprints
+	// say, and reports those that came out different although their
+	// fingerprint did not.
+	Check bool
 }
 
 // Run brings the store up to date with the project. If it fails, the store
@@ -135,7 +155,8 @@ func Run(p *project.Project, compiled *compile.Result, st *store.Store, options 
 	}
 	took("list")
 
-	if err := everything(s, k, pages); err != nil {
+	k.check, report.Checked = options.Check, options.Check
+	if err := changed(s, k, pages); err != nil {
 		return nil, err
 	}
 	if err := s.end(); err != nil {
@@ -157,33 +178,64 @@ func Run(p *project.Project, compiled *compile.Result, st *store.Store, options 
 	return report, nil
 }
 
-// everything computes all pages and every shared block they show, and drops
-// the pages the project no longer has.
-func everything(s *session, k *keeper, pages []listed) error {
-	// The whole site is compared, so the whole of what the store has is
-	// read at once.
+// changed computes the pages and shared blocks whose fingerprint is not
+// what the store has, and drops the pages the project no longer has.
+func changed(s *session, k *keeper, pages []listed) error {
+	// Every page is compared, so the whole of what the store has is read
+	// at once.
 	if err := k.preload(); err != nil {
 		return err
 	}
-	k.again = func(string, bool) bool { return true }
-
-	units := make([]unit, len(pages))
+	units := make([]unit, 0, len(pages)+len(k.shared))
 	there := make(map[string]struct{}, len(pages))
-	for i, page := range pages {
-		units[i] = unit{name: page.path}
+	for _, page := range pages {
+		units = append(units, unit{name: page.path})
 		there[page.path] = struct{}{}
 	}
-	if err := s.compute(units, k); err != nil {
-		return err
-	}
-	// A shared block is computed once it is known that something shows it;
-	// what it shows itself comes with the next round.
-	for names := k.take(); len(names) > 0; names = k.take() {
-		units = units[:0]
-		for _, name := range names {
+	// A shared block the store knows may show something else by now, if its
+	// script loads data. One that only shows what it is given cannot: its
+	// name says all that it shows.
+	for name := range k.shared {
+		if k.loads(name) {
 			units = append(units, unit{shared: true, name: name})
 		}
-		if err := s.compute(units, k); err != nil {
+	}
+
+	var compute []unit
+	err := s.prints(units, func(u unit, print uint64, failure *ScriptError) error {
+		if failure != nil {
+			k.failed[u.name] = failure
+			return nil
+		}
+		kept, known := k.shared[u.name]
+		if u.shared {
+			k.report.Loaded.Shared++
+		} else {
+			k.report.Loaded.Pages++
+			kept, known = k.pages[u.name]
+		}
+		if !known || kept.Print != print || k.check {
+			compute = append(compute, u)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	// The shared blocks of the store have just been compared, so one that a
+	// computed record shows is computed only if the store does not have it.
+	// A check computes everything it meets.
+	k.again = func(string, bool) bool { return k.check }
+	if err := s.compute(compute, k); err != nil {
+		return err
+	}
+	// What a shared block shows itself comes with the next round.
+	for names := k.take(); len(names) > 0; names = k.take() {
+		compute = compute[:0]
+		for _, name := range names {
+			compute = append(compute, unit{shared: true, name: name})
+		}
+		if err := s.compute(compute, k); err != nil {
 			return err
 		}
 	}

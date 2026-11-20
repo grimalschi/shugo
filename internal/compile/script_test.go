@@ -17,6 +17,15 @@ func parseScript(t *testing.T, code string) (*syntax.File, *script, error) {
 	return f, s, err
 }
 
+// tops returns the lines of the imports and exports of a script.
+func tops(s *script) []span {
+	var out []span
+	for _, top := range s.top {
+		out = append(out, top.span)
+	}
+	return out
+}
+
 func lines(s *script, spans []span) string {
 	var out []string
 	for _, sp := range spans {
@@ -59,7 +68,7 @@ export async function getStaticPaths() {
   return products.map((p) => ({ params: { slug: p.slug } }));
 }
 export const prerender = { a: 1 };`
-	if got := lines(s, s.top); got != wantTop {
+	if got := lines(s, tops(s)); got != wantTop {
 		t.Errorf("imports and exports\n got:\n%s\nwant:\n%s", got, wantTop)
 	}
 	wantBody := `const { title } = Shugo.props;
@@ -99,7 +108,7 @@ func TestScriptForms(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := lines(s, s.top); got != c.top {
+			if got := lines(s, tops(s)); got != c.top {
 				t.Errorf("top\n got:\n%s\nwant:\n%s", got, c.top)
 			}
 			if s.paths != c.paths {
