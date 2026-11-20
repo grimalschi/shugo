@@ -177,8 +177,11 @@ export class Hasher {
     } else {
       const kind = Object.getPrototypeOf(v);
       if (kind === Object.prototype || kind === null) {
+        // Every member starts with a word of its own, and another word
+        // ends the object: where the members end is never in doubt.
         this.word(11);
         for (const key in v) {
+          this.word(21);
           this.string(key);
           this.value(v[key]);
         }

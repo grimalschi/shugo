@@ -236,6 +236,13 @@ var reaching = map[string]string{
 
 var reachingWord = regexp.MustCompile(`\b(fetch|process|Bun|Deno|XMLHttpRequest|WebSocket|await)\b`)
 
+// The clock and chance are outside of the program too: what they give
+// differs from one run to the next.
+var reachingMember = map[string]string{
+	"Date.now":    "takes the time of the moment (Date.now())",
+	"Math.random": "takes a number by chance (Math.random())",
+}
+
 // reachesOut tells how a piece of code reaches outside of the program, if
 // it does. awaits tells whether waiting counts: in a module it does, and a
 // script is asked about that separately.
@@ -247,7 +254,7 @@ func reachesOut(source string, awaits bool) string {
 		return reaching[word]
 	}
 	scan := syntax.NewScanner(source, 0)
-	after := ""
+	before, after := "", "" // the two tokens before the one being read
 	for {
 		token, err := next(scan)
 		if err != nil {
@@ -256,6 +263,11 @@ func reachesOut(source string, awaits bool) string {
 			// errs to the safe side.
 			for _, word := range reachingWord.FindAllString(source, -1) {
 				if how := found(word); how != "" {
+					return how
+				}
+			}
+			for member, how := range reachingMember {
+				if strings.Contains(source, member) {
 					return how
 				}
 			}
@@ -270,7 +282,10 @@ func reachesOut(source string, awaits bool) string {
 				return how
 			}
 		}
-		after = text
+		if how := reachingMember[before+after+text]; how != "" && after == "." {
+			return how
+		}
+		before, after = after, text
 	}
 }
 
