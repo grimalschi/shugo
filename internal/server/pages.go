@@ -59,6 +59,12 @@ func NewPages(st *store.Store) *Pages {
 	return &Pages{store: st}
 }
 
+// Ready tells whether the store holds a site that can be shown.
+func (p *Pages) Ready() error {
+	_, err := p.state()
+	return err
+}
+
 // Refresh makes the next page come from the store as it is now. A server
 // finds an update of another process by itself, within staleFor.
 func (p *Pages) Refresh() {

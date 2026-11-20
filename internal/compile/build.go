@@ -4,7 +4,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -105,12 +107,14 @@ func Build(p *project.Project) (*Result, error) {
 // Load reads a project that Build has compiled before.
 func Load(p *project.Project) (*Result, error) {
 	data, err := os.ReadFile(p.Path(project.Output, Site))
-	if err != nil {
-		return nil, fmt.Errorf("the project is not compiled yet: %w", err)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, errors.New("the project is not compiled yet: run `shugo build` first")
+	} else if err != nil {
+		return nil, err
 	}
 	code, err := os.ReadFile(p.Path(project.Output, Bundle))
 	if err != nil {
-		return nil, fmt.Errorf("the project is not compiled yet: %w", err)
+		return nil, err
 	}
 	site, err := program.Decode(data)
 	if err != nil {

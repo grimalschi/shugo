@@ -142,3 +142,29 @@ func TestProjectMistakes(t *testing.T) {
 		})
 	}
 }
+
+// A mistake found by the bundler or at run time is reported at its place in
+// the .shugo file, not in the code generated from it.
+func TestMistakesPointAtTheTemplate(t *testing.T) {
+	cases := []struct{ name, page, want string }{
+		{"a module that is not there", "---\nimport { helper } from \"../lib/missing\"\n---\n<h1>{helper()}</h1>", `pages/index.shugo:2:24: Could not resolve "../lib/missing"`},
+		{"an expression cut short", "<p>ok</p>\n<h1 class={a +}>x</h1>", `pages/index.shugo:2:15: Unexpected ")"`},
+		{"a statement in braces", "<p>\n  {const a = 1}\n</p>", `pages/index.shugo:2:4: Unexpected "const"`},
+		{"a name that is not a name", `<g-for each={[1]} as="1x">{x}</g-for>`, `pages/index.shugo:1:24: Syntax error "x"`},
+		{"a mistake in the script", "---\nconst a = 1\nconst b = (a +\n---\n<p>{a}</p>", "pages/index.shugo:3:15: the script ends in the middle of a statement"},
+		{"markup inside braces", "<ul>\n  {[1].map(n => <li>{n}</li>)}\n</ul>", "pages/index.shugo:2:3: markup cannot stand inside {…}"},
+		{"a failure while computing", "---\nconst product = { title: \"x\" }\n---\n<p>\n  {product.missing.field}\n</p>", "at pages/index.shugo:5:"},
+		{"a failure in a component", "---\nimport Card from \"../card.shugo\"\n---\n<Card />\n-- card.shugo --\n<p>ok</p>\n<b>{Shugo.props.item.title}</b>", "at card.shugo:2:"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := newSite(t, "-- pages/index.shugo --\n"+c.page).tryBuild()
+			if err == nil {
+				t.Fatal("no error")
+			}
+			if !strings.Contains(err.Error(), c.want) {
+				t.Errorf("\n got: %v\nwant: %s", err, c.want)
+			}
+		})
+	}
+}

@@ -204,7 +204,11 @@ func (c *command) serve() error {
 		return err
 	}
 	defer st.Close()
-	return c.listen(&server.Server{Pages: server.NewPages(st)})
+	pages := server.NewPages(st)
+	if err := pages.Ready(); err != nil {
+		return err
+	}
+	return c.listen(&server.Server{Pages: pages})
 }
 
 // listen answers requests until the process is stopped.

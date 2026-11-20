@@ -16,6 +16,8 @@ The solutions are from the most important to the small.
 
 **What's lost.** Each update counts the expressions of all pages, not just those that have changed. The update time depends on the size of the site, not the size of the change: on the stand it is 0.4 s on 10,000 pages and 3.3–3.7 s on 100,000. Exact figures are in [README booth](../examples/catalog/README.md).
 
+**About WASM for comparison.** It is not needed. Comparison is a hash of each entry on the side of Go. On 100,000 pages it takes fractions of a second and goes at the same time as the work of JS.
+
 **What's left.** Record only changed. The header is stored once. After changing the price of one product, one page and one shared card are changed. Rantime collects pages from the saved and does not execute the project code.
 
 ## 2. Values are stored by content and shared blocks by name

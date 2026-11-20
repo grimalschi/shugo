@@ -73,6 +73,12 @@ func scriptError(f *syntax.File, message api.Message) *syntax.Error {
 		return f.Errorf(f.Script.Start, "%s", message.Text)
 	}
 	offset := offsetOf(f.Source, message.Location.Line-1, message.Location.Column)
+	if offset >= f.Script.End {
+		// esbuild ran into the mark added after the script: the last
+		// statement of the script is not finished.
+		end := f.Script.Start + len(strings.TrimRight(f.Source[f.Script.Start:f.Script.End], " \t\r\n"))
+		return f.Errorf(end, "the script ends in the middle of a statement: a bracket or a quote is not closed")
+	}
 	return f.Errorf(offset, "%s", message.Text)
 }
 
