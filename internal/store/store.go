@@ -58,14 +58,16 @@ type Store struct {
 }
 
 // queries are the statements that read one thing by its key.
-type queries struct{ meta, page, shared, value *sql.Stmt }
+type queries struct{ meta, page, shared, value, users, readers *sql.Stmt }
 
 func prepare(db *sql.DB) (q queries, err error) {
 	for statement, query := range map[**sql.Stmt]string{
-		&q.meta:   "SELECT value FROM meta WHERE name = ?",
-		&q.page:   "SELECT record FROM page WHERE path = ?",
-		&q.shared: "SELECT record FROM shared WHERE id = ?",
-		&q.value:  "SELECT data FROM value WHERE hash = ?",
+		&q.meta:    "SELECT value FROM meta WHERE name = ?",
+		&q.page:    "SELECT record FROM page WHERE path = ?",
+		&q.shared:  "SELECT record FROM shared WHERE id = ?",
+		&q.value:   "SELECT data FROM value WHERE hash = ?",
+		&q.users:   "SELECT user FROM shows WHERE shared = ?",
+		&q.readers: "SELECT reader FROM reads WHERE shape = ? AND key = ?",
 	} {
 		if *statement, err = db.Prepare(query); err != nil {
 			return q, err
@@ -278,7 +280,7 @@ func ReaderRoute(reader string) (route int, is bool) {
 
 // Users calls visit with everyone who shows a shared block.
 func (r *reader) Users(shared int64, visit func(user string)) error {
-	rows, err := r.tx.Query("SELECT user FROM shows WHERE shared = ?", shared)
+	rows, err := r.users.Query(shared)
 	if err != nil {
 		return err
 	}
@@ -295,7 +297,7 @@ func (r *reader) Users(shared int64, visit func(user string)) error {
 
 // Readers calls visit with everyone who made a reading: see Read.
 func (r *reader) Readers(shape int64, key []byte, visit func(reader string)) error {
-	rows, err := r.tx.Query("SELECT reader FROM reads WHERE shape = ? AND key = ?", shape, orEmpty(key))
+	rows, err := r.readers.Query(shape, orEmpty(key))
 	if err != nil {
 		return err
 	}
@@ -371,7 +373,7 @@ func (r *reader) Totals() (Totals, error) {
 
 // within returns statements that run inside a transaction.
 func (q queries) within(tx *sql.Tx) reader {
-	return reader{tx, queries{tx.Stmt(q.meta), tx.Stmt(q.page), tx.Stmt(q.shared), tx.Stmt(q.value)}}
+	return reader{tx, queries{tx.Stmt(q.meta), tx.Stmt(q.page), tx.Stmt(q.shared), tx.Stmt(q.value), tx.Stmt(q.users), tx.Stmt(q.readers)}}
 }
 
 // Version returns the number of the latest update, as of now.
@@ -403,10 +405,10 @@ func (s *Store) View(read func(*View) error) error {
 // anyone else until Commit, and nothing remains of it after Rollback.
 type Update struct {
 	reader
-	keptPage, named, putPage, putShared    *sql.Stmt
-	show, unshow, shown                    *sql.Stmt
-	useKept, newValues, dropUses, dropKept *sql.Stmt
-	read, unread                           *sql.Stmt
+	keptPage, named, name, putPage, putShared *sql.Stmt
+	show, unshow, shown                       *sql.Stmt
+	useKept, newValues, dropUses, dropKept    *sql.Stmt
+	read, unread                              *sql.Stmt
 }
 
 // Update starts a change. It waits for an update that is under way.
@@ -419,6 +421,7 @@ func (s *Store) Update() (*Update, error) {
 	for statement, query := range map[**sql.Stmt]string{
 		&u.keptPage:  "SELECT hash, route, reads FROM page WHERE path = ?",
 		&u.named:     "SELECT id, hash, reads FROM shared WHERE name = ?",
+		&u.name:      "SELECT name FROM shared WHERE id = ?",
 		&u.putPage:   "INSERT INTO page (path, hash, record, route, reads) VALUES (?, ?, ?, ?, ?) ON CONFLICT (path) DO UPDATE SET hash = excluded.hash, record = excluded.record, route = excluded.route, reads = excluded.reads",
 		&u.putShared: "UPDATE shared SET hash = ?, record = ?, reads = ? WHERE id = ?",
 		&u.read:      "INSERT OR IGNORE INTO reads (shape, key, reader) VALUES (?, ?, ?)",
@@ -522,7 +525,7 @@ func (u *Update) SharedNamed(name string) (kept Kept, found bool, err error) {
 // SharedName returns the name of a shared block, and SharedReads what it
 // read from the data.
 func (u *Update) SharedName(id int64) (name string, err error) {
-	err = u.tx.QueryRow("SELECT name FROM shared WHERE id = ?", id).Scan(&name)
+	err = u.name.QueryRow(id).Scan(&name)
 	return name, err
 }
 

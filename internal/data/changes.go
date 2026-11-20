@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 )
 
@@ -76,11 +77,11 @@ func (d *DB) Changes(after int64) (changes []Change, now int64, lost bool, err e
 	// Of every row only its first line counts: it tells what the row was
 	// before all that happened to it since.
 	type touched struct {
-		table *Table
-		id    any
-		old   sql.NullString
+		id  any
+		key string
+		old sql.NullString
 	}
-	var rows []touched
+	rows := map[*Table][]touched{}
 	seen := map[string]struct{}{}
 	lines, err := tx.Query("SELECT tbl, id, old FROM "+journal+" WHERE seq > ? ORDER BY seq", after)
 	if err != nil {
@@ -93,53 +94,68 @@ func (d *DB) Changes(after int64) (changes []Change, now int64, lost bool, err e
 			lines.Close()
 			return nil, 0, false, err
 		}
-		if one.table = d.tables[name]; one.table == nil {
+		table := d.tables[name]
+		if table == nil {
 			continue // of a table that is gone: its journal would have another name
 		}
-		row := name + "\x00" + string(Key([]any{plain(one.id)}))
-		if _, already := seen[row]; !already {
-			seen[row] = struct{}{}
-			rows = append(rows, one)
+		one.key = string(Key([]any{plain(one.id)}))
+		if _, already := seen[name+"\x00"+one.key]; !already {
+			seen[name+"\x00"+one.key] = struct{}{}
+			rows[table] = append(rows[table], one)
 		}
 	}
 	if err := lines.Close(); err != nil {
 		return nil, 0, false, err
 	}
 
-	current := map[*Table]*sql.Stmt{}
-	for _, one := range rows {
-		read := current[one.table]
-		if read == nil {
-			t := one.table
-			if read, err = tx.Prepare("SELECT " + t.row("") + " FROM " + quote(t.Name) + " WHERE " + quote(t.Columns[t.Key]) + " = ?"); err != nil {
+	for table, list := range rows {
+		// What the rows are now, read a few hundred at a time.
+		current := make(map[string]string, len(list))
+		for chunk := range slices.Chunk(list, 500) {
+			ids := make([]any, len(chunk))
+			for i, one := range chunk {
+				ids[i] = one.id
+			}
+			key := quote(table.Columns[table.Key])
+			found, err := tx.Query("SELECT "+key+", "+table.row("")+" FROM "+quote(table.Name)+" WHERE "+key+" IN (?"+strings.Repeat(", ?", len(ids)-1)+")", ids...)
+			if err != nil {
 				return nil, 0, false, err
 			}
-			current[one.table] = read
-		}
-		change := Change{Table: one.table}
-		if one.old.Valid {
-			if change.Old, err = values(one.old.String, len(one.table.Columns)); err != nil {
-				return nil, 0, false, fmt.Errorf("the journal of the table %s: %w", one.table.Name, err)
+			for found.Next() {
+				var id any
+				var row string
+				if err := found.Scan(&id, &row); err != nil {
+					found.Close()
+					return nil, 0, false, err
+				}
+				current[string(Key([]any{plain(id)}))] = row
 			}
-		}
-		var kept sql.NullString
-		if err := read.QueryRow(one.id).Scan(&kept); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return nil, 0, false, err
-		}
-		if kept.Valid {
-			if change.New, err = values(kept.String, len(one.table.Columns)); err != nil {
+			if err := found.Close(); err != nil {
 				return nil, 0, false, err
 			}
 		}
-		if change.Old == nil && change.New == nil {
-			continue // added and removed since
-		}
-		same := change.Old != nil && change.New != nil
-		for at := 0; same && at < len(change.Old); at++ {
-			same = change.Old[at] == change.New[at]
-		}
-		if !same {
-			changes = append(changes, change)
+		for _, one := range list {
+			change := Change{Table: table}
+			if one.old.Valid {
+				if change.Old, err = values(one.old.String, len(table.Columns)); err != nil {
+					return nil, 0, false, fmt.Errorf("the journal of the table %s: %w", table.Name, err)
+				}
+			}
+			if row, there := current[one.key]; there {
+				if change.New, err = values(row, len(table.Columns)); err != nil {
+					return nil, 0, false, err
+				}
+			}
+			if change.Old == nil && change.New == nil {
+				continue // added and removed since
+			}
+			same := change.Old != nil && change.New != nil
+			for at := 0; same && at < len(change.Old); at++ {
+				same = change.Old[at] == change.New[at]
+			}
+			if !same {
+				changes = append(changes, change)
+			}
 		}
 	}
 
