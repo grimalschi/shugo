@@ -356,11 +356,7 @@ func (b *builder) bundle(routes []program.Route) (*bundled, error) {
 		LogLevel:      api.LogLevelSilent,
 	})
 	if len(result.Errors) > 0 {
-		var errs Errors
-		for _, message := range result.Errors {
-			errs = append(errs, b.diagnose(message))
-		}
-		return nil, errs
+		return nil, b.diagnoseAll(result.Errors)
 	}
 	out := &bundled{}
 	for _, file := range result.OutputFiles {
@@ -373,7 +369,7 @@ func (b *builder) bundle(routes []program.Route) (*bundled, error) {
 	for _, message := range result.Warnings {
 		// A page without getStaticPaths is what most pages are.
 		if message.ID != "import-is-undefined" {
-			out.warnings = append(out.warnings, b.diagnose(message).Error())
+			out.warnings = append(out.warnings, b.diagnoseAll([]api.Message{message}).Error())
 		}
 	}
 	if err := b.graph(result.Metafile, out); err != nil {
@@ -396,14 +392,24 @@ func (b *builder) relative(path string) string {
 
 var markupInCode = regexp.MustCompile(`<[A-Za-z/][^<>]*>`)
 
-// diagnose turns a message of the bundler into an error in a file of the
-// project. A place in a generated module becomes the place in the template
-// that the code was written from.
+// diagnoseAll turns the messages of the bundler into errors in the files
+// of the project.
+func (b *builder) diagnoseAll(messages []api.Message) error {
+	var errs Errors
+	for _, message := range messages {
+		if message.Location == nil {
+			return errors.New(message.Text)
+		}
+		errs = append(errs, b.diagnose(message))
+	}
+	return errs
+}
+
+// diagnose turns a message of the bundler about a place in a file into an
+// error at that place. A place in a generated module becomes the place in
+// the template that the code was written from.
 func (b *builder) diagnose(message api.Message) *syntax.Error {
 	at := message.Location
-	if at == nil {
-		return &syntax.Error{Path: project.Settings, Line: 1, Column: 1, Message: message.Text}
-	}
 	id, known := b.ids[b.relative(at.File)]
 	if !known {
 		return &syntax.Error{Path: at.File, Line: at.Line, Column: at.Column + 1, Message: message.Text}
