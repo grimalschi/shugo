@@ -58,6 +58,8 @@ const indexSite = `
 <p>{Shugo.query("products").where({ slug: "jug" }).first().title}</p>
 -- pages/all.shugo --
 <p>{Shugo.query("categories").all().length}{Shugo.query("categories").count()}</p>
+-- pages/bykey.shugo --
+<p>{Shugo.query("products").order("id").limit(1).all().length}</p>
 -- pages/other.shugo --
 <p>{Shugo.query("products").where("price", "<", 8).all().length}</p>
 -- pages/joined.shugo --
@@ -110,16 +112,18 @@ func TestIndexesAreMade(t *testing.T) {
 }
 
 // A database that has indexes made by hand keeps them, and Shugo makes none
-// beside one that starts with the columns a question needs.
+// beside one that starts with the columns a question needs. The columns the
+// rows are found by with given values may stand in it whichever way round.
 func TestIndexesMadeByHand(t *testing.T) {
 	s := newSite(t, indexSite)
 	s.sql(readRows + `
 CREATE INDEX by_category ON products (category, position);
 CREATE INDEX by_note ON products (note, position, title);
 CREATE INDEX by_price ON products (price);
+CREATE INDEX by_title ON categories (title, position, id);
 `)
 	s.build()
-	if got, want := s.indexes(), []string{"_shugo_categories_position_title_id", "_shugo_products_title"}; !reflect.DeepEqual(got, want) {
+	if got, want := s.indexes(), []string{"_shugo_products_title"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("indexes: %q\n    want: %q", got, want)
 	}
 	expect(t, s.page("/ordered"), `<p>VaseTrayCupJug</p>`)

@@ -678,8 +678,8 @@ export async function run(modules) {
         declare: (number, spec) => send("S", number + "\x02" + spec),
         // The answer is waited for: the question that needs the index is
         // asked right after it.
-        index(table, columns) {
-          send("I", [table, ...columns].join("\x02"));
+        index(table, equal, order) {
+          send("I", [table, equal.length, ...equal, ...order].join("\x02"));
           const answer = receive();
           if (answer?.kind !== "I") throw new Error("the shugo command did not answer a request for an index: build the project again");
           return answer.text === "1";

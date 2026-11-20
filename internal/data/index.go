@@ -12,25 +12,52 @@ import (
 type index struct {
 	name    string
 	columns []string
+	unique  bool // no two rows hold the same values in its columns
 	ours    bool // Shugo made it
 }
 
-// Index makes sure that the rows of a table can be found by the given
-// columns, in their order, without reading the whole table. It makes an
-// index unless one that is there already starts with these columns: the key
-// of the table, a unique column, an index made by hand, one of Shugo's own.
-// It tells the name of the index it made, or nothing.
+// serves tells whether the rows that hold given values in the columns of
+// equal are found through the index, in the order of the columns of order:
+// the index starts with the columns of equal, whichever way round they
+// stand, and goes on with those of order. An index that lets no two rows
+// hold the same values serves as soon as all of its columns are given: it
+// finds one row, and one row has no order.
+func (i index) serves(equal, order []string) bool {
+	within := func(columns, of []string) bool {
+		for _, column := range columns {
+			if !slices.Contains(of, column) {
+				return false
+			}
+		}
+		return true
+	}
+	if i.unique && within(i.columns, equal) {
+		return true
+	}
+	if len(i.columns) < len(equal)+len(order) {
+		return false
+	}
+	return within(equal, i.columns[:len(equal)]) && slices.Equal(i.columns[len(equal):len(equal)+len(order)], order)
+}
+
+// Index makes sure that the rows of a table that hold given values in the
+// columns of equal can be found, in the order of the columns of order,
+// without reading the whole table. It makes an index unless one that is
+// there already serves: the key of the table, a unique column, an index
+// made by hand, one of Shugo's own. It tells the name of the index it made,
+// or nothing.
 //
 // The project's code asks for the indexes its questions need, so the author
 // of a project does not have to think of them; what it names is checked.
 //
 // An index of Shugo's that the new one starts with is dropped, and named in
 // dropped: the longer one serves whoever the shorter one served.
-func (d *DB) Index(table string, columns []string) (made string, dropped []string, err error) {
+func (d *DB) Index(table string, equal, order []string) (made string, dropped []string, err error) {
 	t, found := d.tables[table]
 	if !found {
 		return "", nil, fmt.Errorf("the project's code asked for an index of the table %s, which the data database does not have", table)
 	}
+	columns := slices.Concat(equal, order)
 	if len(columns) == 0 {
 		return "", nil, fmt.Errorf("the project's code asked for an index of the table %s over no columns", table)
 	}
@@ -46,7 +73,7 @@ func (d *DB) Index(table string, columns []string) (made string, dropped []strin
 		t.listed = true
 	}
 	for _, one := range t.indexes {
-		if len(one.columns) >= len(columns) && slices.Equal(one.columns[:len(columns)], columns) {
+		if one.serves(equal, order) {
 			return "", nil, nil
 		}
 	}
@@ -97,7 +124,7 @@ func (d *DB) make(t *Table, columns []string) (name string, dropped []string, er
 	if err := tx.Commit(); err != nil {
 		return "", nil, err
 	}
-	t.indexes = append(kept, index{name, columns, true})
+	t.indexes = append(kept, index{name: name, columns: columns, ours: true})
 	return name, dropped, nil
 }
 
@@ -105,27 +132,35 @@ func (d *DB) make(t *Table, columns []string) (name string, dropped []string, er
 // their columns as they are: not one over a part of the rows, over an
 // expression, or with another way of comparing text than the queries have.
 func (d *DB) indexes(t *Table) ([]index, error) {
-	rows, err := d.db.Query(`SELECT name FROM pragma_index_list(?) WHERE partial = 0 ORDER BY seq`, t.Name)
+	rows, err := d.db.Query(`SELECT name, "unique", origin = 'pk' FROM pragma_index_list(?) WHERE partial = 0 ORDER BY seq`, t.Name)
 	if err != nil {
 		return nil, err
 	}
-	var names []string
+	var listed []index
+	keyed := false
 	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
+		var one index
+		var key bool
+		if err := rows.Scan(&one.name, &one.unique, &key); err != nil {
 			rows.Close()
 			return nil, err
 		}
-		names = append(names, name)
+		one.ours = strings.HasPrefix(one.name, reserved)
+		listed = append(listed, one)
+		keyed = keyed || key
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
 	var out []index
-	for _, name := range names {
-		one := index{name: name, ours: strings.HasPrefix(name, reserved)}
+	if !keyed {
+		// A key of whole numbers has no index: the rows of the table
+		// themselves lie in its order.
+		out = append(out, index{columns: []string{t.Columns[t.Key]}, unique: true})
+	}
+	for _, one := range listed {
 		plain := true
-		parts, err := d.db.Query(`SELECT coalesce(name, ''), coalesce(coll, '') FROM pragma_index_xinfo(?) WHERE key = 1 ORDER BY seqno`, name)
+		parts, err := d.db.Query(`SELECT coalesce(name, ''), coalesce(coll, '') FROM pragma_index_xinfo(?) WHERE key = 1 ORDER BY seqno`, one.name)
 		if err != nil {
 			return nil, err
 		}

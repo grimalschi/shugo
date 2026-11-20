@@ -123,21 +123,22 @@ class Data {
     return number;
   }
 
-  // serve makes sure that the rows of a table can be found by columns, in
-  // their order, without reading the whole table. The Go side owns the
-  // database: it is asked for the index, and makes one unless an index that
-  // is there starts with these columns.
+  // serve makes sure that the rows of a table with given values in the
+  // columns of equal can be found, in the order of the columns of order,
+  // without reading the whole table. The Go side owns the database: it is
+  // asked for the index, and makes one unless an index that is there starts
+  // with these columns.
   //
   // A new index is seen only by who starts reading after it was made, so
   // reading starts anew then. What was read before belongs to an earlier
   // state of the data; whatever has changed in between is in the journal
   // past the place the update read it at, and the next update computes
   // again whoever read it.
-  serve(table, columns) {
-    const wanted = table.name + "\x00" + columns.join("\x00");
+  serve(table, equal, order) {
+    const wanted = [table.name, equal.join("\x00"), order.join("\x00")].join("\x01");
     if (this.served.has(wanted)) return;
     this.served.add(wanted);
-    if (this.host.index(table.name, columns)) this.again();
+    if (this.host.index(table.name, equal, order)) this.again();
   }
 }
 
@@ -610,13 +611,10 @@ export class Query {
 
     // The index that serves the question: the columns the rows are found by
     // with given values, then the columns of the order. A question that
-    // looks for a value no two rows share has the index of that column; one
-    // that neither narrows nor orders needs none. Other comparisons add
-    // nothing: the rows they leave out are read all the same.
-    if (!by.some((column) => table.unique.has(column))) {
-      const sought = [...new Set([...by, ...(way === "count" ? [] : order.map((one) => one.column))])];
-      if (sought.length > 0) data.serve(table, sought);
-    }
+    // neither narrows nor orders needs none. Other comparisons add nothing:
+    // the rows they leave out are read all the same.
+    const ordered = way === "count" ? [] : [...new Set(order.map((one) => one.column))].filter((column) => !by.includes(column));
+    if (by.length + ordered.length > 0) data.serve(table, by, ordered);
 
     // A plan of a question is what stays the same whatever its values: how
     // to ask it, where its values stand, and how to tell the shapes of its

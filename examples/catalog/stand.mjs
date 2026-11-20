@@ -110,7 +110,11 @@ function digest(folder) {
 rmSync(join(here, "_build"), { recursive: true, force: true });
 const first = run("build");
 console.log(`${size} products: ${first.pages.total} pages, ${first.shared.total} shared blocks, ${first.blocks} blocks, ${first.values.total} distinct values`);
-console.log(`first build ${Math.round(first.time.total)} ms: compile ${Math.round(first.time.compile)}, list ${Math.round(first.time.list)}, compute ${Math.round(first.time.compute)}, save ${Math.round(first.time.save)}\n`);
+console.log(`first build ${Math.round(first.time.total)} ms: compile ${Math.round(first.time.compile)}, list ${Math.round(first.time.list)}, compute ${Math.round(first.time.compute)}, save ${Math.round(first.time.save)}`);
+// The data has no indexes of its own: the first build makes the ones the
+// questions of the pages need, and that time is a part of it.
+const indexes = first.data.indexes ?? [];
+console.log(`indexes made by the first build, ${Math.round(first.time.indexes ?? 0)} ms: ${indexes.join(", ") || "none"}\n`);
 
 const rows = [];
 let failed = 0;

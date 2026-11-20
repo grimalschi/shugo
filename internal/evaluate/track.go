@@ -132,9 +132,9 @@ func (s *shapes) tell(number int, spec string) error {
 // index makes sure that the rows a question of the project's code looks for
 // can be found without reading their whole table, and tells whether an
 // index had to be made for it.
-func (k *keeper) index(table string, columns []string) (bool, error) {
+func (k *keeper) index(table string, equal, order []string) (bool, error) {
 	started := time.Now()
-	name, dropped, err := k.shapes.source.Index(table, columns)
+	name, dropped, err := k.shapes.source.Index(table, equal, order)
 	if err != nil || name == "" {
 		return false, err
 	}
