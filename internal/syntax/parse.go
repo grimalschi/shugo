@@ -5,6 +5,7 @@ package syntax
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -254,14 +255,34 @@ func (p *parser) expression() (*Expr, error) {
 // the error points at the brace and only mentions where the scanner gave up.
 func (p *parser) balanced(open int) (int, error) {
 	end, err := Balanced(p.src, open+1)
-	if scan, ok := err.(*ScanError); ok && scan.Offset != open {
+	if scan, ok := err.(*ScanError); ok {
 		line, column := p.file.Position(scan.Offset)
-		return 0, p.errorf(open, `"{" is never closed (%s at %d:%d)`, scan.Message, line, column)
-	} else if ok {
+		rest, _, _ := strings.Cut(p.src[open:], "\n")
+		switch {
+		case tagAfterOperator.MatchString(rest):
+			return 0, p.errorf(open, "%s", noMarkup)
+		case scan.Offset != open:
+			return 0, p.errorf(open, `"{" is never closed (%s at %d:%d)`, scan.Message, line, column)
+		}
 		return 0, p.errorf(open, "%s", scan.Message)
+	}
+	if code := p.src[open+1 : end]; err == nil && tagAfterOperator.MatchString(code) && tagEnd.MatchString(code) {
+		return 0, p.errorf(open, "%s", noMarkup)
 	}
 	return end, err
 }
+
+// Authors who know JSX write markup inside expressions: {items.map(item =>
+// <li>{item}</li>)}. Here an expression is plain JavaScript, and the message
+// says what to write instead. A tag is told from a comparison by what stands
+// before it, and in code that the scanner could read, by the end of a tag.
+var (
+	tagAfterOperator = regexp.MustCompile(`(=>|&&|\|\||[?:(,]|\breturn)\s*<[A-Za-z]`)
+	tagEnd           = regexp.MustCompile(`</[A-Za-z]|/>`)
+)
+
+const noMarkup = `markup cannot stand inside {…}: an expression is plain JavaScript. ` +
+	`Write a list as <g-for each={items} as="item">…</g-for> and a condition as <g-if cond={…}>…</g-if>`
 
 // blank tells whether code holds nothing but spaces and comments.
 func blank(code string) bool {

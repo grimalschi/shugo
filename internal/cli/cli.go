@@ -33,6 +33,8 @@ const usage = `shugo builds a static site and shows it.
 The folder is the project; without it, the current one. Options:
 
   -json          print the report of build, update and export as JSON
+  -runtime NAME  what runs the JavaScript of the project: bun or node
+                 (default: the "runtime" of shugo.json, else bun if installed)
   -addr ADDRESS  where serve and dev listen (default localhost:4321)
   -out FOLDER    where export writes (default _build/dist in the project)
 `
@@ -52,6 +54,7 @@ func Main(arguments []string, stdout, stderr io.Writer) int {
 	flags.BoolVar(&c.json, "json", false, "")
 	flags.StringVar(&c.addr, "addr", "localhost:4321", "")
 	flags.StringVar(&c.out, "out", "", "")
+	flags.StringVar(&c.runtime, "runtime", "", "")
 	flags.Usage = func() { fmt.Fprint(stderr, usage) }
 	// The folder may stand before or after the options.
 	var rest []string
@@ -82,6 +85,9 @@ func Main(arguments []string, stdout, stderr io.Writer) int {
 	}
 	var err error
 	if c.project, err = project.Open(dir); err == nil {
+		if c.runtime != "" {
+			c.project.Config.Runtime = c.runtime
+		}
 		err = run()
 	}
 	if err != nil {
@@ -96,6 +102,7 @@ type command struct {
 	project        *project.Project
 	json           bool
 	addr, out      string
+	runtime        string
 }
 
 // open opens the store of the project.

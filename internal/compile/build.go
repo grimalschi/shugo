@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -66,7 +67,7 @@ func Build(p *project.Project) (*Result, error) {
 		site.Origin = "http://localhost"
 	}
 	for i, path := range paths {
-		site.Files = append(site.Files, program.File{Path: path, Parts: b.units[i].parts, Shared: bundled.shared[path]})
+		site.Files = append(site.Files, program.File{Path: path, Parts: b.units[i].parts, Slots: b.units[i].outlets, Shared: bundled.shared[path]})
 	}
 
 	output := p.Path(project.Output)
@@ -210,7 +211,7 @@ func (b *builder) routes() ([]program.Route, error) {
 		}
 		shapes[route.Shape(parsed)] = path
 
-		r := program.Route{File: id, Pattern: route.Pattern(parsed), Segments: []program.Segment{}}
+		r := program.Route{File: id, Pattern: route.Pattern(parsed), Segments: []program.Segment{}, Layouts: []int{}}
 		dynamic := false
 		for _, s := range parsed {
 			switch s.Kind {
@@ -239,6 +240,7 @@ func (b *builder) routes() ([]program.Route, error) {
 			}
 			dir += "/" + name
 		}
+		errs = append(errs, b.provided(u, r.Layouts)...)
 		segments[id] = parsed
 		out = append(out, r)
 	}
@@ -247,6 +249,29 @@ func (b *builder) routes() ([]program.Route, error) {
 	}
 	route.Sort(out, func(r program.Route) []route.Segment { return segments[r.File] })
 	return out, nil
+}
+
+// provided checks that every slot a page fills for its layouts is shown by
+// one of them, and the same for every layout and the layouts around it. The
+// nearest layout that has the slot shows it.
+func (b *builder) provided(page *unit, layouts []int) Errors {
+	var errs Errors
+	check := func(u *unit, around []int) {
+		for name, at := range u.provided {
+			shown := false
+			for _, layout := range around {
+				shown = shown || slices.Contains(b.units[layout].outlets, name)
+			}
+			if !shown {
+				errs = append(errs, u.file.Errorf(at, `slot=%q gives markup to a layout, and no layout around this file has <g-slot name=%q />`, name, name))
+			}
+		}
+	}
+	check(page, layouts)
+	for i, layout := range layouts {
+		check(b.units[layout], layouts[:i])
+	}
+	return errs
 }
 
 // bundled is what the bundler made of the modules of all files.

@@ -59,6 +59,7 @@ func TestParse(t *testing.T) {
 		{"a component named like a void element", `<Link href="/">home</Link>`, "", `<Link href="/">"home"</Link>`},
 		{"template is trimmed", "\n\n  <p>a</p>  \n", "", `<p>"a"</p>`},
 		{"typescript in expressions", `{(item as Item)!.price / 2}`, "", `{(item as Item)!.price / 2}`},
+		{"comparisons and generics are not markup", `{a < b && c > d ? x : y}{list.map(<T,>(v: T) => v)}{i<n}`, "", `{a < b && c > d ? x : y}{list.map(<T,>(v: T) => v)}{i<n}`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -88,6 +89,8 @@ func TestParseErrors(t *testing.T) {
 		{"unclosed attribute", `<a href="x>t</a>`, `test.shugo:1:9: the value of attribute href is never closed with "`},
 		{"unfinished tag", `<a href="x"`, `test.shugo:1:1: tag <a is not finished with >`},
 		{"bad shorthand", `<a {a.b}>t</a>`, `test.shugo:1:4: expected {name} or {...attributes} among the attributes of <a>`},
+		{"markup in an expression", "<ul>\n  {items.map(item => <li>{item}</li>)}\n</ul>", `test.shugo:2:3: ` + noMarkup},
+		{"markup after a condition", `<p>{user && <b>{user.name}</b>}</p>`, `test.shugo:1:4: ` + noMarkup},
 		{"position counts characters", "<p>hello</p>\n<b>café</i>", `test.shugo:2:8: </i> does not close <b> opened at 2:1`},
 	}
 	for _, c := range cases {

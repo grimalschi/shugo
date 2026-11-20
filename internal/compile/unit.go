@@ -4,6 +4,7 @@
 package compile
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/grimalschi/shugo/internal/program"
@@ -20,6 +21,10 @@ type unit struct {
 	// parts are the operations of the template and of every fill in it.
 	parts  [][]program.Op
 	styles []string
+	// outlets are the slots the template shows; provided are the slots it
+	// fills for the layouts around it, with the place of each in the file.
+	outlets  []string
+	provided map[string]int
 	// own tells that the file itself cannot be computed once for all pages:
 	// it reads the page it is shown on, or gives markup to the layouts of
 	// that page.
@@ -40,6 +45,9 @@ func compileFile(path, source string, id int, r role) (*unit, error) {
 	}
 	l := &lowerer{file: f, role: r}
 	nodes := l.list(f.Body, true, false)
+	if r == layout && !slices.Contains(l.outlets, defaultSlot) {
+		l.errorf(0, "a layout shows the page inside itself: put <g-slot /> where the page goes")
+	}
 	if len(l.errs) > 0 {
 		return nil, l.errs
 	}
@@ -61,6 +69,7 @@ func compileFile(path, source string, id int, r role) (*unit, error) {
 
 	return &unit{
 		file: f, role: r, script: s, module: m, parts: e.parts, styles: l.styles,
+		outlets: l.outlets, provided: l.provided,
 		own: m.page || e.provides || readsPage(strings.Join(s.lines, "\n")),
 	}, nil
 }

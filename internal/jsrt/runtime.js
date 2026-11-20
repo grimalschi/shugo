@@ -305,11 +305,18 @@ class Run {
     const scope = { page: { params, path, origin: this.site.origin, url: undefined }, slots: null, provided: new Map(), owner: null };
     let top = await this.show(record, this.modules.get(route.file).default, entry.props ?? {}, null, scope);
     for (let i = route.layouts.length - 1; i >= 0; i--) {
-      // A layout shows the page in its default slot, and whatever the page
-      // provides in the slots of those names.
-      const slots = new Map(scope.provided);
-      slots.set("default", [top]);
-      top = await this.show(record, this.modules.get(route.layouts[i]).default, {}, slots, scope);
+      // A layout shows the page in its default slot. What the page, or a
+      // layout inside this one, gave for a slot goes to the nearest layout
+      // that has a slot of that name.
+      const layout = this.modules.get(route.layouts[i]).default;
+      const slots = new Map([["default", [top]]]);
+      for (const name of this.site.files[layout.file].slots ?? []) {
+        if (name !== "default" && scope.provided.has(name)) {
+          slots.set(name, scope.provided.get(name));
+          scope.provided.delete(name);
+        }
+      }
+      top = await this.show(record, layout, {}, slots, scope);
     }
     record.top = top;
     this.counts.pages++;

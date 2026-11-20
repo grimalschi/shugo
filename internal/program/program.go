@@ -35,6 +35,8 @@ type File struct {
 	// called with the same parameters: it reads nothing of the page it is on.
 	// Such a block is computed and kept once for the whole site.
 	Shared bool `json:"shared,omitempty"`
+	// Slots are the names of the slots the template shows with <g-slot>.
+	Slots []string `json:"slots,omitempty"`
 	// Parts are the template itself and then every piece of markup it puts
 	// inside the components it calls.
 	Parts [][]Op `json:"parts"`
@@ -46,7 +48,7 @@ type Route struct {
 	Pattern  string    `json:"pattern"` // "/products/[slug]"
 	Segments []Segment `json:"segments"`
 	// Layouts are the files wrapped around the page, the outermost first.
-	Layouts []int `json:"layouts,omitempty"`
+	Layouts []int `json:"layouts"`
 }
 
 // Segment is one part of an address between slashes: text, a parameter that

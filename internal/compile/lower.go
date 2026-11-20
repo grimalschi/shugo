@@ -3,6 +3,7 @@ package compile
 import (
 	"encoding/json"
 	"html"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -110,6 +111,11 @@ type lowerer struct {
 	role   role
 	errs   Errors
 	styles []string
+	// outlets are the names of the slots the template shows, and provided
+	// the names of the slots it fills for the layouts around it, each with
+	// the place it does so.
+	outlets  []string
+	provided map[string]int
 }
 
 func (l *lowerer) errorf(offset int, format string, arguments ...any) {
@@ -130,6 +136,12 @@ func (l *lowerer) list(nodes []syntax.Node, top, nested bool) []node {
 			out = append(out, output{program.Text, code{n.Code, n.Start}})
 		case *syntax.Element:
 			if name, ok := slotOf(n); ok && top && l.role != component {
+				if _, seen := l.provided[name]; !seen {
+					if l.provided == nil {
+						l.provided = map[string]int{}
+					}
+					l.provided[name] = n.Start
+				}
 				out = append(out, provide{fill{name, l.fillBody(n)}})
 				continue
 			} else if ok && nested {
@@ -356,6 +368,9 @@ func (l *lowerer) outlet(e *syntax.Element) []node {
 	l.only(e, "name")
 	if l.role == page {
 		l.errorf(e.Start, "a page is not called by anything, so it has nothing to show in <g-slot>; it works in components and in +layout files")
+	}
+	if !slices.Contains(l.outlets, name) {
+		l.outlets = append(l.outlets, name)
 	}
 	return []node{outlet{name, l.list(e.Children, false, false)}}
 }
