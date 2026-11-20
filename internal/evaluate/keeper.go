@@ -16,9 +16,9 @@ import (
 
 // keeper takes the records of the units a run computes and writes to the
 // store those that differ from what it has. It also keeps the store's
-// account of who shows which shared block and which values, so that at the
-// end it can drop what nothing shows any more and tell on which pages the
-// HTML differs.
+// account of who shows which shared block and which values, and of who read
+// what from the data, so that at the end it can drop what nothing shows any
+// more and tell on which pages the HTML differs.
 type keeper struct {
 	site   *program.Site
 	update *store.Update
@@ -28,10 +28,13 @@ type keeper struct {
 	// again tells whether a shared block that a record of this run shows is
 	// to be computed in this run too. known says that the store has it.
 	again func(name string, known bool) bool
+	// strict tells that a shared block which fails ends the run at once. It
+	// does where everything is computed: what was asked for is shown.
+	strict bool
 
 	// What the store had before the run, if the whole of it was read at
 	// once: see preload. Otherwise the store is asked one record at a time.
-	pages  map[string]record.Hash
+	pages  map[string]store.Kept
 	shared map[string]store.Kept
 	whole  bool
 	// anew tells that the records of another compiled project were dropped.
@@ -41,6 +44,9 @@ type keeper struct {
 	// What the run has computed.
 	seenPages  map[string]struct{}
 	seenShared map[int64]struct{}
+	// failed are shared blocks whose computation failed. That is an error
+	// only if something still shows them when the run is over.
+	failed map[int64]*ScriptError
 
 	// The shared blocks the run has met, and those of them that are still
 	// to be computed, in the order they were met.
@@ -60,6 +66,11 @@ type keeper struct {
 	// loose are shared blocks that someone stopped showing.
 	loose map[int64]struct{}
 
+	// shapes are the shapes of what the project's code reads from its data
+	// database; nil if it has none.
+	shapes *shapes
+	reads  readings
+
 	shows   edges
 	values  ledger
 	was, is content
@@ -69,6 +80,7 @@ type keeper struct {
 type met struct {
 	id    int64
 	hash  record.Hash
+	reads []byte
 	known bool // the store had its record before the run
 }
 
@@ -80,9 +92,10 @@ func newKeeper(site *program.Site, u *store.Update, report *Report, limit int) (
 	return &keeper{
 		site: site, update: u, report: report, limit: limit, totals: totals,
 		again:     func(string, bool) bool { return false },
-		seenPages: map[string]struct{}{}, seenShared: map[int64]struct{}{},
+		seenPages: map[string]struct{}{}, seenShared: map[int64]struct{}{}, failed: map[int64]*ScriptError{},
 		met: map[string]met{}, named: map[int64]string{}, asked: map[int64]struct{}{}, blank: map[int64]struct{}{},
 		touched: map[string]bool{}, fresh: map[int64]bool{}, uses: map[int64][]int64{}, loose: map[int64]struct{}{},
+		reads:  readings{update: u},
 		shows:  edges{update: u},
 		values: ledger{update: u, more: map[record.Hash]*addition{}, fewer: map[record.Hash]int{}},
 		was:    content{shared: map[int64]struct{}{}, values: map[record.Hash]int{}},
@@ -108,12 +121,12 @@ func (k *keeper) preload() (err error) {
 	return err
 }
 
-func (k *keeper) page(path string) (hash record.Hash, known bool, err error) {
+func (k *keeper) page(path string) (kept store.Kept, known bool, err error) {
 	if k.whole {
-		hash, known = k.pages[path]
-		return hash, known, nil
+		kept, known = k.pages[path]
+		return kept, known, nil
 	}
-	return k.update.PageHash(path)
+	return k.update.PageKept(path)
 }
 
 // meet finds a shared block by its name, giving it a number if the store
@@ -137,7 +150,7 @@ func (k *keeper) meet(name string) (met, error) {
 		kept.ID = id
 		k.blank[id] = struct{}{}
 	}
-	m := met{kept.ID, kept.Hash, known}
+	m := met{kept.ID, kept.Hash, kept.Reads, known}
 	k.met[name], k.named[kept.ID] = m, name
 	return m, nil
 }
@@ -150,9 +163,9 @@ func (k *keeper) take() []string {
 	return names
 }
 
-// count tells how many units the run has computed, and has, whether a unit
-// is among them.
-func (k *keeper) count() int { return len(k.seenPages) + len(k.seenShared) }
+// count tells how many units the run has an answer for, and has, whether a
+// unit is among them.
+func (k *keeper) count() int { return len(k.seenPages) + len(k.seenShared) + len(k.failed) }
 
 func (k *keeper) has(u unit) bool {
 	if !u.shared {
@@ -161,19 +174,36 @@ func (k *keeper) has(u unit) bool {
 	}
 	m, known := k.met[u.name]
 	_, seen := k.seenShared[m.id]
-	return known && seen
+	_, failed := k.failed[m.id]
+	return known && (seen || failed)
+}
+
+// fail takes the failure of a shared block that was asked for. A block the
+// store has a record of may fail: after a change of data a block is computed
+// that perhaps nothing shows any more, and that is known only at the end.
+func (k *keeper) fail(name string, failure *ScriptError) error {
+	m, err := k.meet(name)
+	if err != nil {
+		return err
+	}
+	if _, blank := k.blank[m.id]; blank || k.strict {
+		return failure
+	}
+	k.failed[m.id] = failure
+	return nil
 }
 
 // put takes one record as the project's code sent it: a header and blocks
 // split by \x01, their fields split by \x02. The header is p or s, the
-// address or the name, the route of a page, and the block to start from.
+// address or the name, the route of a page, the block to start from, and
+// what was read from the data to compute the record.
 func (k *keeper) put(data []byte) error {
 	header, rest, _ := bytes.Cut(data, []byte{1})
 	fields := bytes.Split(header, []byte{2})
-	if len(fields) != 4 || len(fields[0]) != 1 {
+	if len(fields) != 5 || len(fields[0]) != 1 {
 		return errorf("a record with a damaged header")
 	}
-	_, err := strconv.Atoi(string(fields[2]))
+	route, err := strconv.Atoi(string(fields[2]))
 	top, err2 := strconv.Atoi(string(fields[3]))
 	if err != nil || err2 != nil {
 		return errorf("a record with a damaged header")
@@ -184,10 +214,15 @@ func (k *keeper) put(data []byte) error {
 	// itself is not asked for again.
 	var self met
 	var user string
+	var kept store.Kept
+	var known bool
 	switch fields[0][0] {
 	case 'p':
 		if !validPath(u.name) {
 			return errorf("a page with the address %q", u.name)
+		}
+		if route < 0 || route >= len(k.site.Routes) {
+			return errorf("%s of route %d, which the site does not have", u, route)
 		}
 		if _, twice := k.seenPages[u.name]; twice {
 			return errorf("%s twice", u)
@@ -195,6 +230,9 @@ func (k *keeper) put(data []byte) error {
 		k.seenPages[u.name] = struct{}{}
 		k.report.Computed.Pages++
 		user = store.PageUser(u.name)
+		if kept, known, err = k.page(u.name); err != nil {
+			return err
+		}
 	case 's':
 		if self, err = k.meet(u.name); err != nil {
 			return err
@@ -205,6 +243,7 @@ func (k *keeper) put(data []byte) error {
 		k.seenShared[self.id] = struct{}{}
 		k.report.Computed.Shared++
 		user = store.SharedUser(self.id)
+		kept, known = store.Kept{ID: self.id, Hash: self.hash, Reads: self.reads}, self.known
 	default:
 		return errorf("a record of an unknown kind %q", fields[0][0])
 	}
@@ -231,35 +270,41 @@ func (k *keeper) put(data []byte) error {
 	k.report.Blocks += len(rec.Blocks)
 	encoded := rec.Encode()
 	hash := record.HashOf(encoded)
-
-	// A record that is what it was needs nothing: what it shows is in the
-	// store already, and it was checked when it got there.
-	var old []byte
 	if u.shared {
 		k.uses[self.id] = shows
-		if self.known && self.hash == hash {
-			return nil
+	}
+
+	// What the record read is kept whether or not the record has changed:
+	// the same page may come of other rows.
+	reads, read, err := k.read(user, kept.Reads, fields[4])
+	if err != nil {
+		return fmt.Errorf("%s: %w", u, err)
+	}
+	// A record that is what it was needs nothing more: what it shows is in
+	// the store already, and it was checked when it got there.
+	if known && kept.Hash == hash {
+		switch {
+		case u.shared && read:
+			return k.update.SetSharedReads(self.id, reads)
+		case !u.shared && (read || kept.Route != route):
+			return k.update.SetPageReads(u.name, route, reads)
 		}
+		return nil
+	}
+
+	var old []byte
+	if u.shared {
 		if top < len(rec.Blocks) && rec.Blocks[top].Use {
 			return fmt.Errorf("%s does not start with a template", u)
 		}
-		if self.known {
+		if known {
 			if old, _, err = k.update.Shared(self.id); err != nil {
 				return err
 			}
 		}
-	} else {
-		kept, known, err := k.page(u.name)
-		if err != nil {
+	} else if known {
+		if old, _, err = k.update.Page(u.name); err != nil {
 			return err
-		}
-		if known && kept == hash {
-			return nil
-		}
-		if known {
-			if old, _, err = k.update.Page(u.name); err != nil {
-				return err
-			}
 		}
 	}
 	if err := k.check(rec, values); err != nil {
@@ -271,12 +316,12 @@ func (k *keeper) put(data []byte) error {
 	if u.shared {
 		delete(k.blank, self.id)
 		k.fresh[self.id] = true
-		k.noted(&k.report.Shared, u.name, self.known)
-		return k.update.PutShared(self.id, hash, encoded)
+		k.noted(&k.report.Shared, u.name, known)
+		return k.update.PutShared(self.id, hash, encoded, reads)
 	}
 	k.touched[u.name] = true
-	k.noted(&k.report.Pages, u.name, old != nil)
-	return k.update.PutPage(u.name, hash, encoded)
+	k.noted(&k.report.Pages, u.name, known)
+	return k.update.PutPage(u.name, hash, encoded, route, reads)
 }
 
 // noted counts one page or shared block that is new or not what it was.
@@ -436,12 +481,19 @@ func (k *keeper) change(user string, old []byte, now *record.Record, values [][]
 
 // remove drops a page the project no longer has.
 func (k *keeper) remove(path string) error {
-	old, found, err := k.update.Page(path)
+	kept, found, err := k.page(path)
 	if err != nil || !found {
+		return err
+	}
+	old, _, err := k.update.Page(path)
+	if err != nil {
 		return err
 	}
 	if err := k.change(store.PageUser(path), old, nil, nil); err != nil {
 		return fmt.Errorf("the page %s: %w", path, err)
+	}
+	if _, _, err := k.read(store.PageUser(path), kept.Reads, nil); err != nil {
+		return err
 	}
 	k.report.Pages.note(&k.report.Pages.Removed, &k.report.Pages.RemovedNames, path, k.limit)
 	return k.update.DeletePage(path)
@@ -450,13 +502,24 @@ func (k *keeper) remove(path string) error {
 // finish settles the accounts of the run: it drops the shared blocks and
 // the values nothing shows any more, and tells what the update came to.
 func (k *keeper) finish() error {
-	for id := range k.blank {
-		return errorf("no record of the shared block %s, which a record shows", k.named[id])
-	}
 	if err := k.loops(); err != nil {
 		return err
 	}
 	if err := k.sweep(); err != nil {
+		return err
+	}
+	// A shared block that failed and is still there is shown by someone.
+	for id, failure := range k.failed {
+		if _, still, err := k.update.Shared(id); err != nil {
+			return err
+		} else if still {
+			return failure
+		}
+	}
+	for id := range k.blank {
+		return errorf("no record of the shared block %s, which a record shows", k.named[id])
+	}
+	if err := k.reads.settle(); err != nil {
 		return err
 	}
 	if err := k.values.settle(); err != nil {
@@ -610,6 +673,13 @@ func (k *keeper) sweep() error {
 			name := k.name(id)
 			if err := k.change(store.SharedUser(id), old, nil, nil); err != nil {
 				return fmt.Errorf("the shared block %s: %w", name, err)
+			}
+			reads, err := k.update.SharedReads(id)
+			if err != nil {
+				return err
+			}
+			if _, _, err := k.read(store.SharedUser(id), reads, nil); err != nil {
+				return err
 			}
 			if err := k.update.DeleteShared(id); err != nil {
 				return err

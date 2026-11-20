@@ -12,6 +12,11 @@
 
 import { readFileSync, readSync, writeSync } from "node:fs";
 
+import { open, Query, Reads } from "shugo:query";
+
+// The data database of the project, once it is open; null if it has none.
+let data = null;
+
 // ---------------------------------------------------------------------------
 // What is computed
 
@@ -25,6 +30,7 @@ class Record {
     this.route = route; // the route of a page, by its place among the routes
     this.blocks = [];
     this.top = 0;
+    this.reads = new Reads(); // what was read from the data database on the way
   }
 
   // A block is one template being shown: a page, a layout, a component, or
@@ -49,6 +55,7 @@ class Record {
 //   page      the page being computed: { params, url }; null inside a shared block
 //   slots     what the caller put into the slots: Map of name → blocks; null for none
 //   provided  what the page gives to its layouts: Map of name → blocks; null inside a shared block
+//   reads     where the queries to the data database leave their readings
 
 // Writer is "$$" in generated code: it writes the values of one block.
 class Writer {
@@ -164,6 +171,26 @@ class Context {
     return this.#page("params").params;
   }
 
+  // query starts a question to a table of the data database. What it reads
+  // is noted for the page or the shared block being computed.
+  query(table) {
+    return query(this.#scope.reads, table);
+  }
+
+  // paginate cuts the rows of a query into pages and returns the page whose
+  // number stands in the address, the way getStaticPaths({ paginate }) gives
+  // it in Astro: { data, total, currentPage, lastPage, url: { prev, next, … } }.
+  paginate(rows, { pageSize = 10 } = {}) {
+    if (!(rows instanceof Query)) throw new TypeError(`Shugo.paginate() takes a query: Shugo.paginate(Shugo.query("posts").order("date", "desc"), { pageSize: 10 })`);
+    const { route, params } = this.#page("paginate");
+    const segment = pageSegment(route);
+    const total = rows.count();
+    const current = params.page === undefined ? 1 : Number(params.page);
+    const start = (current - 1) * pageSize;
+    const found = rows.limit(pageSize).offset(start).all();
+    return paged(route, segment, params, found, start, pageSize, total, current);
+  }
+
   get url() {
     const page = this.#page("url");
     return (page.url ??= new URL(encodeURI(page.path), page.origin));
@@ -175,6 +202,14 @@ class Context {
     }
     return this.#scope.page;
   }
+}
+
+// query starts a question to the data database for one reader.
+function query(reads, table) {
+  if (data === null) {
+    throw new Error('Shugo.query reads the data database of the project, and this project names none. Name it in shugo.json: { "data": "data/site.db" }');
+  }
+  return new Query(data, reads, table);
 }
 
 // ---------------------------------------------------------------------------
@@ -251,23 +286,30 @@ class Run {
     this.batchSize = 0;
   }
 
-  // list finds the pages of the site: every route says which pages it has. A
-  // route that names more of an address comes earlier and takes it.
-  async list() {
-    this.pages.clear();
+  // list finds the pages of routes: of the ones named, or of all. Every
+  // route says which pages it has, and what it read from the data to know.
+  // Among the routes listed together, a route that names more of an address
+  // comes earlier and takes it.
+  async list(wanted) {
+    const routes = wanted.length > 0 ? wanted : this.site.routes.map((_, index) => index);
+    for (const [path, page] of this.pages) if (routes.includes(page.index)) this.pages.delete(path);
     let shadowed = 0;
     let lines = [];
-    for (const [index, route] of this.site.routes.entries()) {
-      const place = `getStaticPaths of ${this.site.files[route.file].path}`;
+    for (const index of routes) {
+      const route = this.site.routes[index];
+      if (route === undefined) throw new Error(`the shugo command asked for the pages of route ${index}, which this project's compiled code does not have: build the project again`);
+      const reads = new Reads();
+      let props = false;
       try {
-        for (const entry of await entries(route, this.modules.get(route.file))) {
+        for (const entry of await entries(route, this.modules.get(route.file), reads)) {
           const path = address(route, entry.params);
           const taken = this.pages.get(path);
           if (taken !== undefined && taken.index === index) throw new Error(`getStaticPaths of ${route.pattern} returned the address ${path} twice`);
-          if (taken !== undefined) {
+          if (taken !== undefined && taken.index < index) {
             shadowed++;
             continue;
           }
+          props ||= entry.props != null && Object.keys(entry.props).length > 0;
           this.pages.set(path, { index, route, entry });
           if (lines.push(index + "\x02" + path) === 4096) {
             this.send("P", lines.join("\x03"));
@@ -275,26 +317,39 @@ class Run {
           }
         }
       } catch (error) {
-        throw placed(error, place);
+        throw placed(error, `getStaticPaths of ${this.site.files[route.file].path}`);
       }
+      this.send("G", index + "\x02" + (props ? 1 : 0) + "\x02" + reads.text());
     }
     if (lines.length > 0) this.send("P", lines.join("\x03"));
     return { shadowed };
   }
 
-  // compute computes the units the Go side named, several at a time: a unit
-  // is "p" or "s", \x02, and the address of a page or the name of a shared block.
+  // compute computes the units the Go side named, several at a time. A unit
+  // is "p", the address of a page and its route, or "s" and the name of a
+  // shared block, split by \x02.
+  //
+  // A page that fails ends the run. A shared block that fails is told to the
+  // Go side and the run goes on: after a change of data a block may be
+  // computed that nothing shows any more, and only the Go side knows.
   async compute(units) {
     let next = 0;
     const worker = async () => {
       while (next < units.length) {
-        const unit = units[next++];
-        const name = unit.slice(2);
+        const [kind, name, route] = units[next++].split("\x02");
+        if (kind === "s") {
+          try {
+            await this.block(name);
+          } catch (error) {
+            this.send("F", name + "\x02" + failure(placed(error, `the shared block ${name}`)));
+          }
+          continue;
+        }
         try {
-          await (unit[0] === "p" ? this.page(name) : this.block(name));
+          await this.page(name, Number(route));
         } catch (error) {
           next = units.length; // the others stop after the unit they are at
-          throw placed(error, unit[0] === "p" ? `the page ${name} (${this.site.files[this.pages.get(name)?.route.file]?.path})` : `the shared block ${name}`);
+          throw placed(error, `the page ${name} (${this.site.files[this.site.routes[Number(route)]?.file]?.path})`);
         }
       }
     };
@@ -310,7 +365,7 @@ class Run {
     if (name !== null) return record.use(name, slots).index;
     const block = record.block(target.file, 0);
     block.slots = slots;
-    const inner = { page: scope.page, slots, provided: scope.provided };
+    const inner = { page: scope.page, slots, provided: scope.provided, reads: scope.reads };
     await target.render(new Writer(this, record, block, inner), new Context(target, props, inner));
     return block.index;
   }
@@ -325,20 +380,23 @@ class Run {
     const block = record.block(target.file, 0);
     // Inside a shared block only the names of the slots matter: what fills
     // them belongs to the place the block is used at.
-    const inner = { page: null, slots, provided: null };
+    const inner = { page: null, slots, provided: null, reads: record.reads };
     await target.render(new Writer(this, record, block, inner), new Context(target, props, inner));
     this.emit(record);
   }
 
-  // page computes one page: the page itself, then every layout around it,
-  // from the innermost.
-  async page(path) {
+  // page computes one page of a route: the page itself, then every layout
+  // around it, from the innermost. A page of a route that was listed in this
+  // run is computed with what the list gave it; of another page only the
+  // address is known, and its parameters are read from it.
+  async page(path, index) {
+    const route = this.site.routes[index];
+    if (route === undefined) throw new Error(`the page ${path} was asked for under route ${index}, which this project's compiled code does not have: build the project again`);
     const listed = this.pages.get(path);
-    if (listed === undefined) throw new Error(`the page ${path} was asked for, and the project does not have it`);
-    const { index, route, entry } = listed;
+    const entry = listed !== undefined && listed.index === index ? listed.entry : { params: parameters(route, path) };
     const record = new Record("p", path, index);
     const params = Object.freeze({ ...entry.params });
-    const scope = { page: { params, path, origin: this.site.origin, url: undefined }, slots: null, provided: new Map() };
+    const scope = { page: { params, path, route, origin: this.site.origin, url: undefined }, slots: null, provided: new Map(), reads: record.reads };
     let top = await this.show(record, this.modules.get(route.file).default, entry.props ?? {}, null, scope);
     for (let i = route.layouts.length - 1; i >= 0; i--) {
       // A layout shows the page in its default slot. What the page, or a
@@ -412,10 +470,11 @@ function unnamed(name) {
 }
 
 // On the wire a record is its header and its blocks, split by \x01; fields
-// are split by \x02, and every value of a block follows a \x00. A block that
-// stands for a shared block carries its name.
+// are split by \x02, and every value of a block follows a \x00. The header
+// ends with what the record read from the data database. A block that stands
+// for a shared block carries its name.
 function encode(record) {
-  const lines = [record.kind + "\x02" + record.key + "\x02" + record.route + "\x02" + record.top];
+  const lines = [record.kind + "\x02" + record.key + "\x02" + record.route + "\x02" + record.top + "\x02" + record.reads.text()];
   for (const block of record.blocks) {
     lines.push(
       block.shared !== null
@@ -467,40 +526,73 @@ function address(route, params) {
   return "/" + parts.join("/");
 }
 
+// parameters reads the parameters of a page from its address: what address()
+// does, backwards. The route is known, so the address fits it.
+function parameters(route, path) {
+  const parts = path === "/" ? [] : path.slice(1).split("/");
+  const params = {};
+  let at = 0;
+  for (const segment of route.segments) {
+    if (segment.text !== undefined) at++;
+    else if (segment.param !== undefined) params[segment.param] = parts[at++];
+    else {
+      const rest = parts.slice(at, parts.length - (route.segments.length - route.segments.indexOf(segment) - 1));
+      params[segment.rest] = rest.length === 0 ? undefined : rest.join("/");
+      at += rest.length;
+    }
+  }
+  return params;
+}
+
+// A list is cut into pages by a [page] or [...page] parameter of the route.
+function pageSegment(route) {
+  const segment = route.segments.find((s) => (s.param ?? s.rest) === "page");
+  if (segment === undefined) throw new Error(`paginate() needs a [page] or [...page] parameter in the name of the page file, and ${route.pattern} has none`);
+  return segment;
+}
+
+// With [...page] the first page has no number in its address.
+const pageNumber = (segment, page) => (segment.rest !== undefined && page === 1 ? undefined : String(page));
+
+// paged describes one page of a list the way Astro does.
+function paged(route, segment, params, rows, start, size, total, current) {
+  const last = Math.max(1, Math.ceil(total / size));
+  const link = (page) => (page < 1 || page > last ? undefined : address(route, { ...params, page: pageNumber(segment, page) }));
+  return {
+    data: rows, start, end: Math.min(start + size, total) - 1, size, total,
+    currentPage: current, lastPage: last,
+    url: { current: link(current), prev: link(current - 1), next: link(current + 1), first: current > 1 ? link(1) : undefined, last: current < last ? link(last) : undefined },
+  };
+}
+
 // paginate is what getStaticPaths({ paginate }) receives: it cuts a list into
-// pages the way Astro does. The route must have a [page] or [...page] parameter.
+// pages the way Astro does. Given the list, every page gets its part of it.
+// Given only how many items there are, the pages get their addresses alone,
+// and each asks for its part itself: Shugo.paginate(query, { pageSize }).
 function paginator(route) {
-  return (data, { pageSize = 10, params = {}, props = {} } = {}) => {
-    const segment = route.segments.find((s) => (s.param ?? s.rest) === "page");
-    if (segment === undefined) throw new Error(`paginate() needs a [page] or [...page] parameter in the name of the page file, and ${route.pattern} has none`);
-    const last = Math.max(1, Math.ceil(data.length / pageSize));
-    // With [...page] the first page has no number in its address.
-    const number = (page) => (segment.rest !== undefined && page === 1 ? undefined : String(page));
-    const link = (page) => (page < 1 || page > last ? undefined : address(route, { ...params, page: number(page) }));
+  return (list, { pageSize = 10, params = {}, props = {} } = {}) => {
+    const segment = pageSegment(route);
+    const total = typeof list === "number" ? list : list.length;
+    const last = Math.max(1, Math.ceil(total / pageSize));
     return Array.from({ length: last }, (_, i) => {
-      const start = i * pageSize;
-      const end = Math.min(start + pageSize, data.length);
-      return {
-        params: { ...params, page: number(i + 1) },
-        props: {
-          ...props,
-          page: {
-            data: data.slice(start, end), start, end: end - 1, size: pageSize, total: data.length,
-            currentPage: i + 1, lastPage: last,
-            url: { current: link(i + 1), prev: link(i), next: link(i + 2), first: i > 0 ? link(1) : undefined, last: i + 1 < last ? link(last) : undefined },
-          },
-        },
-      };
+      const entry = { params: { ...params, page: pageNumber(segment, i + 1) } };
+      if (typeof list !== "number") {
+        const start = i * pageSize;
+        entry.props = { ...props, page: paged(route, segment, params, list.slice(start, start + pageSize), start, pageSize, total, i + 1) };
+      } else if (Object.keys(props).length > 0) {
+        entry.props = { ...props };
+      }
+      return entry;
     });
   };
 }
 
 // entries returns the pages of a route: one for a page without parameters,
 // and what getStaticPaths says for the others.
-async function entries(route, module) {
-  if (!route.segments.some((segment) => segment.text === undefined)) return [{ params: {}, props: {} }];
+async function entries(route, module, reads) {
+  if (!route.segments.some((segment) => segment.text === undefined)) return [{ params: {} }];
   if (typeof module.getStaticPaths !== "function") throw new Error(`${route.pattern} has parameters, so its script must export getStaticPaths`);
-  const list = await module.getStaticPaths({ paginate: paginator(route) });
+  const list = await module.getStaticPaths({ paginate: paginator(route), query: (table) => query(reads, table) });
   if (!Array.isArray(list)) throw new Error(`getStaticPaths of ${route.pattern} must return a list of { params, props }, got ${describe(list)}`);
   for (const entry of list) {
     if (entry === null || typeof entry !== "object" || entry.params === null || typeof entry.params !== "object") {
@@ -522,6 +614,11 @@ function placed(error, place) {
   const failure = error instanceof Error ? error : new Error(String(error));
   failure.place ??= place;
   return failure;
+}
+
+// failure writes an error for the Go side.
+function failure(error) {
+  return JSON.stringify({ message: String(error?.message ?? error), stack: String(error?.stack ?? ""), place: error?.place ?? "" });
 }
 
 // run answers the requests of the Go side until it has no more. modules are
@@ -562,11 +659,12 @@ export async function run(modules) {
 
   try {
     const site = JSON.parse(readFileSync(new URL("./site.json", import.meta.url), "utf8"));
+    if (process.env.SHUGO_DATA) data = await open(process.env.SHUGO_DATA, (number, spec) => send("S", number + "\x02" + spec));
     const run = new Run(site, new Map(modules), send);
     for (let request = receive(); request !== null && request.kind !== "Q"; request = receive()) {
       switch (request.kind) {
         case "L":
-          send("D", JSON.stringify(await run.list()));
+          send("D", JSON.stringify(await run.list(request.text === "" ? [] : request.text.split(",").map(Number))));
           break;
         case "C":
           await run.compute(request.text.split("\x03"));
@@ -577,7 +675,7 @@ export async function run(modules) {
       }
     }
   } catch (error) {
-    send("E", JSON.stringify({ message: String(error?.message ?? error), stack: String(error?.stack ?? ""), place: error?.place ?? "" }));
+    send("E", failure(error));
     process.exit(1);
   }
 }

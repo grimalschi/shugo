@@ -16,10 +16,17 @@ import (
 
 // A site of two templates: a page with text and a component, and a leaf
 // with text.
-var site = &program.Site{Files: []program.File{
-	{Path: "page.shugo", Parts: [][]program.Op{{{Kind: program.Text}, {Kind: program.Call}}}},
-	{Path: "leaf.shugo", Parts: [][]program.Op{{{Kind: program.Text}}}},
-}}
+var site = &program.Site{
+	Files: []program.File{
+		{Path: "page.shugo", Parts: [][]program.Op{{{Kind: program.Text}, {Kind: program.Call}}}},
+		{Path: "leaf.shugo", Parts: [][]program.Op{{{Kind: program.Text}}}},
+	},
+	Routes: []program.Route{
+		{File: 0, Pattern: "/special", Segments: []program.Segment{{Text: "special"}}},
+		{File: 0, Pattern: "/[slug]", Segments: []program.Segment{{Param: "slug"}}},
+		{File: 0, Pattern: "/[...rest]", Segments: []program.Segment{{Rest: "rest"}}},
+	},
+}
 
 // frame writes one message the way the JavaScript side does.
 func frame(kind byte, body string) []byte {
@@ -29,14 +36,14 @@ func frame(kind byte, body string) []byte {
 
 // What the JavaScript side sends for a page with a leaf inside it.
 func pageRecord(path, text string) string {
-	return "p\x02" + path + "\x020\x020" +
+	return "p\x02" + path + "\x021\x020\x02" +
 		"\x01b\x020\x020\x021\x02\x02\x00" + text +
 		"\x01b\x021\x020\x02\x02\x02\x00leaf"
 }
 
 // The same page showing a shared block in place of its own leaf.
 func pageWith(path, text, shared string) string {
-	return "p\x02" + path + "\x020\x020" +
+	return "p\x02" + path + "\x021\x020\x02" +
 		"\x01b\x020\x020\x021\x02\x02\x00" + text +
 		"\x01u\x02" + shared + "\x02"
 }
@@ -44,11 +51,11 @@ func pageWith(path, text, shared string) string {
 // A shared block: a leaf, or a page of the first template that shows
 // another shared block.
 func leafRecord(name, text string) string {
-	return "s\x02" + name + "\x020\x020\x01b\x021\x020\x02\x02\x02\x00" + text
+	return "s\x02" + name + "\x020\x020\x02\x01b\x021\x020\x02\x02\x02\x00" + text
 }
 
 func wrapRecord(name, text, shared string) string {
-	return "s\x02" + name + "\x020\x020\x01b\x020\x020\x021\x02\x02\x00" + text + "\x01u\x02" + shared + "\x02"
+	return "s\x02" + name + "\x020\x020\x02\x01b\x020\x020\x021\x02\x02\x00" + text + "\x01u\x02" + shared + "\x02"
 }
 
 // A lab is a store with updates run against it by hand.
@@ -138,13 +145,22 @@ func talk(stream []byte) *wire {
 }
 
 func TestList(t *testing.T) {
-	stream := append(frame('P', "0\x02/\x031\x02/about"), frame('D', `{"shadowed":2}`)...)
-	report := &Report{}
-	pages, err := talk(stream).list(report)
+	stream := append(frame('P', "0\x02/special\x031\x02/about"), frame('G', "1\x021\x02")...)
+	stream = append(stream, frame('D', `{"shadowed":2}`)...)
+	var pages []listed
+	report, err := newLab(t).update(func(k *keeper) (err error) {
+		if pages, err = talk(stream).list(nil, k); err != nil {
+			return err
+		}
+		if props, _, found, err := k.update.Route(1); err != nil || !found || !props {
+			t.Errorf("what was said of the route is not kept: %v %v %v", props, found, err)
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []listed{{0, "/"}, {1, "/about"}}; !reflect.DeepEqual(pages, want) || report.Shadowed != 2 {
+	if want := []listed{{0, "/special"}, {1, "/about"}}; !reflect.DeepEqual(pages, want) || report.Shadowed != 2 {
 		t.Errorf("pages %v, shadowed %d", pages, report.Shadowed)
 	}
 }
@@ -169,32 +185,34 @@ func TestComputeRejects(t *testing.T) {
 	good := pageRecord("/", "home")
 	done := string(frame('D', "{}"))
 	cases := map[string][]byte{
-		"a cut header":              frame('R', good)[:3],
-		"a cut message":             frame('R', good)[:20],
-		"an empty message":          {0, 0, 0, 0},
-		"an unknown kind":           frame('X', good),
-		"an unknown record":         frame('R', strings.Replace(good, "p\x02", "q\x02", 1)),
-		"a header without fields":   frame('R', "p\x02/"),
-		"a top that is not there":   frame('R', strings.Replace(good, "\x020\x020\x01", "\x020\x029\x01", 1)),
-		"an address without /":      frame('R', pageRecord("about", "x")),
-		"an address with ..":        frame('R', pageRecord("/a/../b", "x")),
-		"a page twice":              frame('R', good+"\x03"+good),
-		"an unknown template":       frame('R', strings.Replace(good, "b\x021\x020", "b\x027\x020", 1)),
-		"an unknown part":           frame('R', strings.Replace(good, "b\x021\x020", "b\x021\x025", 1)),
-		"a child that is not":       frame('R', strings.Replace(good, "\x021\x02\x02\x00home", "\x024\x02\x02\x00home", 1)),
-		"a child twice":             frame('R', strings.Replace(good, "\x021\x02\x02\x00home", "\x021,1\x02\x02\x00home", 1)),
-		"a block shown nowhere":     frame('R', good+"\x01b\x021\x020\x02\x02\x02\x00orphan"),
-		"values that do not fit":    frame('R', strings.Replace(good, "\x00home", "\x00home\x00more", 1)),
-		"no values":                 frame('R', strings.Replace(good, "\x00home", "", 1)),
-		"a negative child":          frame('R', strings.Replace(good, "\x021\x02\x02\x00home", "\x02-1\x02\x02\x00home", 1)),
-		"damaged slots":             frame('R', strings.Replace(good, "\x021\x02\x02\x00home", "\x021\x02=\x02\x00home", 1)),
-		"a shared block of a use":   frame('R', "s\x02name\x020\x020\x01u\x02other\x02"),
-		"a damaged error":           frame('E', "{"),
-		"a message of a gigabyte+":  {0xff, 0xff, 0xff, 0x7f, 'R'},
-		"another page than asked":   append(frame('R', pageRecord("/other", "x")), done...),
-		"nothing of what was asked": []byte(done),
-		"more than was asked":       append(frame('R', good+"\x03"+pageRecord("/more", "x")), done...),
-		"an answer that stops":      frame('R', good),
+		"a cut header":                     frame('R', good)[:3],
+		"a cut message":                    frame('R', good)[:20],
+		"an empty message":                 {0, 0, 0, 0},
+		"an unknown kind":                  frame('X', good),
+		"an unknown record":                frame('R', strings.Replace(good, "p\x02", "q\x02", 1)),
+		"a header without fields":          frame('R', "p\x02/"),
+		"a top that is not there":          frame('R', strings.Replace(good, "\x021\x020\x02\x01", "\x021\x029\x02\x01", 1)),
+		"a route that is not there":        frame('R', strings.Replace(good, "\x021\x020\x02\x01", "\x027\x020\x02\x01", 1)),
+		"readings without a data database": frame('R', strings.Replace(good, "\x021\x020\x02\x01", "\x021\x020\x02[[0]]\x01", 1)),
+		"an address without /":             frame('R', pageRecord("about", "x")),
+		"an address with ..":               frame('R', pageRecord("/a/../b", "x")),
+		"a page twice":                     frame('R', good+"\x03"+good),
+		"an unknown template":              frame('R', strings.Replace(good, "b\x021\x020", "b\x027\x020", 1)),
+		"an unknown part":                  frame('R', strings.Replace(good, "b\x021\x020", "b\x021\x025", 1)),
+		"a child that is not":              frame('R', strings.Replace(good, "\x021\x02\x02\x00home", "\x024\x02\x02\x00home", 1)),
+		"a child twice":                    frame('R', strings.Replace(good, "\x021\x02\x02\x00home", "\x021,1\x02\x02\x00home", 1)),
+		"a block shown nowhere":            frame('R', good+"\x01b\x021\x020\x02\x02\x02\x00orphan"),
+		"values that do not fit":           frame('R', strings.Replace(good, "\x00home", "\x00home\x00more", 1)),
+		"no values":                        frame('R', strings.Replace(good, "\x00home", "", 1)),
+		"a negative child":                 frame('R', strings.Replace(good, "\x021\x02\x02\x00home", "\x02-1\x02\x02\x00home", 1)),
+		"damaged slots":                    frame('R', strings.Replace(good, "\x021\x02\x02\x00home", "\x021\x02=\x02\x00home", 1)),
+		"a shared block of a use":          frame('R', "s\x02name\x020\x020\x02\x01u\x02other\x02"),
+		"a damaged error":                  frame('E', "{"),
+		"a message of a gigabyte+":         {0xff, 0xff, 0xff, 0x7f, 'R'},
+		"another page than asked":          append(frame('R', pageRecord("/other", "x")), done...),
+		"nothing of what was asked":        []byte(done),
+		"more than was asked":              append(frame('R', good+"\x03"+pageRecord("/more", "x")), done...),
+		"an answer that stops":             frame('R', good),
 	}
 	for name, stream := range cases {
 		l := newLab(t)
@@ -214,15 +232,25 @@ func TestListRejects(t *testing.T) {
 		"a page without route": append(frame('P', "/"), frame('D', "{}")...),
 		"a bad address":        append(frame('P', "0\x02about"), frame('D', "{}")...),
 		"a damaged summary":    append(frame('P', "0\x02/"), frame('D', "{")...),
+		"an unknown route":     append(frame('P', "9\x02/"), frame('D', "{}")...),
+		"a note of no route":   append(frame('G', "9\x020\x02"), frame('D', "{}")...),
+		"a damaged note":       append(frame('G', "1"), frame('D', "{}")...),
 	} {
-		if _, err := talk(stream).list(&Report{}); err == nil {
+		_, err := newLab(t).update(func(k *keeper) error {
+			_, err := talk(stream).list(nil, k)
+			return err
+		})
+		if err == nil {
 			t.Errorf("%s: no error", name)
 		}
 	}
 }
 
 func TestScriptErrorIsReturned(t *testing.T) {
-	_, err := talk(frame('E', `{"message":"boom","stack":"Error: boom\n at x","place":"the page /"}`)).list(&Report{})
+	_, err := newLab(t).update(func(k *keeper) error {
+		_, err := talk(frame('E', `{"message":"boom","stack":"Error: boom\n at x","place":"the page /"}`)).list(nil, k)
+		return err
+	})
 	script, ok := err.(*ScriptError)
 	if !ok || script.Message != "boom" || !strings.Contains(script.Error(), "while computing the page /") {
 		t.Errorf("%v", err)

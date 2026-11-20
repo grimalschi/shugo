@@ -118,7 +118,7 @@ func (s *site) tryBuild() (*evaluate.Report, error) {
 		return nil, err
 	}
 	defer s.pages.Refresh()
-	return evaluate.Run(p, compiled, s.store, evaluate.Options{Log: &s.printed})
+	return evaluate.Run(p, compiled, s.store, evaluate.Options{Log: &s.printed, Whole: true})
 }
 
 func (s *site) build() *evaluate.Report {

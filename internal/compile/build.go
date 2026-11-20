@@ -385,8 +385,11 @@ func (b *builder) bundle(routes []program.Route) (*bundled, error) {
 		})
 		build.OnLoad(api.OnLoadOptions{Filter: `.*`, Namespace: "shugo"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
 			contents := jsrt.Source
-			if args.Path == "shugo:entry" {
+			switch args.Path {
+			case "shugo:entry":
 				contents = entry.String()
+			case "shugo:query":
+				contents = jsrt.Query
 			}
 			return api.OnLoadResult{Contents: &contents, Loader: api.LoaderJS, ResolveDir: root}, nil
 		})
@@ -414,6 +417,7 @@ func (b *builder) bundle(routes []program.Route) (*bundled, error) {
 		Target:        api.ESNext,
 		Charset:       api.CharsetUTF8,
 		Packages:      api.PackagesExternal,
+		External:      []string{"bun:sqlite"}, // built into Bun; Node has node:sqlite
 		Alias:         map[string]string{"@": root},
 		Plugins:       []api.Plugin{plugin},
 		AbsWorkingDir: root,
