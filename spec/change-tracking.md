@@ -14,6 +14,8 @@ The words of the author of the project, 20 November 2026 year.
 - The template can see data code variables not in pure form, but through serialization. The author named Seroval for this; what exactly to copy is discussed below.
 - How data gets into pages and components can be changed for the sake of a simple and quick comparison. The main thing is the effectiveness of updates.
 - In the second variant, changes are recognized from the log that triggers on tables, and not from the mandatory field `updated_at`: the log sees inserts and deletions, and it cannot be forgotten to update. Confirmed by 20 on November 2026 year.
+- A copy of the data in SQLite is part of the architecture: [Data adapter and data copy](data-adapter.md).
+- The first option, fingerprints without a database, is no longer considered: options with a database work much faster and better.
 
 ## Trial implementations
 
@@ -377,7 +379,7 @@ Order of works:
 
 ## Open questions
 
-- Choose the option: second, fourth or second with lines that remember what you read, but without a tree. The first as an independent path disappears if a copy of the data in the database is part of the architecture.
+- Choose the option: second, fourth or second with lines that remember what you read, but without a tree (it is collected as a fifth sample).
 - For the 1 variant: approve the mechanism and three rules for site authors.
 - For the 2 variant: what the query designer should be able to do. How external sources get into the database is in [Data Adapter](data-adapter.md).
 - Approve a copy of your part instead of Seroval.

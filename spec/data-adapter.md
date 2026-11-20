@@ -7,7 +7,7 @@ The document describes how data from any source gets into the project and how fr
 The words of the author of the project, 20 November 2026 year.
 
 - The framework stores a copy of the project data in SQLite. This is part of the overall architecture: a new copy is compared with the copy, and on its basis, links between data and pages are built.
-- The capabilities of SQLite are fully used.
+- The capabilities of SQLite are fully used. This is said about the internal work of Shugo: comparison, communication, journal. Page requests to a copy may be limited; this is discussed separately.
 - The adapter connects the project to any data source and gives the data in one form: lists of records with a key. What field serves as a key and what stores the date of change is specified in the adapter settings.
 - Adapter is a class that is inherited: the author of the project uses an heir.
 - **Primary mode.** The adapter loads the new data set as a whole. What has changed, created and deleted is the matching of the new set with the copy.
@@ -15,6 +15,7 @@ The words of the author of the project, 20 November 2026 year.
 - The nested data, for example, options within the product, is decomposed by the author of the project: a separate collection or one field. A separate collection looks more correct, but this is the solution of the project, and framework does not impose it.
 - Changes to the copy are recognized from the log that triggers its tables, rather than the mandatory `updated_at` field.
 - The adapter is most likely running from the command line.
+- The copy tables describe Shugo. The adapter tells you what data will come: a set of fields and their types - a scheme on TypeScript, probably on Valibot or Zod. The adapter works with TS data types; it writes Shugo into a copy and decides which types of SQLite to take based on what the adapter has sent.
 
 ## Proposal, pending approval
 
@@ -62,7 +63,7 @@ So webhooks and source change feeds are connected. Full download remains a way t
 
 | What | I will. | Why |
 | --- | --- | --- |
-| Collections: name, key field, fields | yeah. | copy - these tables: filtered and sorted by fields |
+| Collections: name, key field and recording scheme | yeah. | according to the scheme Shugo creates a copy table and checks what has come |
 | Download: give all records of the collection | yeah. | main Mode |
 | Field with date of change | none | adapter can request from the source only changed and transmit it pointwise |
 | How to Dispose of Attached | none | project Solution |
@@ -75,8 +76,8 @@ import { Adapter } from "shugo/data"
 
 export default class Shop extends Adapter {
   collections = {
-    products: { key: "id", updated: "updated_at" },
-    variants: { key: "sku" },          // the item is in your collection
+    products: { key: "id", updated: "updated_at", schema: Product },
+    variants: { key: "sku", schema: Variant },   // the item is in your collection
   }
 
   // Main mode: everything that is in the source.
@@ -87,6 +88,39 @@ export default class Shop extends Adapter {
 ```
 
 Point changes base class takes itself; the author has nothing to write for them.
+
+### Recording scheme and copy types
+
+The author writes the recording scheme on the schema library, types TypeScript are derived from it:
+
+```ts
+const Product = z.object({
+  id: z.string(),
+  title: z.string(),
+  price: z.number().int(),
+  available: z.boolean(),
+  discount: z.object({ percent: z.number().int(), until: z.string() }).nullable(),
+  badges: z.array(z.string()),
+})
+```
+
+Shugo needs two things from the schematic: check the entry that has come and find out the fields with their view to create a table. Tested on the Zod 4.6 and Valibot 1.5: both can do both. The recording is checked through a common interface for them Standard Schema. The fields and their appearance are both given the same, in the form of JSON Schema: `string`, `integer`, `number`, `boolean`, the nested object, the list of which fields are required.
+
+How Shugo chooses column type:
+
+| In the scheme | In a copy | What the data code sees |
+| --- | --- | --- |
+| string, enumeration | `TEXT` | line |
+| whole number | `INTEGER` | number |
+| number | `REAL` | number |
+| yes or no | `INTEGER`, 0 or 1 | `true` or `false` |
+| optional or `null` | column allows empty value | `null` |
+| attached object or list | `TEXT` with JSON | object or list; read in full |
+| date | not decided | not decided |
+
+Date is the only thing that the schema libraries in JSON Schema do not translate: both refuse. Its appearance in the copy should be selected separately.
+
+Changed the scheme — changed the tables copy. The journal after that can not say what has changed in the data, and the site is calculated as a whole; so already works option with the database.
 
 ### Commands
 
@@ -101,8 +135,10 @@ shugo update                         find pages that have read the changed
 
 ## Open questions
 
-- Who describes the copy tables: The adapter lists the fields and their view, or tables are derived from the first data downloaded.
-- What does it mean to “fully use SQLite” for page requests: only the `Shugo.query` constructor or your SQL. You can track your SQL more crudely by the tables and columns that it reads.
+- What is the schema library: Valibot, Zod or any that gives JSON Schema and supports Standard Schema.
+- How to store dates.
+- What indexes to build in a copy and who decides: Shugo at the request of the project or the author of the adapter.
+- What are the limitations of page requests to a copy; your SQL can only be tracked roughly, by tables and columns.
 - After the `shugo data …` commands, the site is updated by itself or by a separate `shugo update` command.
 - Multiple adapters in one project and connections between their collections.
 - Ready adapters: JSON and Markdown files, databases with SQL, common CMS.
