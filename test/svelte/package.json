@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "description": "Svelte, the reference the HTML of Shugo is compared with: bun install && bun render.mjs",
+  "devDependencies": {
+    "svelte": "5.59.1"
+  }
+}
