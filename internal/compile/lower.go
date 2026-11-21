@@ -520,8 +520,12 @@ func (l *lowerer) element(e *syntax.Element, ctx context) []node {
 	case "svelte:element":
 		return l.dynamicElement(e, ctx)
 	case "svelte:self":
+		// Svelte 5 still shows them, and warns; so does Shugo.
+		name := strings.TrimSuffix(l.file.Path[strings.LastIndex(l.file.Path, "/")+1:], ".shugo")
+		l.warnf(e.Start, "<svelte:self> is deprecated in Svelte 5: a component imports itself, import %s from \"./%s.shugo\"", name, name)
 		return []node{l.call(e, ctx, code{"$$self", e.Start}, true, false)}
 	case "svelte:component":
+		l.warnf(e.Start, "<svelte:component> is deprecated in Svelte 5: a component in a variable is shown by its tag, {@const Shown = cond ? A : B}<Shown />")
 		this, ok := l.this(e)
 		if !ok {
 			return nil

@@ -3,6 +3,8 @@ package test
 import (
 	"strings"
 	"testing"
+
+	"github.com/grimalschi/shugo/internal/compile"
 )
 
 const layouts = `
@@ -181,4 +183,35 @@ func TestMistakesPointAtTheTemplate(t *testing.T) {
 			}
 		})
 	}
+}
+
+// What Svelte 5 warns about, Shugo warns about too, and builds the page.
+func TestWarnings(t *testing.T) {
+	s := newSite(t, `
+-- src/components/Countdown.shugo --
+<script>let { n } = $props()</script>
+<b>{n}</b>{#if n > 0}<svelte:self n={n - 1} />{/if}
+-- src/pages/index.shugo --
+<script>
+import Countdown from "../components/Countdown.shugo"
+const Shown = Countdown
+</script>
+<svelte:component this={Shown} n={1} />
+<p>{#if true}<div>block</div>{/if}</p>`)
+	compiled, err := compile.Build(s.project())
+	if err != nil {
+		t.Fatal(err)
+	}
+	warnings := strings.Join(compiled.Warnings, "\n")
+	for _, want := range []string{
+		`src/components/Countdown.shugo:2:22: <svelte:self> is deprecated in Svelte 5: a component imports itself, import Countdown from "./Countdown.shugo"`,
+		"src/pages/index.shugo:5:1: <svelte:component> is deprecated in Svelte 5",
+		"src/pages/index.shugo:6:14: <div> cannot be a child of <p>",
+	} {
+		if !strings.Contains(warnings, want) {
+			t.Errorf("no warning %q in\n%s", want, warnings)
+		}
+	}
+	s.build()
+	expect(t, s.page("/"), "<b>1</b><b>0</b> <p><div>block</div></p>")
 }
