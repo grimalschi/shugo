@@ -1,0 +1,43 @@
+{
+ "id": "22-calendar-month",
+ "title": "A month calendar: weeks from Monday, empty cells, weekends, today and event badges",
+ "entry": "Calendar",
+ "datasets": [
+  {
+   "year": 2026,
+   "month": 11,
+   "today": 21,
+   "events": {
+    "3": 2,
+    "10": 0,
+    "21": 1,
+    "28": 4
+   }
+  },
+  {
+   "year": 2027,
+   "month": 2,
+   "events": {}
+  },
+  {
+   "year": 2024,
+   "month": 2,
+   "today": 29,
+   "events": {
+    "1": 1,
+    "4": 12,
+    "29": 3
+   }
+  },
+  {
+   "year": 2026,
+   "month": 5,
+   "today": 1,
+   "events": {
+    "9": 0,
+    "16": 5,
+    "31": 2
+   }
+  }
+ ]
+}

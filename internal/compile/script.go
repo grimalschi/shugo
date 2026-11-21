@@ -9,17 +9,22 @@ import (
 	"github.com/grimalschi/shugo/internal/syntax"
 )
 
-// script is the code between the "---" lines after esbuild has taken the
-// types out of it. The template is written inside a function that runs once
-// for every place the file is shown at, and the script goes into that
-// function with it. Imports and exports cannot be inside a function, so they
-// are told apart from the rest and stay at the top of the module.
+// script is the code of a <script> after esbuild has taken the types out of
+// it. The template is written inside a function that runs once for every
+// place the file is shown at, and the script goes into that function with
+// it. Imports and exports cannot be inside a function, so they are told apart
+// from the rest and stay at the top of the module. All of <script module>
+// stays there.
 type script struct {
 	lines []string       // the JavaScript, by line
 	smap  *sourcemap.Map // where every line came from in the .shugo file
 	top   []span         // imports and exports, as ranges of lines
 	// paths tells that the script exports getStaticPaths.
 	paths bool
+	// at is the <script> in the file, and module tells that it is
+	// <script module>.
+	at     *syntax.Script
+	module bool
 }
 
 // span is lines[from:to].
@@ -34,11 +39,11 @@ const keepImports = `{"compilerOptions":{"verbatimModuleSyntax":true}}`
 // function the script is put into.
 const moduleMark = "export {};"
 
-func compileScript(f *syntax.File) (*script, error) {
-	source := f.Source[f.Script.Start:f.Script.End]
+func compileScript(f *syntax.File, at *syntax.Script, module bool) (*script, error) {
+	source := f.Source[at.Code.Start:at.Code.End]
 	// The script keeps its place in the file, so that esbuild reports lines
 	// and columns of the .shugo file.
-	padding := strings.Repeat("\n", strings.Count(f.Source[:f.Script.Start], "\n"))
+	padding := strings.Repeat("\n", strings.Count(f.Source[:at.Code.Start], "\n"))
 	result := api.Transform(padding+source+"\n"+moduleMark, api.TransformOptions{
 		Loader:      api.LoaderTS,
 		Target:      api.ESNext,
@@ -50,7 +55,7 @@ func compileScript(f *syntax.File) (*script, error) {
 	if len(result.Errors) > 0 {
 		var errs Errors
 		for _, message := range result.Errors {
-			errs = append(errs, scriptError(f, message))
+			errs = append(errs, scriptError(f, at, message))
 		}
 		return nil, errs
 	}
@@ -58,25 +63,28 @@ func compileScript(f *syntax.File) (*script, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &script{smap: smap}
+	s := &script{smap: smap, at: at, module: module}
 	code := strings.TrimSuffix(strings.TrimSpace(string(result.Code)), moduleMark)
 	if err := s.split(f, strings.TrimSpace(code)); err != nil {
 		return nil, err
+	}
+	if module && len(s.lines) > 0 {
+		s.top = []span{{0, len(s.lines)}}
 	}
 	return s, nil
 }
 
 // scriptError turns a message of esbuild about the script into an error that
 // points into the .shugo file.
-func scriptError(f *syntax.File, message api.Message) *syntax.Error {
+func scriptError(f *syntax.File, at *syntax.Script, message api.Message) *syntax.Error {
 	if message.Location == nil {
-		return f.Errorf(f.Script.Start, "%s", message.Text)
+		return f.Errorf(at.Code.Start, "%s", message.Text)
 	}
 	offset := offsetOf(f.Source, message.Location.Line-1, message.Location.Column)
-	if offset >= f.Script.End {
+	if offset >= at.Code.End {
 		// esbuild ran into the mark added after the script: the last
 		// statement of the script is not finished.
-		end := f.Script.Start + len(strings.TrimRight(f.Source[f.Script.Start:f.Script.End], " \t\r\n"))
+		end := at.Code.Start + len(strings.TrimRight(f.Source[at.Code.Start:at.Code.End], " \t\r\n"))
 		return f.Errorf(end, "the script ends in the middle of a statement: a bracket or a quote is not closed")
 	}
 	return f.Errorf(offset, "%s", message.Text)
@@ -121,13 +129,35 @@ func (s *script) split(f *syntax.File, code string) error {
 		if (token.Start > 0 && code[token.Start-1] != '\n') || (end < len(code) && code[end] != '\n') {
 			return internalError(f, "an %s shares a line with other code in the transformed script", text)
 		}
-		if text == "export" && strings.HasPrefix(code[token.End:], " default") {
-			return f.Errorf(f.Script.Start, `the script cannot have "export default": the file itself is what it exports`)
+		if text == "export" {
+			if err := s.exported(f, code[token.End:], from); err != nil {
+				return err
+			}
 		}
 		s.top = append(s.top, span{from, to})
 		*scan = *syntax.NewScanner(code, end)
 		after = ""
 	}
+}
+
+// exported checks an export that stands on the given line. The file itself
+// is what a .shugo module exports, and only <script module> runs once for
+// the module: the other <script> runs every time the component is shown,
+// and what it declares belongs to that showing.
+func (s *script) exported(f *syntax.File, rest string, line int) error {
+	at := s.at.Start
+	if _, l, column, found := s.smap.Find(line, 0); found {
+		at = offsetAt(f.Source, l, column)
+	}
+	switch {
+	case strings.HasPrefix(rest, " default"):
+		return f.Errorf(at, `the script cannot have "export default": the file itself is what it exports`)
+	case s.module:
+		return nil
+	case strings.HasPrefix(rest, " let ") || strings.HasPrefix(rest, " var "):
+		return f.Errorf(at, `"export let" declares a prop in Svelte 4: a component of Svelte 5 takes its props with let { name } = $props()`)
+	}
+	return f.Errorf(at, `an export goes into <script module>, which runs once; this <script> runs every time the component is shown: <script module> export function getStaticPaths() { … } </script>`)
 }
 
 // statement reads on from an "import" or "export" and returns the offset

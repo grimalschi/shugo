@@ -8,10 +8,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
-// Version changes when an older runtime could not read the format any more.
-const Version = 1
+// Version changes when an older runtime could not read the format any more:
+// 2 is the program of Svelte templates, with snippets and <svelte:element>.
+const Version = 2
 
 // Site is a whole compiled project.
 type Site struct {
@@ -35,10 +37,11 @@ type File struct {
 	// called with the same parameters: it reads nothing of the page it is on.
 	// Such a block is computed and kept once for the whole site.
 	Shared bool `json:"shared,omitempty"`
-	// Slots are the names of the slots the template shows with <g-slot>.
-	Slots []string `json:"slots,omitempty"`
-	// Parts are the template itself and then every piece of markup it puts
-	// inside the components it calls.
+	// Outlets are the names of what pages give to layouts that the template
+	// shows: "head" for a layout with a <head>, where <svelte:head> goes.
+	Outlets []string `json:"outlets,omitempty"`
+	// Parts are the template itself and then every snippet written in it,
+	// and what stands in its <svelte:head>.
 	Parts [][]Op `json:"parts"`
 }
 
@@ -63,32 +66,40 @@ type Segment struct {
 type Kind byte
 
 const (
-	Markup Kind = 'r' // write markup as it is
-	Text   Kind = 't' // write the next value as text
-	HTML   Kind = 'h' // write the next value as markup
-	Attr   Kind = 'a' // write an attribute that may be absent
-	URL    Kind = 'u' // the same for an attribute that holds an address
-	Spread Kind = 's' // write attributes known only when the page is computed
-	If     Kind = 'i' // go on with one of several branches, or with none
-	For    Kind = 'f' // repeat the body for every item
-	Call   Kind = 'c' // show the next component the block calls
-	Slot   Kind = 'o' // show what the caller put inside this component
-	Mount  Kind = 'm' // write markup the framework adds
+	Markup  Kind = 'r' // write markup as it is
+	Text    Kind = 't' // write the next value as text
+	HTML    Kind = 'h' // write the next value as markup
+	Attr    Kind = 'a' // write an attribute that may be absent
+	URL     Kind = 'u' // the same for an attribute that holds an address
+	Spread  Kind = 's' // write attributes known only when the page is computed
+	If      Kind = 'i' // go on with one of several branches, or with none
+	For     Kind = 'f' // repeat the body for every item, or show the second body for none
+	Call    Kind = 'c' // show the next component the block calls
+	Render  Kind = 'n' // show a snippet: given by a caller, or a block of its own
+	Element Kind = 'e' // write an element whose tag is a value: <svelte:element>
+	Mount   Kind = 'm' // write markup the framework adds
 )
+
+// Last is the text of a Render that shows the last block alone.
+const Last = "last"
 
 // Op is one step of showing a template. Every step except Markup, Call and
 // Mount takes the next value the block has computed.
 type Op struct {
 	Kind Kind
-	// Text is the markup of Markup and the name of Attr, URL, Slot and Mount.
+	// Text is the markup of Markup and the name of Attr, URL and Mount.
+	// A Render with the text Last shows only the last block of a snippet
+	// the caller gave: the <title> of a page, which Svelte takes from the
+	// last <title> in <svelte:head>.
 	Text string
-	// Bodies are the branches of If, the body of For and the markup Slot
-	// shows when the caller put nothing there.
+	// Bodies are the branches of If; the body of For and what it shows for
+	// no items; the attributes and the content of Element.
 	Bodies [][]Op
 }
 
 // On the wire an operation is a list: its kind, then its text if it has one,
-// then its bodies: ["r","<p>"], ["t"], ["a","href"], ["i",[…],[…]].
+// then its bodies: ["r","<p>"], ["t"], ["a","href"], ["i",[…],[…]],
+// ["n","last"].
 func (o Op) MarshalJSON() ([]byte, error) {
 	parts := []any{string(rune(o.Kind))}
 	if o.hasText() {
@@ -123,7 +134,9 @@ func (o *Op) UnmarshalJSON(data []byte) error {
 	}
 	*o = Op{Kind: Kind(kind[0])}
 	parts = parts[1:]
-	if o.hasText() {
+	// The text of a Render is there or not; a body is never a string.
+	optional := o.Kind == Render && len(parts) > 0 && len(parts[0]) > 0 && parts[0][0] == '"'
+	if o.hasText() || optional {
 		if len(parts) == 0 || json.Unmarshal(parts[0], &o.Text) != nil {
 			return fmt.Errorf("program: operation %q has no text", kind)
 		}
@@ -139,10 +152,14 @@ func (o *Op) UnmarshalJSON(data []byte) error {
 	return o.check()
 }
 
+// hasText tells whether the operation is written with its text: always for
+// the kinds that need one, and for a Render that shows the last block.
 func (o Op) hasText() bool {
 	switch o.Kind {
-	case Markup, Attr, URL, Slot, Mount:
+	case Markup, Attr, URL, Mount:
 		return true
+	case Render:
+		return o.Text != ""
 	}
 	return false
 }
@@ -151,9 +168,11 @@ func (o Op) hasText() bool {
 func (o Op) check() error {
 	want := 0
 	switch o.Kind {
-	case Markup, Text, HTML, Attr, URL, Spread, Call, Mount:
-	case For, Slot:
-		want = 1
+	case Markup, Text, HTML, Attr, URL, Spread, Call, Render, Mount:
+	case For:
+		want = min(max(1, len(o.Bodies)), 2)
+	case Element:
+		want = 2
 	case If:
 		want = max(1, len(o.Bodies))
 	default:
@@ -161,6 +180,9 @@ func (o Op) check() error {
 	}
 	if len(o.Bodies) != want {
 		return fmt.Errorf("program: operation %q has %d bodies", rune(o.Kind), len(o.Bodies))
+	}
+	if o.Kind == Render && o.Text != "" && o.Text != Last {
+		return fmt.Errorf("program: a render with the text %q", o.Text)
 	}
 	return nil
 }
@@ -200,3 +222,12 @@ var addresses = map[string]bool{
 
 // IsAddress tells whether an attribute holds an address.
 func IsAddress(name string) bool { return addresses[name] }
+
+// Elements that never have content or a closing tag. Svelte writes them as <br/>.
+var void = map[string]bool{
+	"area": true, "base": true, "br": true, "col": true, "command": true, "embed": true, "hr": true, "img": true,
+	"input": true, "keygen": true, "link": true, "meta": true, "param": true, "source": true, "track": true, "wbr": true,
+}
+
+// IsVoid tells whether an element of HTML never has content or a closing tag.
+func IsVoid(name string) bool { return void[strings.ToLower(name)] }

@@ -1,0 +1,18 @@
+[
+ {
+  "body": "<section class=\"notifications\"><ul class=\"summary\"><li class=\"summary-error\">Errors: 1</li><li class=\"summary-warning\">Warnings: 2</li><li class=\"summary-success\">Successes: 1</li><li class=\"summary-info\">Messages: 1</li></ul> <ul class=\"list\"><li class=\"note note-info\"><span class=\"icon icon-info\" aria-hidden=\"true\"></span> <p>The catalog has been updated.</p></li><li class=\"note note-warning\"><span class=\"icon icon-alert\" aria-hidden=\"true\"></span> <p><strong>Attention:</strong> Two mugs left.</p></li><li class=\"note note-success\"><span class=\"icon icon-check\" aria-hidden=\"true\"></span> <p>Order No. 17 has been paid. <a href=\"/orders/17\">Open order</a></p></li><li class=\"note note-error\" role=\"alert\"><span class=\"icon icon-cross\" aria-hidden=\"true\"></span> <p>Could not redeem points.</p></li><li class=\"note note-warning\"><span class=\"icon icon-alert\" aria-hidden=\"true\"></span> <p><strong>Attention:</strong> Delivery is delayed by one day.</p></li></ul></section>",
+  "head": ""
+ },
+ {
+  "body": "<section class=\"notifications\"><ul class=\"summary\"><li class=\"summary-error\">Errors: 2</li><li class=\"summary-success\">Successes: 2</li><li class=\"summary-info\">Messages: 1</li></ul> <ul class=\"list\"><li class=\"note note-info\"><span class=\"icon icon-info\" aria-hidden=\"true\"></span> <p>New version &lt;2.0> &amp; notes</p></li><li class=\"note note-success\"><span class=\"icon icon-check\" aria-hidden=\"true\"></span> <p>Saved.</p></li><li class=\"note note-error\" role=\"alert\"><span class=\"icon icon-cross\" aria-hidden=\"true\"></span> <p>Error &lt;500> &amp; \"timeout\"</p></li><li class=\"note note-error\" role=\"alert\"><span class=\"icon icon-cross\" aria-hidden=\"true\"></span> <p>Try again later.</p></li><li class=\"note note-success\"><span class=\"icon icon-check\" aria-hidden=\"true\"></span> <p>Email sent. <a href=\"/mail?box=out&amp;id=3\">Outbox &amp; &lt;drafts></a></p></li></ul></section>",
+  "head": ""
+ },
+ {
+  "body": "<section class=\"notifications\"><p class=\"empty\">No notifications</p></section>",
+  "head": ""
+ },
+ {
+  "body": "<section class=\"notifications\"><ul class=\"summary\"><li class=\"summary-warning\">Warnings: 3</li></ul> <ul class=\"list\"><li class=\"note note-warning\"><span class=\"icon icon-alert\" aria-hidden=\"true\"></span> <p><strong>Attention:</strong> Your password will expire soon.</p></li><li class=\"note note-warning\"><span class=\"icon icon-alert\" aria-hidden=\"true\"></span> <p><strong>Attention:</strong> Your email is unverified.</p></li><li class=\"note note-warning\"><span class=\"icon icon-alert\" aria-hidden=\"true\"></span> <p><strong>Attention:</strong> You have 0 points.</p></li></ul></section>",
+  "head": ""
+ }
+]

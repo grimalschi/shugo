@@ -1,0 +1,114 @@
+{
+ "id": "14-definition-list",
+ "title": "A definition list: a term followed by its values, with no wrappers",
+ "entry": "Specs",
+ "datasets": [
+  {
+   "title": "Specifications",
+   "entries": [
+    {
+     "term": "Volume",
+     "values": [
+      350
+     ],
+     "unit": "mL"
+    },
+    {
+     "term": "Color",
+     "values": [
+      "white",
+      "blue"
+     ]
+    },
+    {
+     "term": "Dimensions",
+     "values": [
+      9,
+      12
+     ],
+     "unit": "cm"
+    },
+    {
+     "term": "Warranty",
+     "values": []
+    },
+    {
+     "term": "Material",
+     "values": [
+      "ceramics"
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Details & <other>",
+   "entries": [
+    {
+     "term": "Discount",
+     "values": [
+      0
+     ],
+     "unit": "%"
+    },
+    {
+     "term": "Temperature",
+     "values": [
+      -4,
+      1.5,
+      0
+     ],
+     "unit": "°C"
+    },
+    {
+     "term": "Note",
+     "values": [
+      "",
+      "fragile <glass>",
+      ""
+     ]
+    },
+    {
+     "term": "Empty",
+     "values": [
+      "",
+      ""
+     ]
+    },
+    {
+     "term": "Size \"XL\" & <larger>",
+     "values": [
+      "44–46"
+     ],
+     "unit": ""
+    },
+    {
+     "term": "Weight",
+     "values": [
+      0.25
+     ],
+     "unit": "kg"
+    }
+   ]
+  },
+  {
+   "title": "Nothing",
+   "entries": []
+  },
+  {
+   "title": "All empty",
+   "entries": [
+    {
+     "term": "A",
+     "values": []
+    },
+    {
+     "term": "B",
+     "values": [
+      ""
+     ],
+     "unit": "pcs."
+    }
+   ]
+  }
+ ]
+}

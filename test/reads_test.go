@@ -23,110 +23,117 @@ INSERT INTO products VALUES
 const readSite = `
 -- shugo.json --
 {"data": "data/shop.db"}
--- lib/text.ts --
+-- src/lib/text.ts --
 export const shout = (row: { title: string }) => row.title.toUpperCase()
--- components/Row.shugo --
-<li>{Shugo.props.row.title}</li>
--- components/Frame.shugo --
-<div><g-slot /></div>
--- pages/script.shugo --
----
+-- src/components/Row.shugo --
+<li>{$props().row.title}</li>
+-- src/components/Frame.shugo --
+<script>
+let { children } = $props()
+</script>
+<div>{@render children?.()}</div>
+-- src/pages/script.shugo --
+<script>
 const item = Shugo.query("products").get("p1")
 const cost = item.price * 2
 console.log("script")
----
+</script>
 <p>{cost}</p>
--- pages/template.shugo --
----
+-- src/pages/template.shugo --
+<script>
 const item = Shugo.query("products").get("p1")
 console.log("template")
----
+</script>
 <p>{item.title}</p>
--- pages/neither.shugo --
----
+-- src/pages/neither.shugo --
+<script>
 const item = Shugo.query("products").get("p1")
 console.log("neither")
----
-<p><g-if cond={item}>there</g-if><g-else>gone</g-else></p>
--- pages/asked.shugo --
----
+</script>
+<p>{#if item}there{:else}gone{/if}</p>
+-- src/pages/asked.shugo --
+<script>
 const item = Shugo.query("products").get("p1")
 const priced = "price" in item
 console.log("asked")
----
+</script>
 <p>{priced}</p>
--- pages/spread.shugo --
----
+-- src/pages/spread.shugo --
+<script>
 const copy = { ...Shugo.query("products").get("p1") }
 console.log("spread")
----
+</script>
 <p>{copy.title}</p>
--- pages/written.shugo --
----
+-- src/pages/written.shugo --
+<script>
 const text = JSON.stringify(Shugo.query("products").get("p1")).length > 0
 console.log("written")
----
+</script>
 <p>{text}</p>
--- pages/function.shugo --
----
+-- src/pages/function.shugo --
+<script>
 import { shout } from "../lib/text"
 const item = Shugo.query("products").get("p1")
 console.log("function")
----
+</script>
 <p>{shout(item)}</p>
--- pages/local.shugo --
----
+-- src/pages/local.shugo --
+<script>
 const item = Shugo.query("products").get("p1")
 const cost = (row) => row.price + 1
 console.log("local")
----
+</script>
 <p>{cost(item)}</p>
--- pages/component.shugo --
----
+-- src/pages/component.shugo --
+<script>
 import Row from "../components/Row.shugo"
 const item = Shugo.query("products").get("p1")
 console.log("component")
----
+</script>
 <ul><Row row={item} /></ul>
--- pages/fill.shugo --
----
+-- src/pages/fill.shugo --
+<script>
 import Frame from "../components/Frame.shugo"
 const item = Shugo.query("products").get("p1")
 console.log("fill")
----
+</script>
 <Frame>{item.title}</Frame>
--- pages/asking.shugo --
+-- src/pages/asking.shugo --
 <p>{Shugo.query("products").get("p1").title}{console.log("asking")}</p>
--- pages/together.shugo --
----
+-- src/pages/together.shugo --
+<script>
 const rows = Shugo.query("products").where({ category: "c1" }).order("position").all()
 console.log("together")
----
-<ul><g-for each={rows} as="row"><li>{row.title}</li></g-for></ul>
--- pages/alone.shugo --
----
+</script>
+<ul>{#each rows as row}<li>{row.title}</li>{/each}</ul>
+-- src/pages/alone.shugo --
+<script>
 const rows = Shugo.query("products").order("position").limit(2).all()
 console.log("alone")
----
-<ul><g-for each={rows} as="row"><li>{row.title}</li></g-for></ul>
--- pages/joined.shugo --
----
+</script>
+<ul>{#each rows as row}<li>{row.title}</li>{/each}</ul>
+-- src/pages/joined.shugo --
+<script>
 const item = Shugo.query("products").join("categories", "category").get("p1")
 console.log("joined")
----
+</script>
 <p>{item.title} in {item.categories.title}</p>
--- pages/listed/[slug].shugo --
----
+-- src/pages/listed/[slug].shugo --
+<script module>
 export const getStaticPaths = ({ query }) => query("products").all().map(({ slug }) => ({ params: { slug } }))
+</script>
+<script>
 console.log("listed " + Shugo.params.slug)
----
+</script>
 <p>{Shugo.params.slug}</p>
--- pages/handed/[slug].shugo --
----
+-- src/pages/handed/[slug].shugo --
+<script module>
 export const getStaticPaths = ({ query }) => query("products").where({ category: "c2" }).all().map((row) => ({ params: { slug: row.slug }, props: { row } }))
+</script>
+<script>
 console.log("handed " + Shugo.params.slug)
----
-<p>{Shugo.props.row.title}</p>
+</script>
+<p>{$props().row.title}</p>
 `
 
 // A page depends on the columns that are read of the rows it asked for
@@ -213,40 +220,40 @@ func TestWaysThatAreTaken(t *testing.T) {
 	s := newSite(t, `
 -- shugo.json --
 {"data": "data/shop.db"}
--- lib/text.ts --
+-- src/lib/text.ts --
 // What it reads of the row depends on the row.
 export const label = (row) => (row.price > 6 ? row.title : row.note)
--- pages/branch.shugo --
----
+-- src/pages/branch.shugo --
+<script>
 const item = Shugo.query("products").get("p1")
 console.log("branch")
----
-<g-if cond={item.available}><p>in stock</p></g-if><g-else><p>comes {item.arrival}</p></g-else>
--- pages/either.shugo --
----
+</script>
+{#if item.available}<p>in stock</p>{:else}<p>comes {item.arrival}</p>{/if}
+-- src/pages/either.shugo --
+<script>
 const item = Shugo.query("products").get("p1")
 console.log("either")
----
+</script>
 <p>{item.note || item.title}</p>
--- pages/function.shugo --
----
+-- src/pages/function.shugo --
+<script>
 import { label } from "../lib/text"
 const item = Shugo.query("products").get("p2")
 console.log("function")
----
+</script>
 <p>{label(item)}</p>
--- pages/loop.shugo --
----
+-- src/pages/loop.shugo --
+<script>
 const rows = Shugo.query("products").where({ available: true }).order("position").all()
 console.log("loop")
----
-<ul><g-for each={rows} as="row"><li>{row.title}</li></g-for></ul>
--- pages/first.shugo --
----
+</script>
+<ul>{#each rows as row}<li>{row.title}</li>{/each}</ul>
+-- src/pages/first.shugo --
+<script>
 const rows = Shugo.query("products").order("position").limit(2).all()
 console.log("first")
----
-<ul><g-for each={rows} as="row"><li><g-if cond={row.price > 6}>{row.title}</g-if><g-else>cheap</g-else></li></g-for></ul>
+</script>
+<ul>{#each rows as row}<li>{#if row.price > 6}{row.title}{:else}cheap{/if}</li>{/each}</ul>
 `)
 	s.sql(pathRows)
 	s.build()
@@ -306,11 +313,11 @@ func TestSelectTakesLess(t *testing.T) {
 	s := newSite(t, `
 -- shugo.json --
 {"data": "data/shop.db"}
--- pages/index.shugo --
----
+-- src/pages/index.shugo --
+<script>
 const item = Shugo.query("products").select("title", "price", "note").get("p1")
 console.log("index")
----
+</script>
 <p>{item.title} {String(item.slug)}</p>
 `)
 	s.sql(readRows)
@@ -329,25 +336,25 @@ func TestRowIsAnOrdinaryObject(t *testing.T) {
 	s := newSite(t, `
 -- shugo.json --
 {"data": "data/shop.db"}
--- pages/index.shugo --
----
+-- src/pages/index.shugo --
+<script>
 const item = Shugo.query("products").get("p1")
 const priced = item.hasOwnProperty("price")
 const same = item.then === undefined && item.toString === Object.prototype.toString && item.length === undefined
 console.log("index")
----
+</script>
 <p title={item}>{priced} {same} {item} {[item, item]}</p>
--- pages/attributes.shugo --
----
+-- src/pages/attributes.shugo --
+<script>
 const item = Shugo.query("products").select("title", "note").get("p1")
 console.log("attributes")
----
+</script>
 <p {...item}>x</p>
 `)
 	s.sql(readRows)
 	s.build()
 	s.computed()
-	expect(t, s.page("/"), `<p title="[object Object]">true true [object Object] [object Object][object Object]</p>`)
+	expect(t, s.page("/"), `<p title="[object Object]">true true [object Object] [object Object],[object Object]</p>`)
 	expect(t, s.page("/attributes"), `<p title="Jug" note="" id="p1">x</p>`)
 	// Putting a row among attributes shows every column of it.
 	s.changed(`UPDATE products SET title = 'Big jug' WHERE id = 'p1'`, "attributes")
@@ -359,7 +366,7 @@ console.log("attributes")
 const keptSite = `
 -- shugo.json --
 {"data": "data/shop.db"}
--- lib/kept.ts --
+-- src/lib/kept.ts --
 let row: { title: string } | undefined
 export const jug = (Shugo: any) => (row ??= Shugo.query("products").get("p1"))
 let asker: any
@@ -376,17 +383,17 @@ func TestRowKeptForAnotherScript(t *testing.T) {
 		want        []string
 	}{
 		{"a row read after its page is computed", keptSite + `
--- pages/index.shugo --
----
+-- src/pages/index.shugo --
+<script>
 import { jug } from "../lib/kept"
 const item = jug(Shugo)
----
+</script>
 <p>{item.title}</p>
--- pages/about.shugo --
----
+-- src/pages/about.shugo --
+<script>
 import { jug } from "../lib/kept"
 const item = jug(Shugo)
----
+</script>
 <p>{item.title}</p>
 `, []string{
 			"a row of the table products is read when the page, shared block or list of pages it belongs to is already computed",
@@ -396,27 +403,27 @@ const item = jug(Shugo)
 		{"a row that a list of pages keeps for its pages", `
 -- shugo.json --
 {"data": "data/shop.db"}
--- lib/kept.ts --
+-- src/lib/kept.ts --
 let first: { title: string } | undefined
 export const keep = (row: { title: string }) => (first ??= row)
 export const kept = () => first
--- pages/[slug].shugo --
----
+-- src/pages/[slug].shugo --
+<script module>
 import { keep, kept } from "../lib/kept"
 export const getStaticPaths = ({ query }) => query("products").all().map((row) => (keep(row), { params: { slug: row.slug } }))
----
+</script>
 <p>{kept().title}</p>
 `, []string{"a row of the table products is read when the page, shared block or list of pages it belongs to is already computed"}},
 		{"Shugo asked after its page is computed", keptSite + `
--- pages/index.shugo --
----
+-- src/pages/index.shugo --
+<script>
 import { count } from "../lib/kept"
----
+</script>
 <p>{count(Shugo)}</p>
--- pages/about.shugo --
----
+-- src/pages/about.shugo --
+<script>
 import { count } from "../lib/kept"
----
+</script>
 <p>{count(Shugo)}</p>
 `, []string{
 			"the table products is asked when the page, shared block or list of pages it belongs to is already computed",
@@ -450,32 +457,32 @@ func TestCheckFindsWhatIsReadPastTheDatabase(t *testing.T) {
 {"data": "data/shop.db"}
 -- note.txt --
 old
--- lib/kept.ts --
+-- src/lib/kept.ts --
 // A value that is not a row, kept for whoever comes next: nothing tells
 // that the second page shows what the first one read.
 let kept: string | undefined
 export const title = (Shugo: any) => (kept ??= Shugo.query("products").get("p2").title)
--- pages/index.shugo --
----
+-- src/pages/index.shugo --
+<script>
 import { readFileSync } from "node:fs"
 const note = readFileSync("note.txt", "utf8").trim()
 const count = Shugo.query("products").count()
----
+</script>
 <p>{note}: {count}</p>
--- pages/about.shugo --
----
+-- src/pages/about.shugo --
+<script>
 const item = Shugo.query("products").get("p1")
----
+</script>
 <p>{item.title}</p>
--- pages/one.shugo --
----
+-- src/pages/one.shugo --
+<script>
 import { title } from "../lib/kept"
----
+</script>
 <p>{title(Shugo)}</p>
--- pages/two.shugo --
----
+-- src/pages/two.shugo --
+<script>
 import { title } from "../lib/kept"
----
+</script>
 <p>{title(Shugo)}</p>
 `)
 	s.sql(readRows)
@@ -520,12 +527,14 @@ func TestParametersComeFromTheAddress(t *testing.T) {
 	s := newSite(t, `
 -- shugo.json --
 {"data": "data/shop.db"}
--- pages/price/[price].shugo --
----
+-- src/pages/price/[price].shugo --
+<script module>
 export const getStaticPaths = ({ query }) => query("products").select("price").all().map(({ price }) => ({ params: { price, more: "no" } }))
+</script>
+<script>
 const item = Shugo.query("products").where({ price: Number(Shugo.params.price) }).first()
 console.log("price " + Shugo.params.price)
----
+</script>
 <p>{typeof Shugo.params.price} {String(Shugo.params.more)} {item.title}</p>
 `)
 	s.sql(readRows)
@@ -545,12 +554,12 @@ func TestCheckCommand(t *testing.T) {
 {"data": "data/shop.db"}
 -- note.txt --
 old
--- pages/index.shugo --
----
+-- src/pages/index.shugo --
+<script>
 import { readFileSync } from "node:fs"
 const note = readFileSync("note.txt", "utf8").trim()
 const item = Shugo.query("products").get("p1")
----
+</script>
 <p>{note}: {item.title}</p>
 `)
 	s.sql(readRows)

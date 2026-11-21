@@ -1,0 +1,18 @@
+[
+ {
+  "body": "<div class=\"field\"><label for=\"email\">Email <span class=\"required\" aria-hidden=\"true\">*</span></label> <div class=\"control\"><input type=\"email\" id=\"email\" name=\"email\" value=\"anna@example.com\" placeholder=\"name@example.com\" required=\"\" aria-invalid=\"false\" aria-describedby=\"email-hint\"/></div> <p class=\"hint\" id=\"email-hint\">We’ll send the receipt to this address</p> </div>",
+  "head": ""
+ },
+ {
+  "body": "<div class=\"field field--invalid field--disabled\"><label for=\"glaze\">Glaze &amp; slip </label> <div class=\"control\"><select id=\"glaze\" name=\"glaze\" disabled=\"\" aria-invalid=\"true\" aria-describedby=\"glaze-error\"><option value=\"gloss\">Glossy</option><option value=\"matte\" selected=\"\">Matte</option><option value=\"&quot;raw&quot;\">Unglazed &lt;raw></option></select></div>  <p class=\"error\" id=\"glaze-error\">This glaze is out of stock</p></div>",
+  "head": ""
+ },
+ {
+  "body": "<div class=\"field field--invalid\"><label for=\"note\">Comment <span class=\"required\" aria-hidden=\"true\">*</span></label> <div class=\"control\"><textarea id=\"note\" name=\"order[note]\" rows=\"4\" required=\"\" aria-invalid=\"true\" aria-describedby=\"note-hint note-error\">Fragile! &lt;b>Do not&lt;/b> drop &amp; \"handle with care\"\nSecond floor</textarea></div> <p class=\"hint\" id=\"note-hint\">Up to 500 characters</p> <p class=\"error\" id=\"note-error\">Too long</p></div>",
+  "head": ""
+ },
+ {
+  "body": "<div class=\"field\"><label for=\"city\">City </label> <div class=\"control\"><input type=\"text\" id=\"city\" name=\"city\" placeholder=\"Boston\" aria-invalid=\"false\"/></div>  </div>",
+  "head": ""
+ }
+]

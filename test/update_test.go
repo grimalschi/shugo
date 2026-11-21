@@ -13,40 +13,43 @@ import (
 const shop = `
 -- shugo.json --
 {"data": "data/shop.db"}
--- components/Header.shugo --
----
+-- src/components/Header.shugo --
+<script>
 const motto = Shugo.query("settings").get(1).motto
 const count = Shugo.query("products").count()
 console.log("header computed")
----
+</script>
 <header>{motto} · {count} products</header>
--- components/Card.shugo --
----
-const { slug } = Shugo.props as { slug: string }
+-- src/components/Card.shugo --
+<script>
+const { slug } = $props() as { slug: string }
 const { title, price } = Shugo.query("products").where({ slug }).first()
----
+</script>
 <a href={"/products/" + slug}>{title} — {price}</a>
--- pages/+layout.shugo --
----
+-- src/pages/+layout.shugo --
+<script>
+let { children } = $props()
 import Header from "../components/Header.shugo"
----
-<html><body><Header /><main><g-slot /></main></body></html>
--- pages/index.shugo --
----
+</script>
+<html><body><Header /><main>{@render children()}</main></body></html>
+-- src/pages/index.shugo --
+<script>
 import Card from "../components/Card.shugo"
 const products = Shugo.query("products").select("slug").order("position").all()
----
-<ul><g-for each={products} as="p"><li><Card slug={p.slug} /></li></g-for></ul>
--- pages/about.shugo --
+</script>
+<ul>{#each products as p}<li><Card slug={p.slug} /></li>{/each}</ul>
+-- src/pages/about.shugo --
 <h1>About</h1>
--- pages/products/[slug].shugo --
----
-import Card from "../../components/Card.shugo"
+-- src/pages/products/[slug].shugo --
+<script module>
 export const getStaticPaths = ({ query }) => query("products").select("slug").all().map((p) => ({ params: { slug: p.slug } }))
+</script>
+<script>
+import Card from "../../components/Card.shugo"
 const p = Shugo.query("products").where({ slug: Shugo.params.slug }).first()
 const related = Shugo.query("related").where({ product: p.slug }).order("position").all()
----
-<h1>{p.title}</h1><p>{p.price}</p><g-for each={related} as="r"><Card slug={r.other} /></g-for>
+</script>
+<h1>{p.title}</h1><p>{p.price}</p>{#each related as r}<Card slug={r.other} />{/each}
 `
 
 const shopRows = `
@@ -81,12 +84,11 @@ func expectChanges(t *testing.T, r *evaluate.Report, pages, shared evaluate.Chan
 }
 
 const (
-	header   = "components/Header.shugo{}"
-	cardJug  = `components/Card.shugo{"slug":"jug"}`
-	cardCup  = `components/Card.shugo{"slug":"cup"}`
-	cardTray = `components/Card.shugo{"slug":"tray"}`
-	cardPot  = `components/Card.shugo{"slug":"pot"}`
-	layout   = "pages/+layout.shugo{|default}"
+	header   = "src/components/Header.shugo{}"
+	cardJug  = `src/components/Card.shugo{"slug":"jug"}`
+	cardCup  = `src/components/Card.shugo{"slug":"cup"}`
+	cardTray = `src/components/Card.shugo{"slug":"tray"}`
+	cardPot  = `src/components/Card.shugo{"slug":"pot"}`
 )
 
 func TestUpdates(t *testing.T) {
@@ -180,7 +182,7 @@ func TestUpdates(t *testing.T) {
 
 	// After a template changes every record is written anew.
 	t.Run("a template changes", func(t *testing.T) {
-		s.write("-- pages/about.shugo --\n<h1>About us</h1>")
+		s.write("-- src/pages/about.shugo --\n<h1>About us</h1>")
 		r := s.build()
 		if !r.Rebuilt || r.Pages.Added != r.Pages.Total {
 			t.Errorf("rebuilt=%v pages=%+v", r.Rebuilt, r.Pages)
@@ -209,13 +211,13 @@ func TestFailedUpdateChangesNothing(t *testing.T) {
 // update compiles and builds a project that has changed.
 func TestUpdateWithoutData(t *testing.T) {
 	s := newSite(t, `
--- lib/names.ts --
+-- src/lib/names.ts --
 export const names = ["Ann", "Bob"]
--- pages/index.shugo --
----
+-- src/pages/index.shugo --
+<script>
 import { names } from "../lib/names"
----
-<ul><g-for each={names} as="name"><li>{name}</li></g-for></ul>
+</script>
+<ul>{#each names as name}<li>{name}</li>{/each}</ul>
 `)
 	s.build()
 	if r := s.update(); r.Computed.Pages+r.Computed.Shared != 0 || r.Data != nil {

@@ -17,26 +17,30 @@ import (
 // changes the data at random several times: after every update the pages
 // must again be what the data says.
 //
-// The pages use three components written by hand below, with slots, shared
-// blocks and a component inside a component; what is random is everything
-// around them.
+// The pages use three components written by hand below, with children,
+// snippets, shared blocks and a component inside a component; what is
+// random is everything around them.
 
 const randomComponents = `
--- lib/data.ts --
+-- src/lib/data.ts --
 import { readFileSync } from "node:fs"
 export const data = JSON.parse(readFileSync("data.json", "utf8"))
--- components/Leaf.shugo --
-<i>{Shugo.props.text}</i>
--- components/Box.shugo --
----
-const { item, big = false } = Shugo.props
----
-<div class={big ? "box big" : "box"}>{item.name}<g-slot>none:{item.id}</g-slot><g-if cond={Shugo.slots.has("foot")}><footer><g-slot name="foot" /></footer></g-if></div>
--- components/Wrap.shugo --
----
+-- src/components/Leaf.shugo --
+<script>
+let { text } = $props()
+</script>
+<i>{text}</i>
+-- src/components/Box.shugo --
+<script>
+let { item, big = false, children, foot } = $props()
+</script>
+<div class={big ? "box big" : "box"}>{item.name}{#if children}{@render children()}{:else}none:{item.id}{/if}{#if foot}<footer>{@render foot()}</footer>{/if}</div>
+-- src/components/Wrap.shugo --
+<script>
 import Leaf from "./Leaf.shugo"
----
-<section><Leaf text="w" /><g-slot /></section>
+let { children } = $props()
+</script>
+<section><Leaf text="w" />{@render children?.()}</section>
 `
 
 // tree is a piece of a page: it can write itself as a template and as HTML.
@@ -70,15 +74,14 @@ type (
 		e       expr
 	}
 	choose struct {
-		tests []expr // one more branch than tests means the last is g-else
+		tests []expr // one more branch than tests means the last is {:else}
 		then  [][]tree
 	}
 	each struct {
-		list     expr
-		item     string
-		index    string
-		kids     []tree
-		itemKind string
+		list  expr
+		item  string
+		index string
+		kids  []tree
 	}
 	leaf struct{ e expr }
 	box  struct {
@@ -94,12 +97,12 @@ func (t text) html(out *strings.Builder, _ scope) { out.WriteString(string(t)) }
 
 func (v value) source(out *strings.Builder) { out.WriteString("{" + v.e.js + "}") }
 func (v value) html(out *strings.Builder, s scope) {
-	out.WriteString(escape(textOf(v.e.eval(s))))
+	out.WriteString(escapeText(stringify(v.e.eval(s))))
 }
 
-func (r raw) source(out *strings.Builder) { out.WriteString("<g-html value={" + r.e.js + "} />") }
+func (r raw) source(out *strings.Builder) { out.WriteString("{@html " + r.e.js + "}") }
 func (r raw) html(out *strings.Builder, s scope) {
-	out.WriteString(textOf(r.e.eval(s)))
+	out.WriteString(stringify(r.e.eval(s)))
 }
 
 func (e elem) source(out *strings.Builder) {
@@ -124,7 +127,7 @@ func (e elem) html(out *strings.Builder, s scope) {
 	for _, a := range e.attrs {
 		switch {
 		case a.bare:
-			out.WriteString(" " + a.name)
+			out.WriteString(" " + a.name + `=""`)
 		case a.e.js == "":
 			out.WriteString(" " + a.name + `="` + a.literal + `"`)
 		default:
@@ -138,21 +141,17 @@ func (e elem) html(out *strings.Builder, s scope) {
 
 func (c choose) source(out *strings.Builder) {
 	for i, body := range c.then {
-		tag := "g-else-if"
 		switch {
 		case i == 0:
-			tag = "g-if"
-		case i >= len(c.tests):
-			tag = "g-else"
+			out.WriteString("{#if " + c.tests[i].js + "}")
+		case i < len(c.tests):
+			out.WriteString("{:else if " + c.tests[i].js + "}")
+		default:
+			out.WriteString("{:else}")
 		}
-		out.WriteString("<" + tag)
-		if i < len(c.tests) {
-			out.WriteString(" cond={" + c.tests[i].js + "}")
-		}
-		out.WriteString(">")
 		sources(out, body)
-		out.WriteString("</" + tag + ">")
 	}
+	out.WriteString("{/if}")
 }
 
 func (c choose) html(out *strings.Builder, s scope) {
@@ -165,13 +164,13 @@ func (c choose) html(out *strings.Builder, s scope) {
 }
 
 func (e each) source(out *strings.Builder) {
-	out.WriteString("<g-for each={" + e.list.js + `} as="` + e.item + `"`)
+	out.WriteString("{#each " + e.list.js + " as " + e.item)
 	if e.index != "" {
-		out.WriteString(` index="` + e.index + `"`)
+		out.WriteString(", " + e.index)
 	}
-	out.WriteString(">")
+	out.WriteString("}")
 	sources(out, e.kids)
-	out.WriteString("</g-for>")
+	out.WriteString("{/each}")
 }
 
 func (e each) html(out *strings.Builder, s scope) {
@@ -191,7 +190,7 @@ func (e each) html(out *strings.Builder, s scope) {
 
 func (l leaf) source(out *strings.Builder) { out.WriteString("<Leaf text={" + l.e.js + "} />") }
 func (l leaf) html(out *strings.Builder, s scope) {
-	out.WriteString("<i>" + escape(textOf(l.e.eval(s))) + "</i>")
+	out.WriteString("<i>" + escapeText(stringify(l.e.eval(s))) + "</i>")
 }
 
 func (b box) source(out *strings.Builder) {
@@ -199,12 +198,16 @@ func (b box) source(out *strings.Builder) {
 	if b.big {
 		out.WriteString(" big")
 	}
+	if b.body == nil && b.foot == nil {
+		out.WriteString(" />")
+		return
+	}
 	out.WriteString(">")
 	sources(out, b.body)
 	if b.foot != nil {
-		out.WriteString(`<g-fragment slot="foot">`)
+		out.WriteString("{#snippet foot()}")
 		sources(out, b.foot)
-		out.WriteString("</g-fragment>")
+		out.WriteString("{/snippet}")
 	}
 	out.WriteString("</Box>")
 }
@@ -215,11 +218,11 @@ func (b box) html(out *strings.Builder, s scope) {
 	if b.big {
 		class = "box big"
 	}
-	out.WriteString(`<div class="` + class + `">` + escape(textOf(item["name"])))
-	if len(b.body) > 0 {
+	out.WriteString(`<div class="` + class + `">` + escapeText(stringify(item["name"])))
+	if b.body != nil {
 		htmls(out, b.body, s)
 	} else {
-		out.WriteString("none:" + escape(textOf(item["id"])))
+		out.WriteString("none:" + escapeText(stringify(item["id"])))
 	}
 	if b.foot != nil {
 		out.WriteString("<footer>")
@@ -253,28 +256,35 @@ func htmls(out *strings.Builder, kids []tree, s scope) {
 	}
 }
 
-// What follows says once more, in Go, what the framework promises about
-// values; it is written from the specification, not from the code.
+// What follows says once more, in Go, how Svelte writes values; it is
+// written from what Svelte does, not from the code of Shugo. Svelte 5.59.1
+// rendered 400 pages of this generator exactly as this model does.
 
-func textOf(v any) string {
+// stringify is how a value is written into a page: a string as it is, null
+// and undefined as nothing, anything else as String() of JavaScript makes it.
+func stringify(v any) string {
+	if v == nil {
+		return ""
+	}
+	return jsString(v)
+}
+
+// jsString is String() of JavaScript: an array is its items joined by
+// commas, with null and undefined as empty items.
+func jsString(v any) string {
 	switch v := v.(type) {
-	case nil:
-		return ""
 	case bool:
-		if v {
-			return "true"
-		}
-		return ""
+		return strconv.FormatBool(v)
 	case float64:
 		return strconv.FormatFloat(v, 'f', -1, 64)
 	case string:
 		return v
 	case []any:
-		var out strings.Builder
-		for _, item := range v {
-			out.WriteString(textOf(item))
+		parts := make([]string, len(v))
+		for i, item := range v {
+			parts[i] = stringify(item)
 		}
-		return out.String()
+		return strings.Join(parts, ",")
 	}
 	return "[object Object]"
 }
@@ -293,34 +303,53 @@ func truthy(v any) bool {
 	return true
 }
 
-var escaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&#34;", "'", "&#39;")
+var (
+	textEscaper      = strings.NewReplacer("&", "&amp;", "<", "&lt;")
+	attributeEscaper = strings.NewReplacer("&", "&amp;", `"`, "&quot;", "<", "&lt;")
+)
 
-func escape(s string) string { return escaper.Replace(s) }
+func escapeText(s string) string { return textEscaper.Replace(s) }
 
+// attributeOf writes an attribute whose value is an expression. null and
+// undefined leave it out; hidden is there or not, as the value is true or
+// false, unless the value is "until-found", and "" is there, as in markup;
+// class takes the truthy items of an array, joined by spaces, and is left
+// out when empty.
 func attributeOf(name string, v any) string {
-	flag := name == "hidden" || name == "disabled"
-	spelled := strings.HasPrefix(name, "data-") || strings.HasPrefix(name, "aria-")
+	switch {
+	case name == "hidden" && v != "until-found":
+		if v != "" && !truthy(v) {
+			return ""
+		}
+		return ` hidden=""`
+	case name == "class":
+		class := classOf(v)
+		if class == "" {
+			return ""
+		}
+		return ` class="` + attributeEscaper.Replace(class) + `"`
+	case v == nil:
+		return ""
+	}
+	return " " + name + `="` + attributeEscaper.Replace(jsString(v)) + `"`
+}
+
+// classOf is the class an expression gives: Svelte passes arrays through
+// clsx.
+func classOf(v any) string {
 	switch v := v.(type) {
 	case nil:
 		return ""
-	case bool:
-		switch {
-		case v && flag:
-			return " " + name
-		case v:
-			return " " + name + `="true"`
-		case spelled:
-			return " " + name + `="false"`
-		}
-		return ""
 	case []any:
-		parts := make([]string, len(v))
-		for i, item := range v {
-			parts[i] = textOf(item)
+		var parts []string
+		for _, item := range v {
+			if truthy(item) {
+				parts = append(parts, classOf(item))
+			}
 		}
-		return " " + name + `="` + escape(strings.Join(parts, ",")) + `"`
+		return strings.Join(parts, " ")
 	}
-	return " " + name + `="` + escape(textOf(v)) + `"`
+	return jsString(v)
 }
 
 // maker writes random pages.
@@ -398,26 +427,34 @@ func (m *maker) expr(vars map[string]bool) expr {
 	return all[m.r.IntN(len(all))]
 }
 
-func (m *maker) nodes(vars map[string]bool, depth int) []tree {
-	out := make([]tree, 1+m.r.IntN(3))
-	for i := range out {
-		out[i] = m.node(vars, depth)
-	}
-	return out
+// place is where a piece of a page is written: the variables in scope, and
+// whether an element that holds only phrasing content is around, p, span or
+// b, where HTML allows no div and no section.
+type place struct {
+	vars     map[string]bool
+	phrasing bool
 }
 
-func with(vars map[string]bool, names ...string) map[string]bool {
-	out := map[string]bool{}
-	for name := range vars {
-		out[name] = true
+func (p place) with(names ...string) place {
+	vars := map[string]bool{}
+	for name := range p.vars {
+		vars[name] = true
 	}
 	for _, name := range names {
-		out[name] = true
+		vars[name] = true
+	}
+	return place{vars, p.phrasing}
+}
+
+func (m *maker) nodes(p place, depth int) []tree {
+	out := make([]tree, 1+m.r.IntN(3))
+	for i := range out {
+		out[i] = m.node(p, depth)
 	}
 	return out
 }
 
-func (m *maker) node(vars map[string]bool, depth int) tree {
+func (m *maker) node(p place, depth int) tree {
 	kind := m.r.IntN(12)
 	if depth <= 0 {
 		kind = m.r.IntN(4)
@@ -426,61 +463,71 @@ func (m *maker) node(vars map[string]bool, depth int) tree {
 	case 0:
 		return text(m.pick("a", "bc", "x y", "&amp;", "a b", "1 &lt; 2"))
 	case 1, 2:
-		return value{m.expr(vars)}
+		return value{m.expr(p.vars)}
 	case 3:
-		return leaf{m.expr(vars)}
+		return leaf{m.expr(p.vars)}
 	case 4, 5:
-		e := elem{tag: m.pick("p", "div", "span", "b"), kids: m.nodes(vars, depth-1)}
-		for range m.r.IntN(3) {
-			name := m.pick("class", "title", "hidden", "data-x", "aria-label", "id")
+		tag := m.pick("p", "div", "span", "b")
+		if p.phrasing {
+			tag = m.pick("span", "b")
+		}
+		inner := p
+		inner.phrasing = tag != "div"
+		e := elem{tag: tag, kids: m.nodes(inner, depth-1)}
+		names := []string{"class", "title", "hidden", "data-x", "aria-label", "id"}
+		m.r.Shuffle(len(names), func(i, j int) { names[i], names[j] = names[j], names[i] })
+		for _, name := range names[:m.r.IntN(3)] {
 			switch m.r.IntN(4) {
 			case 0:
 				e.attrs = append(e.attrs, attr{name: name, literal: m.pick("a", "b c", "x&amp;y")})
 			case 1:
 				e.attrs = append(e.attrs, attr{name: name, bare: true})
 			default:
-				e.attrs = append(e.attrs, attr{name: name, e: m.expr(vars)})
+				e.attrs = append(e.attrs, attr{name: name, e: m.expr(p.vars)})
 			}
 		}
 		return e
 	case 6, 7:
 		c := choose{}
 		for range 1 + m.r.IntN(3) {
-			c.tests = append(c.tests, m.expr(vars))
-			c.then = append(c.then, m.nodes(vars, depth-1))
+			c.tests = append(c.tests, m.expr(p.vars))
+			c.then = append(c.then, m.nodes(p, depth-1))
 		}
 		if m.r.IntN(2) == 0 {
-			c.then = append(c.then, m.nodes(vars, depth-1))
+			c.then = append(c.then, m.nodes(p, depth-1))
 		}
 		return c
 	case 8:
-		if vars["item"] && !vars["tag"] {
-			return each{list: expr{"item.tags", field("item", "tags")}, item: "tag", kids: m.nodes(with(vars, "tag"), depth-1)}
+		if p.vars["item"] && !p.vars["tag"] {
+			return each{list: expr{"item.tags", field("item", "tags")}, item: "tag", kids: m.nodes(p.with("tag"), depth-1)}
 		}
-		if vars["item"] {
-			return value{m.expr(vars)}
+		if p.vars["item"] {
+			return value{m.expr(p.vars)}
 		}
 		e := each{list: expr{"data.items", field("data", "items")}, item: "item"}
-		inner := with(vars, "item")
+		inner := p.with("item")
 		if m.r.IntN(2) == 0 {
-			e.index, inner = "i", with(inner, "i")
+			e.index, inner = "i", inner.with("i")
 		}
 		e.kids = m.nodes(inner, depth-1)
 		return e
-	case 9:
-		if !vars["item"] {
-			return wrap{m.nodes(vars, depth-1)}
+	case 9, 10:
+		// Box writes a div and Wrap a section: not where only phrasing
+		// content may stand.
+		switch {
+		case p.phrasing:
+			return leaf{m.expr(p.vars)}
+		case kind == 10 || !p.vars["item"]:
+			return wrap{m.nodes(p, depth-1)}
 		}
 		b := box{item: expr{"item", field("item")}, big: m.r.IntN(2) == 0}
 		if m.r.IntN(3) > 0 {
-			b.body = m.nodes(vars, depth-1)
+			b.body = m.nodes(p, depth-1)
 		}
 		if m.r.IntN(2) == 0 {
-			b.foot = m.nodes(vars, depth-1)
+			b.foot = m.nodes(p, depth-1)
 		}
 		return b
-	case 10:
-		return wrap{m.nodes(vars, depth-1)}
 	default:
 		return raw{expr{"data.html", field("data", "html")}}
 	}
@@ -523,10 +570,10 @@ func TestRandomPages(t *testing.T) {
 	files.WriteString(randomComponents)
 	trees := make([][]tree, pages)
 	for i := range trees {
-		trees[i] = m.nodes(map[string]bool{}, 4)
+		trees[i] = m.nodes(place{}, 4)
 		// The edges of a template are trimmed; a tag at each end keeps the
 		// text inside as written.
-		fmt.Fprintf(&files, "-- pages/p%d.shugo --\n---\nimport Leaf from \"../components/Leaf.shugo\"\nimport Box from \"../components/Box.shugo\"\nimport Wrap from \"../components/Wrap.shugo\"\nimport { data } from \"../lib/data\"\n---\n<main>", i)
+		fmt.Fprintf(&files, "-- src/pages/p%d.shugo --\n<script>\nimport Leaf from \"../components/Leaf.shugo\"\nimport Box from \"../components/Box.shugo\"\nimport Wrap from \"../components/Wrap.shugo\"\nimport { data } from \"../lib/data\"\n</script>\n<main>", i)
 		sources(&files, trees[i])
 		files.WriteString("</main>\n")
 	}

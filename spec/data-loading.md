@@ -4,13 +4,14 @@ The document describes where the data for pages comes from and when they are loa
 
 ## Decisions
 
-- The data gets code on TypeScript at the top of the `.shugo` files.
+- Data gets code on TypeScript in `<script>` files `.shugo`.
 - Your data can load pages, layouts and components.
 - The framework is not tied to a data source: it can be a database, file or someone else's API. What has changed is determined by comparison, not tracking the source.
-- While each update, the process starts anew and loads all the data; then the result is compared to the past. *Replaced by solutions from 20 November 2026 year:* update recognizes changes from the database log and calculates only what they touched - [Change tracking](change-tracking.md#decisions).
-- Updating part of the data on signals from sources is a good idea for the future: [proposal](partial-reload.md).
-- The framework stores a copy of the project data in SQLite; data from the source brings an adapter to it: [Data adapter and data copy](data-adapter.md).
+- While each update, the process starts anew and loads all the data; then the result is compared to the past. *Replaced by solutions from 20 November 2026 year:* update recognizes changes from the database log and calculates only what they touched - [Change tracking](../docs/change-tracking.md#decisions).
+- Updating part of the data on signals from sources is a good idea for the future. *Updated 21 November 2026 year:* point data changes bring adapter — [proposal](../docs/proposals/data-adapter.md).
+- The framework stores a copy of the project data in SQLite; data from the source brings an adapter to it: [Data adapter](../docs/proposals/data-adapter.md).
 - Pages are calculated without waiting: `await`, `getStaticPaths` synchronous is not in the code of pages and components. The wait is left from the first version, where the code itself loaded data over the network. 21 solved on November 2026 year.
+- The query constructor remains as it is; a new one is added as needed, and the first in line is to track the links between tables (21 solution of November 2026 year).
 
 ## Implemented, pending approval
 
@@ -18,9 +19,9 @@ The document describes where the data for pages comes from and when they are loa
 
 Pages, layouts and components read data only from the SQLite database of the project, named in `shugo.json`: `{ "data": "data/site.db" }`. Read via `Shugo.query`, route via `query` in `getStaticPaths`. The request responds immediately: SQLite works in the same process, and in Bun, and in Node its interface is synchronous.
 
-Each answer line remembers which columns are read in the page code, in the template, in the functions to which it was passed, in the components. It depends on what is calculated after changing the line: [Change tracking](change-tracking.md).
+Each answer line remembers which columns are read in the page code, in the template, in the functions to which it was passed, in the components. It depends on what is calculated after changing the line: [Change tracking](../docs/change-tracking.md).
 
-Data code and template expressions are performed in one process ([1](decisions.md#1-data-loading-and-expression-are-counted-together-go-compares-the-result)). Therefore, everything that is in the code is available in the template: functions, dates, `Map`, classes. In Go, only ready-made expression values are left - text.
+Data code and template expressions are executed in one process. Therefore, everything that is in the code is available in the template: functions, dates, `Map`, classes. In Go, only ready-made expression values are left - text.
 
 ### Where to ask
 
@@ -31,17 +32,17 @@ Data code and template expressions are performed in one process ([1](decisions.m
 | Data shared across all pages: menus, settings | in a component without parameters: it is calculated once |
 | Route pages list | in `getStaticPaths`; it is better to return only `params`, and the page will take the data itself |
 
-The module from `lib/` cannot ask the base: the request belongs to the page or component that asked it. The function from the module receives a string or the request itself by argument.
+The module from `src/lib/` cannot ask the base: the request belongs to the page or component that asked it. The function from the module receives a string or the request itself by argument.
 
 ### Data from other locations
 
 What was read from outside the database -- a file at the time of computing, a network, a value that the module stored between pages -- does not track changes: `shugo update` will not notice them. `shugo build` will compute and reread them, and `shugo update -check` will name the pages that depend on them.
 
-The file can be imported: `import posts from "../data/posts.json"`. Then it becomes part of the compiled code, and after changing it, the project is compiled again. `shugo update` does it himself.
+The file can be imported: `import posts from "../../data/posts.json"`. Then it becomes part of the compiled code, and after changing it, the project is compiled again. `shugo update` does it himself.
 
 ### Without waiting
 
-The compiler writes normal functions, without `async`. Pages and common blocks are calculated one at a time. `await` in the page code or component and asynchronous `getStaticPaths` is a build error with a hint. What is expected and done once, for example, creating a code highlight, wait at the top level of the module from `lib/`, and the page calls ready in synchronous.
+The compiler writes normal functions, without `async`. Pages and common blocks are calculated one at a time. `await` in the page code or component and asynchronous `getStaticPaths` is a build error with a hint. What is expected and done once, for example, creating a code highlight, wait at the top level of the module from `src/lib/`, and the page calls ready in synchronous.
 
 What it gave:
 
@@ -55,11 +56,11 @@ What is lost: a library without a synchronous option cannot be called for each p
 ### What is worth knowing
 
 - Page code is executed for each page, component code is executed for each display. Exception - common blocks: they are executed once.
-- Modules from `lib/` are run once per calculation.
+- Modules from `src/lib/` and `<script module>` are performed once per calculation.
 - Creating `Intl.NumberFormat` and similar objects is expensive. You need to create them once in the module, not every call: at the stand, this accelerated the calculation threefold.
+
+- Time and random numbers (`Date.now()`, `Math.random()`) do not calculate anything themselves: a page is calculated only when what it read from the database has changed. But when it is calculated for another reason, the value is different and the page is considered changed, and neighboring pages show the time of their calculation. Take time from data: for example, the date of publication from the database line.
 
 ## Open questions
 
 - Libraries without a synchronous option: whether the top of the module and adapter is enough.
-- Partial Reboot: [proposal](partial-reload.md).
-- Time and random numbers in the data code: each update will give a new value, and the page will be considered changed.

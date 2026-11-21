@@ -22,58 +22,63 @@ import (
 const dataShop = `
 -- shugo.json --
 {"data": "data/shop.db"}
--- components/Card.shugo --
----
-const { id } = Shugo.props as { id: string }
+-- src/components/Card.shugo --
+<script>
+const { id } = $props() as { id: string }
 const item = Shugo.query("products").select("slug", "title", "price").get(id)
 if (!item) throw new Error("there is no product " + id)
 console.log("card " + id)
----
+</script>
 <a href={"/products/" + item.slug}>{item.title} — {item.price}</a>
--- components/Header.shugo --
----
+-- src/components/Header.shugo --
+<script>
 const shop = Shugo.query("shop").select("name").get(1)
 const count = Shugo.query("products").count()
 console.log("header")
----
+</script>
 <header>{shop.name} · {count} products</header>
--- pages/+layout.shugo --
----
+-- src/pages/+layout.shugo --
+<script>
+let { children } = $props()
 import Header from "../components/Header.shugo"
----
-<html><body><Header /><main><g-slot /></main></body></html>
--- pages/index.shugo --
----
+</script>
+<html><body><Header /><main>{@render children()}</main></body></html>
+-- src/pages/index.shugo --
+<script>
 import Card from "../components/Card.shugo"
 const top = Shugo.query("products").select("id").order("position").limit(2).all()
 console.log("index")
----
-<ul><g-for each={top} as="p"><li><Card id={p.id} /></li></g-for></ul>
--- pages/products/[slug].shugo --
----
-import Card from "../../components/Card.shugo"
+</script>
+<ul>{#each top as p}<li><Card id={p.id} /></li>{/each}</ul>
+-- src/pages/products/[slug].shugo --
+<script module>
 export const getStaticPaths = ({ query }) => query("products").select("slug").all().map(({ slug }) => ({ params: { slug } }))
+</script>
+<script>
+import Card from "../../components/Card.shugo"
 const item = Shugo.query("products").select("title", "price")
   .where({ slug: Shugo.params.slug }).join("categories", "category", { select: ["title"], as: "group" }).first()
 const reviews = Shugo.query("reviews").select("text").where({ product: item.id, approved: true }).all()
 const related = Shugo.query("related").select("other").where({ product: item.id }).order("position").all()
 console.log("page " + item.id)
----
+</script>
 <h1>{item.title}</h1><p>{item.price} · {item.group?.title}</p>
-<ul><g-for each={reviews} as="r"><li>{r.text}</li></g-for></ul>
-<nav><g-for each={related} as="r"><Card id={r.other} /></g-for></nav>
--- pages/categories/[id]/[...page].shugo --
----
-import Card from "../../../components/Card.shugo"
+<ul>{#each reviews as r}<li>{r.text}</li>{/each}</ul>
+<nav>{#each related as r}<Card id={r.other} />{/each}</nav>
+-- src/pages/categories/[id]/[...page].shugo --
+<script module>
 export const getStaticPaths = ({ query, paginate }) =>
   query("categories").select("id").all().flatMap(({ id }) => paginate(query("products").where({ category: id }).count(), { pageSize: 2, params: { id } }))
+</script>
+<script>
+import Card from "../../../components/Card.shugo"
 const category = Shugo.query("categories").get(Shugo.params.id)
 const page = Shugo.paginate(Shugo.query("products").select("id").where({ category: category.id }).order("position"), { pageSize: 2 })
 console.log("list " + Shugo.url.pathname)
----
+</script>
 <h1>{category.title}: {page.total}, page {page.currentPage} of {page.lastPage}</h1>
-<g-for each={page.data} as="p"><Card id={p.id} /></g-for>
-<g-if cond={page.url.next}><a href={page.url.next}>next</a></g-if>
+{#each page.data as p}<Card id={p.id} />{/each}
+{#if page.url.next}<a href={page.url.next}>next</a>{/if}
 `
 
 const dataShopRows = `
@@ -192,12 +197,8 @@ func TestDataDatabase(t *testing.T) {
 		t.Fatalf("the first build: %+v, data %+v", first, first.Data)
 	}
 	s.computed()
-	expect(t, s.page("/products/jug"), `<html><body><header>Clay · 4 products</header><main><h1>Jug</h1><p>10 · Kitchen</p>
-<ul><li>Solid</li></ul>
-<nav><a href="/products/cup">Cup — 5</a><a href="/products/tray">Tray — 7</a></nav></main></body></html>`)
-	expect(t, s.page("/categories/c1"), `<html><body><header>Clay · 4 products</header><main><h1>Kitchen: 3, page 1 of 2</h1>
-<a href="/products/jug">Jug — 10</a><a href="/products/cup">Cup — 5</a>
-<a href="/categories/c1/2">next</a></main></body></html>`)
+	expect(t, s.page("/products/jug"), `<html><body><header>Clay · 4 products</header><main><h1>Jug</h1><p>10 · Kitchen</p> <ul><li>Solid</li></ul> <nav><a href="/products/cup">Cup — 5</a><a href="/products/tray">Tray — 7</a></nav></main></body></html>`)
+	expect(t, s.page("/categories/c1"), `<html><body><header>Clay · 4 products</header><main><h1>Kitchen: 3, page 1 of 2</h1> <a href="/products/jug">Jug — 10</a><a href="/products/cup">Cup — 5</a> <a href="/categories/c1/2">next</a></main></body></html>`)
 
 	t.Run("nothing changes", func(t *testing.T) {
 		report := s.update()
@@ -311,36 +312,36 @@ func TestDataQueries(t *testing.T) {
 	s := newSite(t, `
 -- shugo.json --
 {"data": "data/shop.db"}
--- pages/among.shugo --
----
+-- src/pages/among.shugo --
+<script>
 const rows = Shugo.query("products").select("title").where("id", "in", ["p1", "p3"]).order("title").all()
 console.log("among")
----
+</script>
 <p>{rows.map((row) => row.title).join(", ")}</p>
--- pages/cheap.shugo --
----
+-- src/pages/cheap.shugo --
+<script>
 const rows = Shugo.query("products").select("title", "price").where("price", "<", 8).order("price", "desc").all()
 console.log("cheap")
----
+</script>
 <p>{rows.map((row) => row.title + " " + row.price).join(", ")}</p>
--- pages/dearest.shugo --
----
+-- src/pages/dearest.shugo --
+<script>
 const row = Shugo.query("products").select("title").where({ category: "c1" }).order("price", "desc").first()
 console.log("dearest")
----
+</script>
 <p>{row.title}</p>
--- pages/joined.shugo --
----
+-- src/pages/joined.shugo --
+<script>
 const row = Shugo.query("products").select("title").join("categories", "category", { select: ["title"], as: "group" }).get("p4")
 const other = Shugo.query("categories").join("products", "id", { on: "slug", select: ["title"], as: "namesake" }).get("c1")
 console.log("joined")
----
+</script>
 <p>{row.title} in {row.group.title}; {String(other.namesake)}</p>
--- pages/count.shugo --
----
+-- src/pages/count.shugo --
+<script>
 const count = Shugo.query("products").where("price", ">=", 7).where("category", "!=", null).count()
 console.log("count")
----
+</script>
 <p>{count}</p>
 `)
 	s.sql(queryRows)
@@ -391,18 +392,18 @@ func TestDataQueryMistakes(t *testing.T) {
 		"an unknown comparison":    {`Shugo.query("products").where("price", "~", 5).all()`, `the comparisons are =, !=, <, <=, >, >=, like, in`},
 		"a join that hides a name": {`Shugo.query("products").join("categories", "category", { as: "title" }).all()`, `a row already has "title"`},
 	} {
-		s := newSite(t, "-- shugo.json --\n{\"data\": \"data/shop.db\"}\n-- pages/index.shugo --\n---\nconst rows = "+mistake[0]+"\n---\n<p>{rows.length}</p>\n")
+		s := newSite(t, "-- shugo.json --\n{\"data\": \"data/shop.db\"}\n-- src/pages/index.shugo --\n<script>\nconst rows = "+mistake[0]+"\n</script>\n<p>{rows.length}</p>\n")
 		s.sql(queryRows)
 		if _, err := s.tryBuild(); err == nil || !strings.Contains(err.Error(), mistake[1]) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
 
-	s := newSite(t, "-- pages/index.shugo --\n---\nconst rows = Shugo.query(\"products\").all()\n---\n<p>{rows.length}</p>\n")
+	s := newSite(t, "-- src/pages/index.shugo --\n<script>\nconst rows = Shugo.query(\"products\").all()\n</script>\n<p>{rows.length}</p>\n")
 	if _, err := s.tryBuild(); err == nil || !strings.Contains(err.Error(), "this project names none") {
 		t.Errorf("no data database: %v", err)
 	}
-	s = newSite(t, "-- shugo.json --\n{\"data\": \"data/shop.db\"}\n-- pages/index.shugo --\n<p>Hi</p>\n")
+	s = newSite(t, "-- shugo.json --\n{\"data\": \"data/shop.db\"}\n-- src/pages/index.shugo --\n<p>Hi</p>\n")
 	if _, err := s.tryBuild(); err == nil || !strings.Contains(err.Error(), "is not there") {
 		t.Errorf("a data database that is not there: %v", err)
 	}
@@ -418,12 +419,14 @@ func TestDataFromGetStaticPaths(t *testing.T) {
 	s := newSite(t, `
 -- shugo.json --
 {"data": "data/shop.db"}
--- pages/items/[id].shugo --
----
+-- src/pages/items/[id].shugo --
+<script module>
 export const getStaticPaths = ({ query }) => query("products").select("title").all().map((item) => ({ params: { id: item.id }, props: { item } }))
-const { item } = Shugo.props
+</script>
+<script>
+const { item } = $props()
 console.log("item " + item.id)
----
+</script>
 <h1>{item.title}</h1>
 `)
 	s.sql(queryRows)
@@ -450,18 +453,18 @@ func TestSharedBlockThatFails(t *testing.T) {
 	s := newSite(t, `
 -- shugo.json --
 {"data": "data/shop.db"}
--- components/Card.shugo --
----
-const item = Shugo.query("products").select("title").get(Shugo.props.id)
-if (!item) throw new Error("there is no product " + Shugo.props.id)
----
+-- src/components/Card.shugo --
+<script>
+const item = Shugo.query("products").select("title").get($props().id)
+if (!item) throw new Error("there is no product " + $props().id)
+</script>
 <b>{item.title}</b>
--- pages/index.shugo --
----
+-- src/pages/index.shugo --
+<script>
 import Card from "../components/Card.shugo"
 const rows = Shugo.query("products").select("id").where({ category: "c2" }).all()
----
-<Card id="p1" /><g-for each={rows} as="row"><Card id={row.id} /></g-for>
+</script>
+<Card id="p1" />{#each rows as row}<Card id={row.id} />{/each}
 `)
 	s.sql(queryRows)
 	s.build()
@@ -476,7 +479,7 @@ const rows = Shugo.query("products").select("id").where({ category: "c2" }).all(
 
 	// The page still shows the other card, whatever the data says.
 	s.sql(`DELETE FROM products WHERE id = 'p1'`)
-	if _, err := s.tryUpdate(); err == nil || !strings.Contains(err.Error(), "there is no product p1") || !strings.Contains(err.Error(), "components/Card.shugo") {
+	if _, err := s.tryUpdate(); err == nil || !strings.Contains(err.Error(), "there is no product p1") || !strings.Contains(err.Error(), "src/components/Card.shugo") {
 		t.Errorf("the update: %v", err)
 	}
 	expect(t, s.page("/"), `<b>Jug</b>`)
@@ -494,10 +497,10 @@ func TestDataJournalStartsAnew(t *testing.T) {
 	s := newSite(t, `
 -- shugo.json --
 {"data": "data/shop.db"}
--- pages/index.shugo --
----
+-- src/pages/index.shugo --
+<script>
 const rows = Shugo.query("products").select("title").order("title").all()
----
+</script>
 <p>{rows.map((row) => row.title).join(", ")}</p>
 `)
 	s.sql(queryRows)
@@ -536,12 +539,12 @@ func TestDataOutsideTheDatabase(t *testing.T) {
 {"data": "data/shop.db"}
 -- note.txt --
 old
--- pages/index.shugo --
----
+-- src/pages/index.shugo --
+<script>
 import { readFileSync } from "node:fs"
 const note = readFileSync("note.txt", "utf8")
 const count = Shugo.query("products").count()
----
+</script>
 <p>{note}: {count}</p>
 `)
 	s.sql(queryRows)
@@ -561,14 +564,16 @@ func TestDataPageBehindAnother(t *testing.T) {
 	s := newSite(t, `
 -- shugo.json --
 {"data": "data/shop.db"}
--- pages/products/special.shugo --
+-- src/pages/products/special.shugo --
 <h1>Special</h1>
--- pages/products/[slug].shugo --
----
+-- src/pages/products/[slug].shugo --
+<script module>
 export const getStaticPaths = ({ query }) => query("products").select("slug").all().map(({ slug }) => ({ params: { slug } }))
+</script>
+<script>
 const item = Shugo.query("products").select("title").where({ slug: Shugo.params.slug }).first()
 console.log("page " + item.id)
----
+</script>
 <h1>{item.title}</h1>
 `)
 	s.sql(queryRows)
@@ -592,27 +597,31 @@ func TestDataPageChangesRoutes(t *testing.T) {
 	s := newSite(t, `
 -- shugo.json --
 {"data": "data/shop.db"}
--- components/Card.shugo --
----
-const item = Shugo.query("products").select("title").get(Shugo.props.id)
-console.log("card " + Shugo.props.id)
----
+-- src/components/Card.shugo --
+<script>
+const item = Shugo.query("products").select("title").get($props().id)
+console.log("card " + $props().id)
+</script>
 <b>{item.title}</b>
--- pages/x/[slug].shugo --
----
-import Card from "../../components/Card.shugo"
+-- src/pages/x/[slug].shugo --
+<script module>
 export const getStaticPaths = ({ query }) => query("products").select("slug").where({ category: "c1" }).all().map(({ slug }) => ({ params: { slug } }))
+</script>
+<script>
+import Card from "../../components/Card.shugo"
 const item = Shugo.query("products").select("price").where({ slug: Shugo.params.slug }).first()
 console.log("exact " + item.id)
----
+</script>
 <p>exact {item.price} <Card id={item.id} /></p>
--- pages/[...all].shugo --
----
-import Card from "../components/Card.shugo"
+-- src/pages/[...all].shugo --
+<script module>
 export const getStaticPaths = ({ query }) => query("products").select("slug").all().map(({ slug }) => ({ params: { all: "x/" + slug } }))
+</script>
+<script>
+import Card from "../components/Card.shugo"
 const item = Shugo.query("products").select("price").where({ slug: Shugo.params.all.slice(2) }).first()
 console.log("loose " + item.id)
----
+</script>
 <p>loose {item.price} <Card id={item.id} /></p>
 `)
 	s.sql(queryRows)

@@ -31,7 +31,7 @@ type sourceFile struct {
 	Path, Source, Module string
 	Number               int // the number of the file in the program; -1 for files that are not templates
 	Shared               bool
-	Slots                []string
+	Outlets              []string
 	Parts                []partView
 }
 
@@ -302,7 +302,7 @@ type blockView struct {
 	Part       int
 	Values     []string
 	Children   []int
-	Slots      []string
+	Snippets   []string
 	Walk       []walkStep
 	Error      string
 }
@@ -318,8 +318,8 @@ func blocks(c *compiled, s storeLook, rec *record.Record, shared bool) []blockVi
 	for i := range rec.Blocks {
 		b := &rec.Blocks[i]
 		v := blockView{Index: i, Use: b.Use, Shared: b.Shared, Children: b.Children}
-		for _, slot := range b.Slots {
-			v.Slots = append(v.Slots, fmt.Sprintf("%s = blocks %v", slot.Name, slot.Blocks))
+		for _, snippet := range b.Snippets {
+			v.Snippets = append(v.Snippets, fmt.Sprintf("%s = blocks %v", snippet.Name, snippet.Blocks))
 		}
 		if b.Use {
 			v.SharedName = s.SharedName(b.Shared)

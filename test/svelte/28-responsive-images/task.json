@@ -1,0 +1,86 @@
+{
+ "id": "28-responsive-images",
+ "title": "A gallery of responsive images: srcset, sizes, loading priorities, alt and captions",
+ "entry": "Gallery",
+ "datasets": [
+  {
+   "widths": [
+    320,
+    640,
+    1280
+   ],
+   "sizes": "(max-width: 600px) 100vw, 50vw",
+   "images": [
+    {
+     "src": "/photos/kiln.jpg",
+     "width": 1600,
+     "height": 1067,
+     "alt": "Firing kiln",
+     "caption": "Our kiln, 1300 °C"
+    },
+    {
+     "src": "/photos/texture.jpg",
+     "width": 800,
+     "height": 800
+    },
+    {
+     "src": "/photos/jugs.jpg",
+     "width": 1280,
+     "height": 853,
+     "alt": "Pitchers on the shelf",
+     "caption": ""
+    }
+   ]
+  },
+  {
+   "widths": [
+    480,
+    960
+   ],
+   "sizes": "100vw",
+   "images": [
+    {
+     "src": "/img/workshop.webp",
+     "width": 960,
+     "height": 640,
+     "alt": "",
+     "caption": "Studio <at night> & \"silence\""
+    },
+    {
+     "src": "/img/cup.webp",
+     "width": 300,
+     "height": 200,
+     "alt": "\"Morning\" cup & saucer"
+    },
+    {
+     "src": "/img/plate.webp",
+     "width": 480,
+     "height": 480,
+     "alt": "Plate",
+     "caption": "Plate, Ø 24 cm"
+    }
+   ]
+  },
+  {
+   "widths": [
+    320,
+    640
+   ],
+   "sizes": "50vw",
+   "images": []
+  },
+  {
+   "widths": [],
+   "sizes": "50vw",
+   "images": [
+    {
+     "src": "/img/only.png",
+     "width": 640,
+     "height": 427,
+     "alt": "Only photo",
+     "caption": "One photo"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,47 @@
+{
+ "id": "15-join-authors",
+ "title": "A byline: names joined with commas and \"and\", with the correct spacing",
+ "entry": "Byline",
+ "datasets": [
+  {
+   "authors": [
+    {
+     "name": "Anna Irving",
+     "url": "/authors/anna"
+    },
+    {
+     "name": "Ben Peters"
+    },
+    {
+     "name": "Vera Smith",
+     "url": "/authors/vera"
+    },
+    {
+     "name": "Greg Carter"
+    }
+   ]
+  },
+  {
+   "authors": []
+  },
+  {
+   "authors": [
+    {
+     "name": "Mary <Editor> & Co"
+    }
+   ]
+  },
+  {
+   "authors": [
+    {
+     "name": "Oliver Shaw",
+     "url": ""
+    },
+    {
+     "name": "Olivia \"Liv\" Kim",
+     "url": "/authors?id=7&lang=ru"
+    }
+   ]
+  }
+ ]
+}

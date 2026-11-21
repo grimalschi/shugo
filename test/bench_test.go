@@ -24,7 +24,7 @@ func benchCatalogue(b *testing.B) (*site, int) {
 		b.Fatal(err)
 	}
 	os.RemoveAll(filepath.Join(s.root, "_build"))
-	generate := exec.Command("node", "lib/generate.mjs", strconv.Itoa(size))
+	generate := exec.Command("node", "scripts/generate.mjs", strconv.Itoa(size))
 	generate.Dir = s.root
 	if out, err := generate.CombinedOutput(); err != nil {
 		b.Fatalf("%v: %s", err, out)

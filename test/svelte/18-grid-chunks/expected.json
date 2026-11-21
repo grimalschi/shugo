@@ -1,0 +1,18 @@
+[
+ {
+  "body": "<div class=\"grid\" style=\"--columns: 3;\"><div class=\"row\" data-row=\"1\"><div class=\"cell\"><a href=\"/products/jug\">Pitcher</a></div><div class=\"cell\"><a href=\"/products/cup\">Cup</a></div><div class=\"cell\">Platter</div> </div><div class=\"row\" data-row=\"2\"><div class=\"cell\"><a href=\"/products/vase\">Vase</a></div><div class=\"cell\"><a href=\"/products/bowl\">Bowl</a></div><div class=\"cell\">Plate</div> </div><div class=\"row\" data-row=\"3\"><div class=\"cell\"><a href=\"/products/mug\">Mug</a></div> <div class=\"pad\" aria-hidden=\"true\"></div><div class=\"pad\" aria-hidden=\"true\"></div></div></div>",
+  "head": ""
+ },
+ {
+  "body": "<p class=\"empty\">Nothing found</p>",
+  "head": ""
+ },
+ {
+  "body": "<div class=\"grid\" style=\"--columns: 5;\"><div class=\"row\" data-row=\"1\"><div class=\"cell\">Salt &amp; pepper</div><div class=\"cell\"><a href=\"/new?a=1&amp;b=2\">&lt;New> \"North\"</a></div> <div class=\"pad\" aria-hidden=\"true\"></div><div class=\"pad\" aria-hidden=\"true\"></div><div class=\"pad\" aria-hidden=\"true\"></div></div></div>",
+  "head": ""
+ },
+ {
+  "body": "<div class=\"grid\" style=\"--columns: 1;\"><div class=\"row\" data-row=\"1\"><div class=\"cell\"><a href=\"/products/pot\">Planter</a></div> </div><div class=\"row\" data-row=\"2\"><div class=\"cell\">Candlestick</div> </div><div class=\"row\" data-row=\"3\"><div class=\"cell\">Sugar bowl</div> </div></div>",
+  "head": ""
+ }
+]

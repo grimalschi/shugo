@@ -1,0 +1,164 @@
+{
+ "id": "20-dynamic-table",
+ "title": "A table built from a config of columns, with formats, alignment and a footer of sums",
+ "entry": "DataTable",
+ "datasets": [
+  {
+   "caption": "Order No. 17",
+   "columns": [
+    {
+     "key": "name",
+     "label": "Item",
+     "format": "text"
+    },
+    {
+     "key": "qty",
+     "label": "Qty",
+     "format": "text",
+     "align": "center"
+    },
+    {
+     "key": "price",
+     "label": "Price",
+     "format": "money"
+    },
+    {
+     "key": "discount",
+     "label": "Discount",
+     "format": "percent"
+    },
+    {
+     "key": "total",
+     "label": "Subtotal",
+     "format": "money"
+    }
+   ],
+   "rows": [
+    {
+     "name": "‘North’ Pitcher",
+     "qty": 1,
+     "price": 2400,
+     "discount": 0.15,
+     "total": 2040
+    },
+    {
+     "name": "Cup",
+     "qty": 4,
+     "price": 650.5,
+     "discount": 0,
+     "total": 2602
+    },
+    {
+     "name": "Saucer",
+     "qty": 4,
+     "price": 300,
+     "total": 1200
+    }
+   ]
+  },
+  {
+   "columns": [
+    {
+     "key": "amount",
+     "label": "Subtotal",
+     "format": "money",
+     "align": "left"
+    },
+    {
+     "key": "note",
+     "label": "Comment <internal>",
+     "format": "text"
+    },
+    {
+     "key": "share",
+     "label": "Share",
+     "format": "percent",
+     "align": "center"
+    },
+    {
+     "key": "fee",
+     "label": "Commission & fees",
+     "format": "money"
+    }
+   ],
+   "rows": [
+    {
+     "amount": 0.1,
+     "note": "Test \"quotes\" & <tags>",
+     "share": 0.333,
+     "fee": 0
+    },
+    {
+     "amount": 0.2,
+     "note": "",
+     "share": null,
+     "fee": 15.5
+    },
+    {
+     "amount": null,
+     "note": 0,
+     "share": 1
+    },
+    {
+     "note": "Last",
+     "share": 0.05,
+     "fee": ""
+    }
+   ]
+  },
+  {
+   "caption": "Empty",
+   "columns": [
+    {
+     "key": "name",
+     "label": "Item",
+     "format": "text"
+    },
+    {
+     "key": "price",
+     "label": "Price",
+     "format": "money"
+    },
+    {
+     "key": "discount",
+     "label": "Discount",
+     "format": "percent"
+    }
+   ],
+   "rows": []
+  },
+  {
+   "caption": "",
+   "columns": [
+    {
+     "key": "city",
+     "label": "City",
+     "format": "text"
+    },
+    {
+     "key": "share",
+     "label": "Share",
+     "format": "percent"
+    },
+    {
+     "key": "orders",
+     "label": "Orders",
+     "format": "text",
+     "align": "right"
+    }
+   ],
+   "rows": [
+    {
+     "city": "Salem",
+     "share": 0.2,
+     "orders": 120
+    },
+    {
+     "city": "Portland",
+     "share": 0.8,
+     "orders": 480
+    }
+   ]
+  }
+ ]
+}

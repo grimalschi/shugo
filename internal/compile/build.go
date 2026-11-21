@@ -69,8 +69,10 @@ func Build(p *project.Project) (*Result, error) {
 	if site.Origin == "" {
 		site.Origin = "http://localhost"
 	}
+	var warnings []string
 	for i, path := range paths {
-		site.Files = append(site.Files, program.File{Path: path, Parts: b.units[i].parts, Slots: b.units[i].outlets, Shared: bundled.shared[path]})
+		site.Files = append(site.Files, program.File{Path: path, Parts: b.units[i].parts, Outlets: b.units[i].outlets, Shared: bundled.shared[path]})
+		warnings = append(warnings, b.units[i].warnings...)
 	}
 
 	output := p.Path(project.Output)
@@ -106,7 +108,7 @@ func Build(p *project.Project) (*Result, error) {
 			return nil, err
 		}
 	}
-	return &Result{Site: site, ID: digest(data, bundled.code), Warnings: bundled.warnings}, nil
+	return &Result{Site: site, ID: digest(data, bundled.code), Warnings: append(warnings, bundled.warnings...)}, nil
 }
 
 // Load reads a project that Build has compiled before.
@@ -290,10 +292,10 @@ func (b *builder) routes() ([]program.Route, error) {
 				r.Segments = append(r.Segments, program.Segment{Text: s.Name})
 			}
 		}
-		if dynamic && !u.script.paths {
+		if dynamic && !u.paths {
 			errs = append(errs, u.file.Errorf(0, "the name of this page has a parameter, so its script must say which pages there are: export function getStaticPaths({ query }) { return query(\"products\").select(\"slug\").all().map((row) => ({ params: { slug: row.slug } })) }; without a data database, return the list itself: [{ params: { … } }]"))
 		}
-		// Every folder from pages/ down to the page may hold a layout.
+		// Every folder from src/pages/ down to the page may hold a layout.
 		for dir := project.Pages; ; {
 			if layout, found := b.ids[dir+"/"+route.Layout]; found {
 				r.Layouts = append(r.Layouts, layout)
@@ -316,20 +318,22 @@ func (b *builder) routes() ([]program.Route, error) {
 	return out, nil
 }
 
-// provided checks that every slot a page fills for its layouts is shown by
-// one of them, and the same for every layout and the layouts around it. The
-// nearest layout that has the slot shows it.
+// provided checks that what a page gives the head, <svelte:head>, is shown:
+// by the page itself if it writes the <head>, or by one of its layouts; the
+// same for every layout and the layouts around it.
 func (b *builder) provided(page *unit, layouts []int) Errors {
 	var errs Errors
 	check := func(u *unit, around []int) {
-		for name, at := range u.provided {
-			shown := false
-			for _, layout := range around {
-				shown = shown || slices.Contains(b.units[layout].outlets, name)
-			}
-			if !shown {
-				errs = append(errs, u.file.Errorf(at, `slot=%q gives markup to a layout, and no layout around this file has <g-slot name=%q />`, name, name))
-			}
+		at, provides := u.provided["head"]
+		if !provides {
+			return
+		}
+		shown := slices.Contains(u.outlets, "head")
+		for _, layout := range around {
+			shown = shown || slices.Contains(b.units[layout].outlets, "head")
+		}
+		if !shown {
+			errs = append(errs, u.file.Errorf(at, `<svelte:head> gives markup to the <head> of the page, and neither this file nor a layout around it writes a <head>`))
 		}
 	}
 	check(page, layouts)
@@ -394,12 +398,17 @@ func (b *builder) bundle(routes []program.Route) (*bundled, error) {
 			return api.OnLoadResult{Contents: &contents, Loader: api.LoaderJS, ResolveDir: root}, nil
 		})
 		build.OnLoad(api.OnLoadOptions{Filter: `\.shugo$`}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
-			id, known := b.ids[b.relative(args.Path)]
-			if !known {
+			rel := b.relative(args.Path)
+			id, known := b.ids[rel]
+			switch {
+			case known:
+			case !strings.HasPrefix(rel, project.Source+"/"):
+				return api.OnLoadResult{}, fmt.Errorf("%s lies outside %s/: the templates of a project are in %s/, components in %s/components/", rel, project.Source, project.Source, project.Source)
+			default:
 				return api.OnLoadResult{}, fmt.Errorf("this file is not among the sources of the project")
 			}
 			u := b.units[id]
-			contents := u.module.text(u.script)
+			contents := u.module.text()
 			return api.OnLoadResult{Contents: &contents, Loader: api.LoaderTS, ResolveDir: filepath.Dir(args.Path)}, nil
 		})
 		// Style sheets do not go into JavaScript: they are collected and
@@ -418,7 +427,7 @@ func (b *builder) bundle(routes []program.Route) (*bundled, error) {
 		Charset:       api.CharsetUTF8,
 		Packages:      api.PackagesExternal,
 		External:      []string{"bun:sqlite"}, // built into Bun; Node has node:sqlite
-		Alias:         map[string]string{"@": root},
+		Alias:         map[string]string{"@": filepath.Join(root, project.Source)},
 		Plugins:       []api.Plugin{plugin},
 		AbsWorkingDir: root,
 		Outfile:       filepath.Join(root, project.Output, Bundle),
@@ -490,13 +499,13 @@ func (b *builder) diagnose(message api.Message) *syntax.Error {
 	u := b.units[id]
 	text := message.Text
 	if line := at.Line - 1; line < len(u.module.from) && u.module.from[line].kind == 't' && markupInCode.MatchString(u.module.lines[line]) {
-		text += "; markup cannot stand inside {…}: put <g-if> or <g-for> around it instead"
+		text += "; markup cannot stand inside {…}: write {#if …}…{/if} or {#each …}…{/each} around it instead"
 	}
 	if strings.Contains(text, `"await" can only be used inside an "async" function`) {
 		text = "a page is computed without waiting: its data comes from Shugo.query, which answers at once, so there is nothing to wait for. " +
 			"What takes time and needs doing once, such as making a highlighter, can be awaited at the top of a module in lib/ and used here"
 	}
-	return u.file.Errorf(u.module.locate(u.script, at.Line-1, at.Column), "%s", text)
+	return u.file.Errorf(u.module.locate(at.Line-1, at.Column), "%s", text)
 }
 
 // graph reads from the bundler which module imports which. It gives the

@@ -28,9 +28,10 @@ type module struct {
 
 // origin is where a line of the module came from.
 type origin struct {
-	kind   byte // 0 for a line of the compiler's own, 't' for the template, 's' for the script
-	offset int  // 't': where the line starts in the file; 0: the place to blame
-	line   int  // 's': the line of the transformed script
+	kind   byte    // 0 for a line of the compiler's own, 't' for the template, 's' for a script
+	offset int     // 't': where the line starts in the file; 0: the place to blame
+	line   int     // 's': the line of the transformed script
+	script *script // 's': the script
 }
 
 // add writes lines of the compiler's own.
@@ -53,16 +54,16 @@ func (m *module) code(c code) {
 	m.last = offset
 }
 
-// script writes lines of the transformed script.
+// script writes lines of a transformed script.
 func (m *module) script(s *script, lines span) {
 	for i := lines.from; i < lines.to; i++ {
 		m.lines = append(m.lines, s.lines[i])
-		m.from = append(m.from, origin{kind: 's', line: i})
+		m.from = append(m.from, origin{kind: 's', line: i, script: s})
 	}
 }
 
 // locate returns the offset in the file that a place in the module came from.
-func (m *module) locate(s *script, line, column int) int {
+func (m *module) locate(line, column int) int {
 	if line < 0 || line >= len(m.from) {
 		return 0
 	}
@@ -71,9 +72,9 @@ func (m *module) locate(s *script, line, column int) int {
 		return from.offset + min(column, len(m.lines[line]))
 	case 's':
 		text := m.lines[line]
-		_, sourceLine, sourceColumn, found := s.smap.Find(from.line, utf16Length(text[:min(column, len(text))]))
+		_, sourceLine, sourceColumn, found := from.script.smap.Find(from.line, utf16Length(text[:min(column, len(text))]))
 		if !found {
-			return m.file.Script.Start
+			return from.script.at.Start
 		}
 		return offsetAt(m.file.Source, sourceLine, sourceColumn)
 	default:
@@ -82,15 +83,15 @@ func (m *module) locate(s *script, line, column int) int {
 }
 
 // text returns the module with its source map attached.
-func (m *module) text(s *script) string {
+func (m *module) text() string {
 	smap := &sourcemap.Map{Sources: []string{pathBase(m.file.Path)}, Lines: make([][]sourcemap.Segment, len(m.lines))}
 	for i, from := range m.from {
 		switch from.kind {
 		case 't':
 			smap.Lines[i] = m.segments(m.lines[i], from.offset)
 		case 's':
-			if from.line < len(s.smap.Lines) {
-				smap.Lines[i] = s.smap.Lines[from.line]
+			if from.line < len(from.script.smap.Lines) {
+				smap.Lines[i] = from.script.smap.Lines[from.line]
 			}
 		}
 	}
@@ -118,9 +119,8 @@ func (m *module) segments(line string, offset int) []sourcemap.Segment {
 	}
 }
 
-// readsPage tells whether code uses Shugo for more than the parameters, the
-// slots, the component itself and the data database: Shugo.url, Shugo.params,
-// Shugo.paginate, or Shugo as a value.
+// readsPage tells whether code uses Shugo for more than the data database:
+// Shugo.url, Shugo.params, Shugo.paginate, or Shugo as a value.
 func readsPage(text string) bool {
 	if !strings.Contains(text, "Shugo") {
 		return false
@@ -143,7 +143,7 @@ func readsPage(text string) bool {
 			switch name := peek.Text(member); {
 			case peek.Text(dot) != ".":
 				return true
-			case name != "props" && name != "slots" && name != "self" && name != "query":
+			case name != "query":
 				return true
 			}
 		}

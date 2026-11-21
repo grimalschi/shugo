@@ -1,0 +1,18 @@
+[
+ {
+  "body": "<div class=\"agenda\"><section class=\"day\" data-date=\"2026-11-21\"><h3>November 21, Saturday</h3> <ul><li><time datetime=\"2026-11-21T10:00\">10:00</time> Studio opening</li><li><time datetime=\"2026-11-21T12:00\">12:00</time> Handbuilding workshop</li></ul></section><section class=\"day\" data-date=\"2026-11-22\"><h3>November 22, Sunday</h3> <ul><li><time datetime=\"2026-11-22T15:00\">15:00</time> Market</li></ul></section><section class=\"day\" data-date=\"2026-11-23\"><h3>November 23, Monday</h3> <ul><li class=\"cancelled\"><time datetime=\"2026-11-23T09:00\">09:00</time> <s>Firing</s></li><li><time datetime=\"2026-11-23T18:30\">18:30</time> ‘Glazes’ lecture</li></ul></section></div>",
+  "head": ""
+ },
+ {
+  "body": "<p class=\"empty\">No events</p>",
+  "head": ""
+ },
+ {
+  "body": "<div class=\"agenda\"><section class=\"day\" data-date=\"2026-02-09\"><h3>February 9, Monday</h3> <ul><li><time datetime=\"2026-02-09T07:05\">07:05</time> \"Swallow\" train</li></ul></section><section class=\"day\" data-date=\"2026-12-31\"><h3>December 31, Thursday</h3> <ul><li><time datetime=\"2026-12-31T20:00\">20:00</time> Dinner</li><li><time datetime=\"2026-12-31T23:00\">23:00</time> Farewell to the &lt;old> year</li><li class=\"cancelled\"><time datetime=\"2026-12-31T23:00\">23:00</time> <s>Midnight chimes</s></li></ul></section><section class=\"day\" data-date=\"2027-01-01\"><h3>January 1, Friday</h3> <ul><li><time datetime=\"2027-01-01T00:00\">00:00</time> Salute &amp; fireworks</li></ul></section></div>",
+  "head": ""
+ },
+ {
+  "body": "<div class=\"agenda\"><section class=\"day\" data-date=\"2026-03-08\"><h3>March 8, Sunday</h3> <ul><li class=\"cancelled\"><time datetime=\"2026-03-08T11:00\">11:00</time> <s>Holiday market</s></li></ul></section></div>",
+  "head": ""
+ }
+]

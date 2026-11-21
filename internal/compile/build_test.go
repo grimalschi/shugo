@@ -44,7 +44,7 @@ func TestBuildExample(t *testing.T) {
 	}
 	// The header reads nothing of the page; the card too; the layout shows
 	// both and has no script that reads the page.
-	for path, want := range map[string]bool{"components/Header.shugo": true, "components/Card.shugo": true, "pages/+layout.shugo": true, "pages/about.shugo": false} {
+	for path, want := range map[string]bool{"src/components/Header.shugo": true, "src/components/Card.shugo": true, "src/pages/+layout.shugo": true, "src/pages/about.shugo": false} {
 		if shared[path] != want {
 			t.Errorf("%s: shared = %v, want %v", path, shared[path], want)
 		}

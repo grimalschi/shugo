@@ -1,0 +1,695 @@
+{
+ "id": "19-comments-thread",
+ "title": "A thread of comments rendered recursively, cut at depth 3",
+ "entry": "CommentThread",
+ "datasets": [
+  {
+   "comments": [
+    {
+     "id": 1,
+     "author": "Anna",
+     "text": "Great mug!",
+     "replies": [
+      {
+       "id": 2,
+       "author": "Ben",
+       "text": "I agree. It keeps drinks warm.",
+       "replies": [
+        {
+         "id": 3,
+         "author": "Vera",
+         "text": "I broke mine.",
+         "deleted": true,
+         "replies": [
+          {
+           "id": 4,
+           "author": "Anna",
+           "text": "Sorry to hear it!",
+           "replies": [
+            {
+             "id": 5,
+             "author": "Greg",
+             "text": "Try gluing it with epoxy.",
+             "replies": []
+            },
+            {
+             "id": 6,
+             "author": "Dina",
+             "text": "Better to get a new one.",
+             "replies": [
+              {
+               "id": 7,
+               "author": "Vera",
+               "text": "That’s what I’ll do.",
+               "replies": []
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "id": 8,
+       "author": "Vera",
+       "text": "Is it dishwasher safe?",
+       "replies": []
+      }
+     ]
+    },
+    {
+     "id": 9,
+     "author": "Daniel",
+     "text": "When will the blue one be available?",
+     "replies": []
+    }
+   ]
+  },
+  {
+   "comments": [
+    {
+     "id": 100,
+     "author": "First <1>",
+     "text": "Thread with different reply counts",
+     "replies": [
+      {
+       "id": 249,
+       "author": "Second",
+       "text": "level 1",
+       "replies": [
+        {
+         "id": 235,
+         "author": "Third",
+         "text": "level 2",
+         "replies": [
+          {
+           "id": 222,
+           "author": "Fourth",
+           "text": "one reply",
+           "replies": [
+            {
+             "id": 221,
+             "author": "Reader 1",
+             "text": "1 total: reply 1",
+             "replies": []
+            }
+           ]
+          },
+          {
+           "id": 228,
+           "author": "Fifth",
+           "text": "five replies",
+           "replies": [
+            {
+             "id": 223,
+             "author": "Reader 1",
+             "text": "5 total: reply 1",
+             "replies": []
+            },
+            {
+             "id": 224,
+             "author": "Reader 2",
+             "text": "5 total: reply 2",
+             "replies": []
+            },
+            {
+             "id": 225,
+             "author": "Reader 3",
+             "text": "5 total: reply 3",
+             "replies": []
+            },
+            {
+             "id": 226,
+             "author": "Reader 4",
+             "text": "5 total: reply 4",
+             "replies": []
+            },
+            {
+             "id": 227,
+             "author": "Reader 5",
+             "text": "5 total: reply 5",
+             "replies": []
+            }
+           ]
+          },
+          {
+           "id": 233,
+           "author": "Sixth",
+           "text": "deleted, with replies",
+           "deleted": true,
+           "replies": [
+            {
+             "id": 230,
+             "author": "A",
+             "text": "a",
+             "replies": [
+              {
+               "id": 229,
+               "author": "A1",
+               "text": "a1",
+               "replies": []
+              }
+             ]
+            },
+            {
+             "id": 232,
+             "author": "B",
+             "text": "b",
+             "replies": [
+              {
+               "id": 231,
+               "author": "B1",
+               "text": "b1",
+               "replies": []
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "id": 234,
+           "author": "Seventh",
+           "text": "no replies",
+           "replies": []
+          }
+         ]
+        },
+        {
+         "id": 248,
+         "author": "Eighth",
+         "text": "level 2",
+         "replies": [
+          {
+           "id": 247,
+           "author": "Ninth",
+           "text": "eleven replies",
+           "replies": [
+            {
+             "id": 236,
+             "author": "Reader 1",
+             "text": "11 total: reply 1",
+             "replies": []
+            },
+            {
+             "id": 237,
+             "author": "Reader 2",
+             "text": "11 total: reply 2",
+             "replies": []
+            },
+            {
+             "id": 238,
+             "author": "Reader 3",
+             "text": "11 total: reply 3",
+             "replies": []
+            },
+            {
+             "id": 239,
+             "author": "Reader 4",
+             "text": "11 total: reply 4",
+             "replies": []
+            },
+            {
+             "id": 240,
+             "author": "Reader 5",
+             "text": "11 total: reply 5",
+             "replies": []
+            },
+            {
+             "id": 241,
+             "author": "Reader 6",
+             "text": "11 total: reply 6",
+             "replies": []
+            },
+            {
+             "id": 242,
+             "author": "Reader 7",
+             "text": "11 total: reply 7",
+             "replies": []
+            },
+            {
+             "id": 243,
+             "author": "Reader 8",
+             "text": "11 total: reply 8",
+             "replies": []
+            },
+            {
+             "id": 244,
+             "author": "Reader 9",
+             "text": "11 total: reply 9",
+             "replies": []
+            },
+            {
+             "id": 245,
+             "author": "Reader 10",
+             "text": "11 total: reply 10",
+             "replies": []
+            },
+            {
+             "id": 246,
+             "author": "Reader 11",
+             "text": "11 total: reply 11",
+             "replies": []
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "id": 252,
+       "author": "Tenth",
+       "text": "level 1",
+       "replies": [
+        {
+         "id": 251,
+         "author": "Eleventh",
+         "text": "level 2",
+         "replies": [
+          {
+           "id": 250,
+           "author": "Twelfth",
+           "text": "twenty-one replies",
+           "replies": [
+            {
+             "id": 200,
+             "author": "Reader 1",
+             "text": "21 total: reply 1",
+             "replies": [
+              {
+               "id": 220,
+               "author": "Deeper",
+               "text": "reply to a reply",
+               "replies": []
+              }
+             ]
+            },
+            {
+             "id": 201,
+             "author": "Reader 2",
+             "text": "21 total: reply 2",
+             "replies": []
+            },
+            {
+             "id": 202,
+             "author": "Reader 3",
+             "text": "21 total: reply 3",
+             "replies": []
+            },
+            {
+             "id": 203,
+             "author": "Reader 4",
+             "text": "21 total: reply 4",
+             "replies": []
+            },
+            {
+             "id": 204,
+             "author": "Reader 5",
+             "text": "21 total: reply 5",
+             "replies": []
+            },
+            {
+             "id": 205,
+             "author": "Reader 6",
+             "text": "21 total: reply 6",
+             "replies": []
+            },
+            {
+             "id": 206,
+             "author": "Reader 7",
+             "text": "21 total: reply 7",
+             "replies": []
+            },
+            {
+             "id": 207,
+             "author": "Reader 8",
+             "text": "21 total: reply 8",
+             "replies": []
+            },
+            {
+             "id": 208,
+             "author": "Reader 9",
+             "text": "21 total: reply 9",
+             "replies": []
+            },
+            {
+             "id": 209,
+             "author": "Reader 10",
+             "text": "21 total: reply 10",
+             "replies": []
+            },
+            {
+             "id": 210,
+             "author": "Reader 11",
+             "text": "21 total: reply 11",
+             "replies": []
+            },
+            {
+             "id": 211,
+             "author": "Reader 12",
+             "text": "21 total: reply 12",
+             "replies": []
+            },
+            {
+             "id": 212,
+             "author": "Reader 13",
+             "text": "21 total: reply 13",
+             "replies": []
+            },
+            {
+             "id": 213,
+             "author": "Reader 14",
+             "text": "21 total: reply 14",
+             "replies": []
+            },
+            {
+             "id": 214,
+             "author": "Reader 15",
+             "text": "21 total: reply 15",
+             "replies": []
+            },
+            {
+             "id": 215,
+             "author": "Reader 16",
+             "text": "21 total: reply 16",
+             "replies": []
+            },
+            {
+             "id": 216,
+             "author": "Reader 17",
+             "text": "21 total: reply 17",
+             "replies": []
+            },
+            {
+             "id": 217,
+             "author": "Reader 18",
+             "text": "21 total: reply 18",
+             "replies": []
+            },
+            {
+             "id": 218,
+             "author": "Reader 19",
+             "text": "21 total: reply 19",
+             "replies": []
+            },
+            {
+             "id": 219,
+             "author": "Reader 20",
+             "text": "21 total: reply 20",
+             "replies": []
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": 101,
+     "author": "Deleted",
+     "text": "this is hidden",
+     "deleted": true,
+     "replies": []
+    },
+    {
+     "id": 102,
+     "author": "\"Hedgehog\" & Co",
+     "text": "Text with <script>alert(1)</script> & more",
+     "replies": [
+      {
+       "id": 291,
+       "author": "G",
+       "text": "deleted",
+       "deleted": true,
+       "replies": [
+        {
+         "id": 266,
+         "author": "H",
+         "text": "level 2",
+         "replies": [
+          {
+           "id": 265,
+           "author": "I",
+           "text": "twelve",
+           "replies": [
+            {
+             "id": 253,
+             "author": "Reader 1",
+             "text": "12 total: reply 1",
+             "replies": []
+            },
+            {
+             "id": 254,
+             "author": "Reader 2",
+             "text": "12 total: reply 2",
+             "replies": []
+            },
+            {
+             "id": 255,
+             "author": "Reader 3",
+             "text": "12 total: reply 3",
+             "replies": []
+            },
+            {
+             "id": 256,
+             "author": "Reader 4",
+             "text": "12 total: reply 4",
+             "replies": []
+            },
+            {
+             "id": 257,
+             "author": "Reader 5",
+             "text": "12 total: reply 5",
+             "replies": []
+            },
+            {
+             "id": 258,
+             "author": "Reader 6",
+             "text": "12 total: reply 6",
+             "replies": []
+            },
+            {
+             "id": 259,
+             "author": "Reader 7",
+             "text": "12 total: reply 7",
+             "replies": []
+            },
+            {
+             "id": 260,
+             "author": "Reader 8",
+             "text": "12 total: reply 8",
+             "replies": []
+            },
+            {
+             "id": 261,
+             "author": "Reader 9",
+             "text": "12 total: reply 9",
+             "replies": []
+            },
+            {
+             "id": 262,
+             "author": "Reader 10",
+             "text": "12 total: reply 10",
+             "replies": []
+            },
+            {
+             "id": 263,
+             "author": "Reader 11",
+             "text": "12 total: reply 11",
+             "replies": []
+            },
+            {
+             "id": 264,
+             "author": "Reader 12",
+             "text": "12 total: reply 12",
+             "replies": []
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "id": 290,
+         "author": "K",
+         "text": "level 2",
+         "replies": [
+          {
+           "id": 289,
+           "author": "L",
+           "text": "twenty-two",
+           "replies": [
+            {
+             "id": 267,
+             "author": "Reader 1",
+             "text": "22 total: reply 1",
+             "replies": []
+            },
+            {
+             "id": 268,
+             "author": "Reader 2",
+             "text": "22 total: reply 2",
+             "replies": []
+            },
+            {
+             "id": 269,
+             "author": "Reader 3",
+             "text": "22 total: reply 3",
+             "replies": []
+            },
+            {
+             "id": 270,
+             "author": "Reader 4",
+             "text": "22 total: reply 4",
+             "replies": []
+            },
+            {
+             "id": 271,
+             "author": "Reader 5",
+             "text": "22 total: reply 5",
+             "replies": []
+            },
+            {
+             "id": 272,
+             "author": "Reader 6",
+             "text": "22 total: reply 6",
+             "replies": []
+            },
+            {
+             "id": 273,
+             "author": "Reader 7",
+             "text": "22 total: reply 7",
+             "replies": []
+            },
+            {
+             "id": 274,
+             "author": "Reader 8",
+             "text": "22 total: reply 8",
+             "replies": []
+            },
+            {
+             "id": 275,
+             "author": "Reader 9",
+             "text": "22 total: reply 9",
+             "replies": []
+            },
+            {
+             "id": 276,
+             "author": "Reader 10",
+             "text": "22 total: reply 10",
+             "replies": []
+            },
+            {
+             "id": 277,
+             "author": "Reader 11",
+             "text": "22 total: reply 11",
+             "replies": []
+            },
+            {
+             "id": 278,
+             "author": "Reader 12",
+             "text": "22 total: reply 12",
+             "replies": []
+            },
+            {
+             "id": 279,
+             "author": "Reader 13",
+             "text": "22 total: reply 13",
+             "replies": []
+            },
+            {
+             "id": 280,
+             "author": "Reader 14",
+             "text": "22 total: reply 14",
+             "replies": []
+            },
+            {
+             "id": 281,
+             "author": "Reader 15",
+             "text": "22 total: reply 15",
+             "replies": []
+            },
+            {
+             "id": 282,
+             "author": "Reader 16",
+             "text": "22 total: reply 16",
+             "replies": []
+            },
+            {
+             "id": 283,
+             "author": "Reader 17",
+             "text": "22 total: reply 17",
+             "replies": []
+            },
+            {
+             "id": 284,
+             "author": "Reader 18",
+             "text": "22 total: reply 18",
+             "replies": []
+            },
+            {
+             "id": 285,
+             "author": "Reader 19",
+             "text": "22 total: reply 19",
+             "replies": []
+            },
+            {
+             "id": 286,
+             "author": "Reader 20",
+             "text": "22 total: reply 20",
+             "replies": []
+            },
+            {
+             "id": 287,
+             "author": "Reader 21",
+             "text": "22 total: reply 21",
+             "replies": []
+            },
+            {
+             "id": 288,
+             "author": "Reader 22",
+             "text": "22 total: reply 22",
+             "replies": []
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "comments": []
+  },
+  {
+   "comments": [
+    {
+     "id": 50,
+     "author": "Mary",
+     "text": "I’ll delete this later",
+     "deleted": true,
+     "replies": [
+      {
+       "id": 51,
+       "author": "Oliver",
+       "text": "Reply to a deleted comment",
+       "replies": []
+      }
+     ]
+    },
+    {
+     "id": 52,
+     "author": "Nicole",
+     "text": "0",
+     "replies": []
+    }
+   ]
+  }
+ ]
+}

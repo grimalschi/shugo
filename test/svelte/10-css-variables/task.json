@@ -1,0 +1,79 @@
+{
+ "id": "10-css-variables",
+ "title": "A grid driven by CSS custom properties from the data",
+ "entry": "TileGrid",
+ "datasets": [
+  {
+   "accent": "#2a9d8f",
+   "columns": 3,
+   "gap": 16,
+   "tiles": [
+    {
+     "title": "Pitchers",
+     "href": "/catalog/jugs",
+     "featured": true
+    },
+    {
+     "title": "Bowls and platters",
+     "href": "/catalog/bowls",
+     "wide": true,
+     "color": "#264653"
+    },
+    {
+     "title": "Coming soon: vases"
+    }
+   ]
+  },
+  {
+   "columns": 4,
+   "gap": 0,
+   "tiles": [
+    {
+     "title": "<Small> & \"large\" cups",
+     "href": "/cups?size=s&color=red",
+     "wide": true,
+     "featured": true,
+     "color": "rgb(233 196 106)"
+    },
+    {
+     "title": "Plates",
+     "href": "",
+     "color": ""
+    },
+    {
+     "title": "Sets",
+     "href": "/sets",
+     "wide": false,
+     "featured": false
+    },
+    {
+     "title": "Gifts",
+     "featured": true,
+     "color": "oklch(70% 0.12 40)"
+    },
+    {
+     "title": "Archive"
+    }
+   ]
+  },
+  {
+   "accent": "",
+   "columns": 1,
+   "gap": 8,
+   "tiles": []
+  },
+  {
+   "accent": "hsl(200 50% 40%)",
+   "columns": 2,
+   "gap": 24.5,
+   "tiles": [
+    {
+     "title": "Only one",
+     "href": "/one",
+     "wide": true,
+     "color": "#000"
+    }
+   ]
+  }
+ ]
+}

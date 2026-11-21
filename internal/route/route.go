@@ -1,4 +1,4 @@
-// Package route turns the files under pages/ into the addresses of the site.
+// Package route turns the files under src/pages/ into the addresses of the site.
 package route
 
 import (
@@ -28,7 +28,7 @@ const Extension = ".shugo"
 // Layout is the name of the file that wraps the pages of its folder.
 const Layout = "+layout" + Extension
 
-// Parse reads the path of a page file under pages/, such as
+// Parse reads the path of a page file under src/pages/, such as
 // "products/[slug].shugo". It returns no segments and false for a file that
 // gives no address: one whose name or folder starts with "_".
 func Parse(file string) ([]Segment, bool, error) {

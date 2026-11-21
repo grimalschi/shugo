@@ -1,0 +1,18 @@
+[
+ {
+  "body": "<select id=\"product\" name=\"product\"><option value=\"\" disabled=\"\">Choose a product</option><option value=\"gift\">Gift certificate</option><optgroup label=\"Pitchers\"><option value=\"jug-1\">1 L pitcher</option><option value=\"jug-2\" selected=\"\">2 L pitcher</option><option value=\"jug-3\" disabled=\"\">3 L pitcher</option></optgroup><optgroup label=\"Cups\"><option value=\"cup\">Cup</option></optgroup></select>",
+  "head": ""
+ },
+ {
+  "body": "<select id=\"spice\" name=\"order[spice]\" required=\"\"><option value=\"\" disabled=\"\" selected=\"\">— no selection —</option><optgroup label=\"Salt &amp; &lt;pepper>\"><option value=\"a&amp;b\">\"Droplet\" salt shaker</option><option value=\"&quot;q&quot;\">Pepper shaker &lt;small></option></optgroup></select>",
+  "head": ""
+ },
+ {
+  "body": "<select id=\"size\" name=\"size\"><option value=\"\" disabled=\"\">Size</option><option value=\"s\">Small</option><option value=\"m\" disabled=\"\">Medium</option><option value=\"l\">Large</option></select>",
+  "head": ""
+ },
+ {
+  "body": "<select id=\"color\" name=\"color\"><option value=\"\" disabled=\"\">Color</option><option value=\"white\">White</option><optgroup label=\"Out of stock\"><option value=\"blue\" selected=\"\" disabled=\"\">Blue</option><option value=\"green\" disabled=\"\">Green</option></optgroup></select>",
+  "head": ""
+ }
+]

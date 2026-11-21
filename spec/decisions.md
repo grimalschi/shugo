@@ -1,12 +1,12 @@
-# First version solutions awaiting approval
+# Decisions pending approval
 
-Here is written what was decided when assembling the first version without direct confirmation of the author of the project: where the answer was “don’t know”, “decision” or the question was not before. Every decision has a reason. After approval, the decision is transferred to the “Decision” section of its document, after refusal redone.
+Here is written what is decided without direct confirmation of the author of the project: where the answer was “don’t know”, “decision” or question before. Every decision has a reason. After approval, the decision is transferred to the “Decision” section of its document, after refusal redone. The numbers don’t change so that the links don’t break; every decision above tells you what happened to it.
 
-The solutions are from the most important to the small.
+1–27 solutions are made when the first version is assembled, 28–35 - when Svelte 21 2026 is switched to syntax on November.
 
 ## 1. Data loading and expression are counted together, Go compares the result
 
-**Rejected by the author of the project 20 November 2026 year.** Data change analysis is mandatory: expressions are calculated only for the changed one. The author’s doubt was only about who was comparing the dataGo or TSrather than whether a comparison was needed. The argument for “saving almost nothing” is not complete below: it takes into account expressions, but not the code of components and templates, which can be expensive. In return, [proposal](change-tracking.md). It is described in the first version.
+**Rejected by the author of the project 20 November 2026 year.** Data change analysis is mandatory: expressions are calculated only for the changed one. The author’s doubt was only about who was comparing the dataGo or TSrather than whether a comparison was needed. The argument for “saving almost nothing” is not complete below: it takes into account expressions, but not the code of components and templates, which can be expensive. In return, [proposal](../docs/change-tracking.md). It is described in the first version.
 
 **What's done.** Stages three, not four: compilation, computation, runtime. At the computation stage, one JS process executes the data code of the pages and components and immediately counts the expression of the templates. Go gets the values ready, compares them with the saved ones and records only the differences.
 
@@ -24,7 +24,7 @@ The solutions are from the most important to the small.
 
 ## 2. Values are stored by content and shared blocks by name
 
-**Changed by the decision of the author of the project 21 November 2026 year:** value tapes lie inside page records and shared blocks, rather than a separate table under its hash, [Storage](storage.md#decisions). Without a copy of the site in memory, the server reads a page from SQLite for each request, and time determines the number of searches: with tapes inside they are half as large ([](runtime.md#sqlite-read-performance)). Shared blocks are still stored by name.
+**Changed by the decision of the author of the project 21 November 2026 year:** value tapes lie inside page records and shared blocks, rather than a separate table under its hash, [Storage](../docs/storage.md#decisions). Without a copy of the site in memory, the server reads a page from SQLite for each request, and time determines the number of searches: with tapes inside they are half as large ([](../docs/runtime.md#sqlite-read-performance)). Shared blocks are still stored by name.
 
 **What was done.** Each block had a value tape. It was stored under the hash of itself, so the same tapes were lying in storage once. Page entry - a list of its blocks with links to the tapes. The shared block is stored as a separate entry under a name from the component file and parameters, and the page links to it by that name.
 
@@ -33,6 +33,8 @@ The solutions are from the most important to the small.
 **“The Significance of the Entry Hash”** from the prototype meant: the block result was stored under the hash of the data that the block reads. This is not: the hash is taken from the result.
 
 ## 3. Which blocks are shared
+
+**Waiting for approval.** The author asked if the component is stored without dependencies once: yes — the answer is in [questions](open-questions.md).
 
 **What's done.** The component is calculated and stored once if both conditions are met:
 - he himself and everything he imports does not read `Shugo.url` and `Shugo.params` and does not pass the markup to layouts;
@@ -46,11 +48,13 @@ The name of the shared block is composed of the file path and parameters: `compo
 
 ## 4. The key in `<g-for>` is not entered
 
-**What's done.** `<g-for>` does not have the `key` attribute.
+**Approved 21 November 2026 year:** is not required key, cycle is `{#each}` from Svelte. Key in parentheses, `{#each items as item (item.id)}`, is accepted as in Svelte, and on static page does not affect anything.
 
-**Why not.** Key is needed when the input data is compared: the block recognizes its “own” element. Results are now being compared. If the fifth item is removed from the list, the tapes of the others do not change or are not copied without keys. An obligatory attribute that does not affect anything would only add errors to the agents. If you need a key (partial data reboot, updating the page in the browser), you can add it.
+**Why is the key not needed?** Key is needed when you compare the input data: the block recognizes the "own" element. Shugo compares the results. If you remove the fifth product from the list, the tapes of the others do not change and are not rewritten - without keys.
 
 ## 5. The program of the whole project is one file, the rantime is common
+
+**The approach is approved by 21 November 2026 year:** program instead of Go-code project. The author asks for another name for the "pattern program" - options in [questions](open-questions.md).
 
 **What's done.** The compiler writes `_build/site.json`: templates of all files and routes. When calculating, this program is put in the storage next to the values. Rantime only needs a storage file and static files. Go code is not generated.
 
@@ -60,93 +64,49 @@ The name of the shared block is composed of the file path and parameters: `compo
 
 ## 6. Components and functions are imported in data code, as in Astro
 
-**What's done.**
-```
----
-import Card from "../components/Card.shugo"
-import { price } from "@/lib/catalog"
----
-<Card title="x" />
-```
-A capital or dot tag (`<Card>`, `<ui.Button>`) is a component; the name is taken from the import. `@/` stands for project root.
-
-**Why not.** This is a departure from the first wish of "importing components not in the data code". Reasons:
-- The data code has become the component code, as in Astro: it reads parameters and functions are announced. Imports are also a familiar record to agents.
-- The question of `components/shop/Cart` is decided by itself: the path is specified in the import, the name is chosen by the one who imports.
-- No magic: by import, you can see where it came from.
-
-**Nuxt and Nitro experience.** Nitro 3 removed autoimports altogether: "Nitro v3 is centered around explicat typed imports". In Nuxt 5, server-side autoimports are disabled by default. On the side of Vue-applications, Nuxt left them. The reasons given: the code is not clear without knowing the sources, the editor needs a separate step of preparation, the transition to the definition leads to an intermediate file, the names conflict.
+**Replaced by 21 November 2026 year:** files `.shugo` components Svelte 5The components are imported into `<script>`As in Svelte: `import Card from "../components/Card.shugo"`. The reasons for the previous decision remained in force: the path is visible in imports, the name is chosen by the one who imports, there are no autoimports (Nitro 3 They refused, in Nuxt 5 They are off the server.
 
 ## 7. Object `Shugo`
 
-**What's done.** In the data code and in expressions, the object `Shugo` is available:
+**Changed to 21 on November 2026 of the year, pending approval.** With the transition to Svelte, the parameters of the component are taken from `$props()`, the snippets of the calling are also parameters, and the component calls itself import. The following remained in the `Shugo` facility:
 
 | Field | What is it |
 | --- | --- |
-| `Shugo.props` | component parameters; page has `props` from `getStaticPaths` |
+| `Shugo.query(table)` | request to the project database |
 | `Shugo.params` | page Address Settings |
 | `Shugo.url` | page address, object `URL` |
-| `Shugo.slots.has("name")` | is something transferred to the slot? |
-| `Shugo.self` | component itself, to call itself |
+| `Shugo.paginate(request, ...)` | part of the list for the page with the number |
 
-Turning to `Astro.props` gives a bug with a hint of what to write instead.
-
-**Why not.** The form is the same as that of `Astro.*`, the name is its own: semantics is different in places, and someone else's name would be misleading.
+On `Shugo.props`, `Shugo.slots` and `Astro.props` — error with a hint. The author asked if there are alternatives to the object — they are in [questions](open-questions.md).
 
 ## 8. Slots
 
-**What's done.**
-```
-<!-- component -->
-<section>
-  <g-slot> is shown if nothing was passed inside</g-slot>
-  <footer><g-slot name="footer" /></footer>
-</section>
-
-<!-- usage -->
-<Card>
-  <p>in regular slot</p>
-  <small slot="footer">v Footer</small> Slot
-  <g-fragment slot="footer">Also there, without your tag</g-fragment>
-</Card>
-```
-`slot="name"` works on a tag that stands right inside the component. Inside `<g-if>` and `<g-for>` is an assembly error.
-
-**Options considered.**
-
-| Option | Recording | Why not selected |
-| --- | --- | --- |
-| As in Astro | `<slot />`, `<Fragment slot>` | `<slot>` is a real HTML tag, and all Shugo tags start with `g-`. On `<slot>` and `<Fragment>`, the compiler responds with a prompt |
-| As in Vue | `<template #footer>` | new entry with `#`, Astro agents not familiar |
-| As in Svelte 5 | `{#snippet}` and `{@render}` | requires its blocks in braces |
-
-The contents of the slot are counted in the template that wrote it, and are counted always, even if the component did not show it.
+**Replaced by 21 November 2026 year:** The marking is transmitted to the component by snippets, as in Svelte 5: `children` and `{#snippet name()}…{/snippet}` inside component tag, `{@render …}` in the component. `<g-slot>`, `<g-fragment>`, `<slot>` and `slot="…"` give an error with a hint. Detailed in [Components](components.md#snippets).
 
 ## 9. Layouts
 
-**What's done.**
-- `+layout.shugo` in the folder wraps all pages of this folder and nested.
-- The nested layout turns out to be **inside** external, rather than replacing it.
-- The layout must contain `<g-slot />`: the page gets there.
-- Page passes markup to the layout via the slot: `<title slot="head">…</title>` at the top level of the page. It gets the nearest layout, which has `<g-slot name="head" />`. If such a slot is not in any layout - build error.
+**Changed to 21 on November 2026 of the year, pending approval.** Layout is a component of Svelte: the page it shows `{@render children()}`, the title and meta tags the page writes in `<svelte:head>`; this is the author's decision. The rest awaits approval:
 
-**Why not.** On the question "does nested replace external - do others have the same?": no. In SvelteKit, Next.js and PocketPages nested layouts wrap around each other. Replaces only Nuxt, where the page has one named layout. When replaced, each partition layout would repeat `<html>` and `<head>`.
+- `+layout.shugo` in the folder wraps all pages of this folder and nested; the nested layout turns out to be **inside** external, as in SvelteKit, Next.js and PocketPages. Replaces only Nuxt, where the page has one named layout.
+- The root layout itself is written by `<html>`, `<head>` and `<body>`; in SvelteKit, they are written by `src/app.html`.
 
-**That's postponed.** Reset the chain for a separate page (in SvelteKit it is `+page@.svelte`).
+The author asked how it works in Svelte, the answer is in [questions](open-questions.md). Chain reset (`+page@.svelte` in SvelteKit) has been postponed.
 
 ## 10. Routes
+
+**Waiting for approval.** The author asked to compare with SvelteKit — a comparison in [questions](open-questions.md).
 
 **What's done.**
 
 | File | Address |
 | --- | --- |
-| `pages/index.shugo` | `/` |
-| `pages/about.shugo` | `/about` |
-| `pages/blog/[slug].shugo` | `/blog/…`, one parameter |
-| `pages/docs/[...path].shugo` | `/docs` and deeper |
-| `pages/(shop)/cart.shugo` | `/cart`: folder in parentheses is not included |
-| `pages/_parts/x.shugo`, `pages/_x.shugo` | no Page |
-| `pages/404.shugo` | shown for addresses without page |
+| `src/pages/index.shugo` | `/` |
+| `src/pages/about.shugo` | `/about` |
+| `src/pages/blog/[slug].shugo` | `/blog/…`, one parameter |
+| `src/pages/docs/[...path].shugo` | `/docs` and deeper |
+| `src/pages/(shop)/cart.shugo` | `/cart`: folder in parentheses is not included |
+| `src/pages/_parts/x.shugo`, `pages/_x.shugo` | no Page |
+| `src/pages/404.shugo` | shown for addresses without page |
 
 - Names with `+` are occupied by the framework. Now there is only `+layout.shugo`; any other is an assembly error.
 - Part of the path is either text or one parameter. `post-[id]` is an error.
@@ -158,32 +118,23 @@ The contents of the slot are counted in the template that wrote it, and are coun
 
 ## 11. `getStaticPaths`
 
-**What's done.** As in Astro: function returns list of `{ params, props }`. `props` gets into `Shugo.props` pages, so all pages can be retrieved with one request. `paginate` comes to the function, it cuts the list into pages in the same way as in Astro. There is no separate step “one page data”: it is the data code of the page itself.
+**Waiting for approval.** Delete Missing Page Approved 21 November 2026 years. `props` the City of `getStaticPaths` Open question: examples of both ways [questions](open-questions.md). `getStaticPaths` Now stands in `<script module>` ([29](#29-script-module-and-export)), and `props` the Page takes from `$props()`.
+
+**What's done.** As in Astro: function returns list of `{ params, props }`. `props` page receives through `$props()`, so the data of all pages can be obtained with one request. `paginate` comes to the function, it cuts the list into pages in the same way as in Astro. There is no separate step “one page data”: it is the data code of the page itself.
 
 The page that is missing from the list is removed from the storage, and the server responds to its 404 address.
 
 ## 12. What outputs `{expression}` and `attribute={expression}`
 
-**What's done.**
-
-| Value | In text | In attribute |
-| --- | --- | --- |
-| `null`, `undefined` | nothing | attribute no |
-| `false` | nothing | attribute not available; `aria-*`, `data-*`, `draggable`, `spellcheck`, `contenteditable` — `"false"` |
-| `true` | `true` | `disabled`, `hidden` and the like have a name without meaning; the rest have `"true"` |
-| string, number | as is, with the shielding | as is, with the shielding |
-| list | elements in a row, without separator | `String(value)` |
-| object | `String(value)` | `String(value)` |
-
-**Why not.** `false` The text is not displayed to work the usual recording `{condition && "text"}`. Otherwise, this is the rule "scalars as is". The text behaves like in Astro. Attributes behave like in React: `class={condition && "x"}` does not give `class="false"`, and `aria-expanded={false}` Gn `"false"`.
+**Replaced by 21 November 2026 year:** values are displayed as in Svelte - [Templates](templates.md#text). The previous rules (`false` - nothing, the list - in a row without a separator, attributes as in React) are removed.
 
 ## 13. Ready HTML — tag `<g-html>`
 
-**What's done.** `<article><g-html value={post.body} /></article>`. On `set:html`, the compiler responds with a prompt.
-
-**Why not.** All designs of Shugo are tags with `g-`. A separate layer of modifiers like `set:html` is not needed for one opportunity.
+**Replaced by 21 November 2026 year:** `{@html …}` as in Svelte.
 
 ## 14. Addresses in links are checked
+
+**Approved 21 November 2026 year.** Svelte does not do this: it is a conscious retreat, see [Templates](templates.md#how-shugo-differs-from-svelte).
 
 **What's done.** In `href`, `src`, `action`, `formaction`, `poster`, `cite`, the value from the expression is replaced by `about:invalid#blocked` if its circuit can execute the code (`javascript:` and the like). Relating addresses are allowed, `http`, `https`, `mailto`, `tel`, `sms`, `ftp` and pictures in `data:`.
 
@@ -191,42 +142,32 @@ The page that is missing from the list is removed from the storage, and the serv
 
 ## 15. Styles
 
-**What's done.**
-- `import "../styles/main.css"` in the data code connects the style file. All the connected files and the contents of all `<style>` tags are collected into one file with a hash in the name. A link to it is added before `</head>`.
-- If styles have Tailwind directives, the file collects Tailwind from the `node_modules` project.
-- `<style>` is valid for the entire site. `<style is:inline>` remains in place as written.
+**Approved 21 November 2026 year.**
 
-**That's postponed.** Style limit with its component. In Astro, an attribute is added to each component tag with a hash, and selectors are rewritten.
+**What's done.**
+- `import "../styles/main.css"` in `<script>` connects the style file. All the connected files and the contents of all `<style>` tags are collected into one file with a hash in the name. A link to it is added before `</head>`.
+- If styles have Tailwind directives, the file collects Tailwind from the `node_modules` project.
+- `<style>` is only valid for it, as in Svelte: this is the author's decision from 21 on November 2026, in detail - in [Styles](styles.md).
 
 ## 16. `<script>` remains as written
 
-**What's done.** The contents of `<script>` are not changed. The expressions in the parentheses inside it are not calculated.
+**Approved 21 November 2026 year.** The basis for the code in the browser is Svelte.
+
+**What's done.** The contents of `<script>` inside the markup are included in the page unchanged. The expressions in the parentheses inside it are not calculated. With the transition to Svelte, the top `<script>` file is component code, and the browser script is written inside the element or in `<svelte:head>`, as in Svelte.
 
 **That's postponed.** Scripting Assembly: TypeScript, Imports, One File to Site. This is a separate document of ["Scripts on the Page"](scripts.md).
 
 ## 17. Strict analysis of markup
 
-**What's done.** Each tag must be closed. Exceptions are tags without content (`<br>`, `<img>`) and recording `<div />`. An unclosed or confused tag is an assembly error with place. HTML comments and spaces fall into the page as written; spaces around the edges of the entire template are cropped.
-
-**Why not.** Assembly error with exact location for agent is more useful than silently "fixed" markup.
+**Replaced by 21 November 2026 year:** The label is as well defined as Svelte: Unclosed or confused tag - error with place; `<li>`, `<p>`, `<td>` and others who HTML allows you not to close, close themselves, with a warning; the element that the browser would rearrange is an error or, through the block, a warning; comments are removed, spaces are compressed by the rules Svelte. Details — in [Templates](templates.md#markup-and-gaps).
 
 ## 18. Project structure
 
-**What's done.**
-```
-shugo.json settings
-pages/ pages and layouts
-components/ components (by agreement: component can be imported from anywhere)
-lib/ shared code on TypeScript
-public/ files that are given as is
-styles/ styles
-_build/ everything framework writes
-```
-There is no `src` folder: the path is shorter, and the sources are already separated from `_build` and `node_modules`.
-
-`_build` contains: `eval.mjs` (JS for the computation stage), `site.json` (project program), `assets/` (styles), `store.db` (storage), `dist/` (site in files after `shugo export`).
+**Replaced by 21 November 2026 year:** site code is in `src/` — the author's decision. Details that are waiting for approval — in [35](#35-folder-src) and in [Project Structure](project-structure.md).
 
 ## 19. Commands
+
+**Waiting for approval.** The author asked how `dev` differs from other commands, the answer is in [Command Line](cli.md#how-teams-are-different).
 
 | Command | What does |
 | --- | --- |
@@ -240,21 +181,27 @@ Report `build`, `update` and `export` can be obtained in JSON (`-json`). JS-runt
 
 ## 20. Storage
 
-**What's done.** One file SQLite: records pages and shared blocks with feeds inside, who is what common block shows who read what from the project database, missing pages, service data with the project program - [Storage](storage.md#tables). The server reads the page entirely from one state. Update is one transaction.
+**21 November 2026 Year Approved**, along with a strict failed update: the update that fell is considered completely failed. The driver of SQLite remains on the pure Go.
+
+**What's done.** One file SQLite: records pages and shared blocks with feeds inside, who is what common block shows who read what from the project database, missing pages, service data with the project program - [Storage](../docs/storage.md#tables). The server reads the page entirely from one state. Update is one transaction.
 
 The driver is `modernc.org/sqlite`, without cgo. It is hidden behind the `store` package, you can replace it in one place.
 
-**Failed update.** The question is postponed. While the simplest is done: if the project code fell, the transaction is canceled and the storage remains the same.
+**Failed update.** If the project code has fallen, the transaction is canceled, the storage remains the same, and the data log is not cleared: the next update will meet the same changes.
 
 ## 21. Export to files
 
-**What's done.** The `/about` page is written in `about/index.html`, the 404 page is written in `404.html`. The file with the previous content is not overwritten.
+**21 November 2026 Year Approved**, with file names like SvelteKit: `/about` is `about.html`.
 
-Export follows the previous one: in the folder, it leaves a list of which storage and which version the pages are written from and which files are copied. The next export from the same repository builds only pages that have changed the record or the record of the shared block they show, deletes missing page files and copies the changed files. Without a list, exports build everything and remove nothing. With a list from another repository or from the version before the full reassembly - builds everything and removes page files that the site does not have, without touching other files and folders whose name starts with a point. See also [Rantime](runtime.md#export).
+**What's done.** Page `/about` is written in `about.html`, as in SvelteKit, page 404 is in `404.html`. File with previous content is not overwritten.
 
-**Why not.** `about/index.html` gives any web server without setting up. Exports that, after a single price change, collect all 104,202 pages, cost 7 s; on changes, 8 ms. To update nothing noted for export, the version is written along with the record, and the pages that show the changed common block, export finds itself: it builds them anyway. The export folder is considered to be an export folder: a file that has been manually corrected remains until its page changes.
+Export follows the previous one: in the folder, it leaves a list of which storage and which version the pages are written from and which files are copied. The next export from the same repository builds only pages that have changed the record or the record of the shared block they show, deletes missing page files and copies the changed files. Without a list, exports build everything and remove nothing. With a list from another repository or from the version before the full reassembly - builds everything and removes page files that the site does not have, without touching other files and folders whose name starts with a point. See also [Rantime](../docs/runtime.md#export).
+
+**Why not.** Export, which after a change in one price collects all 104,202 pages, cost 7 s; by changes — 8 ms. To update nothing noted for export, the version is written along with the record, and the pages that show the changed common block, export finds itself: it builds them anyway. The export folder is considered to be an export folder: a file that has been manually corrected remains until its page changes.
 
 ## 22. Message Language
+
+**Approved 21 November 2026 year.**
 
 **Implementation.** The compiler, CLI, and specification use English.
 
@@ -262,14 +209,18 @@ Export follows the previous one: in the folder, it leaves a list of which storag
 
 ## 23. Small
 
-- **The component can call itself**: `<Shugo.self node={child} />`. The ban was a prototype limitation. Infinite call without parameters is caught with an understandable error.
+**Waiting for approval**, except for calling himself.
+
+- **The component can call itself.** *Replaced by 21 November 2026 year:* as in Svelte 5 — the component imports itself; `<svelte:self>` works with a warning. An endless call with the same parameters is caught with an understandable error.
 - **Module path Go** — `shugo`. Before publication, it must be replaced with the present one.
 - **Author of commits** is the name of `itareo` and the owner's mail, specified only in this repository.
 - **Page queue.** Pages are calculated one by one, in a row: there is nothing to wait for ([Data loading](data-loading.md#decisions)). The JS process is one.
 
 ## 24. Verification on agent
 
-**What's done.** The individual agent was given only [memo](../docs/authoring.md) and the `shugo` commandno source, examples, or specificationand the task: a blog with a breakdown into pages, tag pages, nested layout, three components given in JSON, styles, and script.
+**Re-checking later**, the solution of 21 November 2026 year: we will check more later.
+
+**What's done.** The individual agent was given only [memo](authoring.md) and the `shugo` commandno source, examples, or specificationand the task: a blog with a breakdown into pages, tag pages, nested layout, three components given in JSON, styles, and script.
 
 **What happened.**
 - The site from 25 pages was collected on the first try. There were no build errors, HTML is checked for shielding, links and nesting layouts.
@@ -281,11 +232,15 @@ Export follows the previous one: in the folder, it leaves a list of which storag
 
 ## 25. Service symbols in values are shielded
 
+**Waiting for approval.**
+
 **What's done.** JS transmits entries in Go messages in which characters with 0–3 codes serve as separators. The first version silently cut them out of meaning. Now JS shields them inside the value, and with them the 4 symbol, which it shields: the 4 symbol, then the symbol code plus 0x40. Go removes the shielding, and the corrupted shielding stops the upgrade. The attribute name from `{...attributes}` with this symbol is an error, as are other names that cannot be the attribute name.
 
 **Why not.** The value should reach the page as the project code gave it. The characters cut out changed the text imperceptibly.
 
 ## 26. Project without database
+
+**Approved 21 November 2026 year.**
 
 **What's done.** A project without a database `shugo update` does not calculate anything if the project itself has not changed. If it has changed, the project is compiled anew and everything is calculated. Previously, such an update always calculated everything.
 
@@ -293,7 +248,61 @@ Export follows the previous one: in the folder, it leaves a list of which storag
 
 ## 27. Commands
 
+**Waiting for approval.**
+
 - `shugo dev` updates the site in the same way as `shugo update`: after changing the source code compiles and calculates everything, after changing the database - what the changed lines read, after changing other files - nothing. Previously, any changed file calculated the entire site anew.
 - The team refuses the option it does not use: `shugo export -check` is an error, not an option that was silently missed. `-runtime` is only taken by commands that execute the project code: `build`, `update`, `dev`.
 
 **Why not.** The agent who transmitted the option is waiting for action from it. Silence would hide the error.
+
+## 28. HTML as in the server Svelte 5.59.1
+
+**Waiting for approval.** Author's solution is to copy the behavior of Svelte templates. How it is done:
+
+- Shugo is fixed on one version of Svelte, 5.59.1. The page matches what `render()` gives this version, bytes per byte, except for hydration tags and style class. Match check benchmarks from the real Svelte: 30 tasks in `test/svelte/`, template tests and random pages — [Shugo and Svelte](../docs/svelte.md).
+- Svelte version update new benchmarks and correction of discrepancies.
+- Indents: `javascript:` addresses are blocked (14 solution), hydration labels are not written, style class is put on all elements ([32](#32-style-class-on-all-component-elements)), `<svelte:head>` - only in the page and layout ([30](#30-sveltehead-and-title)), there are no availability warnings, runes are not checked.
+
+**Why so strict.** The template should be transferred to Svelte And then there will be islands. Svelte. If only Shugo Repetitive Svelte "about", the agent could not count on any of the rules: gaps at the edges of the blocks, `false` in the text, `class` from the array.
+
+## 29. `<script module>` and export
+
+**Waiting for approval.** `getStaticPaths` is exported from `<script module>`. Export from regular `<script>` is a prompt error, `export let` is a prompt error about `$props()`.
+
+**Why not.** In Svelte, `<script module>` is performed once per module, and `<script>` is executed every time a component is displayed. `getStaticPaths` is a route function, not a display function: in `<script>` it would see variables that are not present when it is called. `export let` in Svelte 5 is also an error. In SvelteKit, the list of pages is written in a separate file `+page.ts` (`entries`); in Shugo, it remains in the page file as before.
+
+## 30. `<svelte:head>` and title
+
+**Waiting for approval.**
+
+- The contents of `<svelte:head>` are at the end of `<head>`, which writes the page or the nearest layout, in the order of the document: external layouts, internal, page. `<title>` remains one - the last, and stands after the rest. So does Svelte.
+- `<svelte:head>` works only in the page and in the layout. In the usual component, this is an error: the general component, which is calculated once per entire site, does not have a page in which `<head>` to write.
+
+## 31. Snippets and common blocks
+
+The **Waiting for approval.** Snippet without parameters, written inside the component tag (`children` too), is calculated where written and stored in the caller's record. The component to which such snippets were transferred remains a common block. Therefore, a layout that does not read the address is calculated once per entire site, although each page passes its `children` to it. The snippet with parameters is calculated where it is shown by `{@render}`, - [Blocks](../docs/blocks.md).
+
+## 32. Style class on all component elements
+
+**Waiting for approval.** Svelte puts the `svelte-…` class only on elements that some selector chooses and throws out selectors that choose nothing. Shugo puts the class on all elements of the component and leaves all selectors.
+
+**Why not.** To select elements like Svelte, you need to parse selectors and match with a template, including blocks and dynamic classes, a noticeable part of the Svelte compiler. The page view does not change from this. The question is whether to do exactly in [Styles](styles.md#open-questions).
+
+## 33. Extension `.shugo` and TypeScript
+
+**Waiting for approval.** Files remain `.shugo`. TypeScript is accepted in any `<script>`, and Svelte requires `lang="ts"`. Both questions are in [open](open-questions.md).
+
+**Why `.shugo`.** File with `Shugo.query` and `getStaticPaths` is not a component of Svelte, and the real Svelte will not assemble it: its extension says this honestly. Price - the editor does not recognize the file without setting up.
+
+## 34. What is checked the same as in Svelte
+
+**Waiting for approval.** Errors and warnings Sveltewhich change the appearance of the page or break it, Shugo Repeats: nesting elements, confused tags, outdated `<svelte:self>` and `<svelte:component>`, `<slot>` and `export let` the City of Svelte 4. Accessibility Warnings (`a11y_…`, them in Svelte A few dozen) not.
+
+## 35. Folder `src`
+
+**Waiting for approval.** Folder `src/` is the author's solution. Details:
+
+- `src/` has `pages/`, `components/`, `lib/`, `styles/`; `shugo.json`, `data/` and `public/` at the root;
+- `.shugo` files are only searched in `src/`; importing a `.shugo` file from another location is a prompt error;
+- `@/` in import means `src/`, as is customary in Vite projects;
+- the store stand scripts moved to `examples/catalog/scripts/`: only the site code remained in `src/lib/`.

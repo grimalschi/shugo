@@ -1,0 +1,22 @@
+[
+ {
+  "body": "<section class=\"products\"><ul><li><a href=\"/products/bowl\">Bowl</a> <b>$1200</b></li><li class=\"few\"><a href=\"/products/vase\">Vase</a> <b>$1200</b></li><li class=\"few\"><span>Platter</span> <b>$1800</b></li></ul> <p class=\"more\">and 2 more items</p></section>",
+  "head": ""
+ },
+ {
+  "body": "<section class=\"products\"><p class=\"empty\">Out of stock</p></section>",
+  "head": ""
+ },
+ {
+  "body": "<section class=\"products\"><ul><li class=\"few\"><span>Demo &amp; sample</span> <b>$0</b></li><li class=\"few\"><span>\"Heritage\" teapot &lt;large></span> <b>$500</b></li><li><a href=\"/products/mug?size=s&amp;color=red\">mug</a> <b>$500</b></li></ul> </section>",
+  "head": ""
+ },
+ {
+  "body": "<section class=\"products\"><ul><li><span>garden toad</span> <b>$100</b></li><li class=\"few\"><a href=\"/products/hedgehog\">écru hedgehog</a> <b>$100</b></li><li class=\"few\"><a href=\"/products/cat\">‘Cat’ figurine</a> <b>$120</b></li></ul> <p class=\"more\">and 11 more items</p></section>",
+  "head": ""
+ },
+ {
+  "body": "<section class=\"products\"><ul><li><a href=\"/products/vase\">Vase</a> <b>$0</b></li><li><a href=\"/products/vase-small\">vase</a> <b>$0</b></li><li><span>Postcard</span> <b>$40</b></li></ul> <p class=\"more\">and 21 more items</p></section>",
+  "head": ""
+ }
+]

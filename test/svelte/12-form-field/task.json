@@ -1,0 +1,63 @@
+{
+ "id": "12-form-field",
+ "title": "A form field: label, input, select or textarea, hint and error tied by ids",
+ "entry": "FormField",
+ "datasets": [
+  {
+   "id": "email",
+   "name": "email",
+   "label": "Email",
+   "type": "email",
+   "value": "anna@example.com",
+   "placeholder": "name@example.com",
+   "hint": "We’ll send the receipt to this address",
+   "required": true
+  },
+  {
+   "id": "glaze",
+   "name": "glaze",
+   "label": "Glaze & slip",
+   "type": "select",
+   "value": "matte",
+   "placeholder": "Select an option",
+   "options": [
+    {
+     "value": "gloss",
+     "label": "Glossy"
+    },
+    {
+     "value": "matte",
+     "label": "Matte"
+    },
+    {
+     "value": "\"raw\"",
+     "label": "Unglazed <raw>"
+    }
+   ],
+   "error": "This glaze is out of stock",
+   "disabled": true
+  },
+  {
+   "id": "note",
+   "name": "order[note]",
+   "label": "Comment",
+   "type": "textarea",
+   "value": "Fragile! <b>Do not</b> drop & \"handle with care\"\nSecond floor",
+   "placeholder": "",
+   "hint": "Up to 500 characters",
+   "error": "Too long",
+   "required": true
+  },
+  {
+   "id": "city",
+   "name": "city",
+   "label": "City",
+   "type": "text",
+   "placeholder": "Boston",
+   "hint": "",
+   "error": "",
+   "required": false,
+   "disabled": false
+  }
+ ]
+}

@@ -73,11 +73,11 @@ func annotate(data []byte, site *program.Site) []byteRow {
 			}
 			list("nested blocks")
 		}
-		slots := number("  filled slots: %d")
-		for s := 0; s < slots; s++ {
-			size := number("  slot name length: %d")
-			take(size, "  slot name: "+string(data[at:min(at+size, len(data))]))
-			list("blocks in the slot")
+		snippets := number("  parameterless snippets supplied by the caller: %d")
+		for s := 0; s < snippets; s++ {
+			size := number("  snippet name length: %d")
+			take(size, "  snippet name: "+string(data[at:min(at+size, len(data))]))
+			list("snippet blocks")
 		}
 	}
 	return out
@@ -97,7 +97,7 @@ type walkStep struct {
 	Op    string
 	What  string
 	Value string
-	Slot  int    // the place of the value in the tape, from 1; 0 for none
+	Place int    // the place of the value in the tape, from 1; 0 for none
 	Link  string // the block it leads to
 	Ref   string
 }
@@ -138,17 +138,17 @@ func (w *walker) take() (string, int, error) {
 }
 
 func (w *walker) number() (int, int, error) {
-	value, slot, err := w.take()
+	value, place, err := w.take()
 	if err != nil {
 		return 0, 0, err
 	}
 	var n int
 	_, err = fmt.Sscan(value, &n)
-	return n, slot, err
+	return n, place, err
 }
 
-func (w *walker) add(depth int, op, what, value string, slot int) {
-	w.out = append(w.out, walkStep{Depth: depth, Op: op, What: what, Value: value, Slot: slot})
+func (w *walker) add(depth int, op, what, value string, place int) {
+	w.out = append(w.out, walkStep{Depth: depth, Op: op, What: what, Value: value, Place: place})
 }
 
 func (w *walker) ops(ops []program.Op, depth int) error {
@@ -157,7 +157,7 @@ func (w *walker) ops(ops []program.Op, depth int) error {
 		case program.Markup:
 			w.add(depth, "r", "unchanged markup", op.Text, 0)
 		case program.Text, program.HTML:
-			value, slot, err := w.take()
+			value, place, err := w.take()
 			if err != nil {
 				return err
 			}
@@ -165,9 +165,9 @@ func (w *walker) ops(ops []program.Op, depth int) error {
 			if op.Kind == program.HTML {
 				what = "rendered HTML: inserted as-is"
 			}
-			w.add(depth, string(rune(op.Kind)), what, value, slot)
+			w.add(depth, string(rune(op.Kind)), what, value, place)
 		case program.Attr, program.URL:
-			value, slot, err := w.take()
+			value, place, err := w.take()
 			if err != nil {
 				return err
 			}
@@ -176,86 +176,136 @@ func (w *walker) ops(ops []program.Op, depth int) error {
 			if op.Kind == program.URL {
 				what += "; the URL is validated"
 			}
-			w.add(depth, string(rune(op.Kind)), what, value, slot)
+			w.add(depth, string(rune(op.Kind)), what, value, place)
 		case program.Spread:
-			count, slot, err := w.number()
+			count, place, err := w.number()
 			if err != nil {
 				return err
 			}
-			w.add(depth, "s", "spread attributes: number of name–value pairs", fmt.Sprint(count), slot)
+			w.add(depth, "s", "spread attributes: number of name–value pairs", fmt.Sprint(count), place)
 			for range count {
-				name, s1, err := w.take()
+				name, p1, err := w.take()
 				if err != nil {
 					return err
 				}
-				value, s2, err := w.take()
+				value, p2, err := w.take()
 				if err != nil {
 					return err
 				}
-				w.add(depth+1, "s", "name", name, s1)
-				w.add(depth+1, "s", "value", value, s2)
+				w.add(depth+1, "s", "name", name, p1)
+				w.add(depth+1, "s", "value", value, p2)
 			}
 		case program.If:
-			taken, slot, err := w.number()
+			taken, place, err := w.number()
 			if err != nil {
 				return err
 			}
-			w.add(depth, "i", fmt.Sprintf("conditional with %d branches: selected branch number, or 0 if none", len(op.Bodies)), fmt.Sprint(taken), slot)
+			w.add(depth, "i", fmt.Sprintf("conditional with %d branches: selected branch number, or 0 if none", len(op.Bodies)), fmt.Sprint(taken), place)
 			if taken > 0 {
 				if err := w.ops(op.Bodies[taken-1], depth+1); err != nil {
 					return err
 				}
 			}
 		case program.For:
-			count, slot, err := w.number()
+			count, place, err := w.number()
 			if err != nil {
 				return err
 			}
-			w.add(depth, "f", "loop: iteration count", fmt.Sprint(count), slot)
+			w.add(depth, "f", "loop: iteration count", fmt.Sprint(count), place)
 			for i := 0; i < count; i++ {
 				w.add(depth+1, "", fmt.Sprintf("iteration %d", i+1), "", 0)
 				if err := w.ops(op.Bodies[0], depth+2); err != nil {
 					return err
 				}
 			}
+			if count == 0 && len(op.Bodies) == 2 {
+				w.add(depth+1, "", "{:else}: the list is empty", "", 0)
+				if err := w.ops(op.Bodies[1], depth+2); err != nil {
+					return err
+				}
+			}
 		case program.Call:
-			if w.child >= len(w.block.Children) {
-				return fmt.Errorf("fewer children than calls")
-			}
-			child := w.block.Children[w.child]
-			w.child++
-			w.add(depth, "c", "component: next nested block", "", 0)
-			last := &w.out[len(w.out)-1]
-			if c := &w.rec.Blocks[child]; c.Use {
-				last.What += fmt.Sprintf(" — block %d, a reference to shared block %d", child, c.Shared)
-				last.Link, last.Ref = fmt.Sprintf("shared-%d", c.Shared), fmt.Sprintf("shared block %d", c.Shared)
-			} else {
-				last.What += fmt.Sprintf(" — block %d: %s", child, w.site.Files[c.File].Path)
-			}
-		case program.Slot:
-			filled, slot, err := w.number()
+			child, err := w.nextChild()
 			if err != nil {
 				return err
 			}
-			if filled == 0 {
-				w.add(depth, "o", fmt.Sprintf("slot «%s»: 1 means filled, 0 means the default content is shown", op.Text), "0", slot)
-				if err := w.ops(op.Bodies[0], depth+1); err != nil {
+			w.add(depth, "c", "component: next nested block", "", 0)
+			w.link(child)
+		case program.Render:
+			value, place, err := w.take()
+			if err != nil {
+				return err
+			}
+			switch firstByte(value) {
+			case '-':
+				w.add(depth, "n", "{@render}: no snippet, so nothing is rendered", value, place)
+			case 'c':
+				child, err := w.nextChild()
+				if err != nil {
 					return err
 				}
+				w.add(depth, "n", "{@render}: snippet with parameters, evaluated here in the next nested block", value, place)
+				w.link(child)
+			default:
+				levels, name, _ := strings.Cut(value[1:], ":")
+				where := fmt.Sprintf("its blocks are in the record of the component %s levels up", levels)
+				if levels == "0" {
+					switch blocks := w.block.Snippet(name); {
+					case len(blocks) > 0:
+						where = fmt.Sprintf("its blocks %v are in this record", blocks)
+					case w.shared:
+						where = "its blocks are in the record of the page that shows this shared block"
+					}
+				}
+				what := fmt.Sprintf("{@render %s()}: snippet supplied by the caller; %s", name, where)
+				if op.Text == program.Last {
+					what += "; only the last block is shown because the page has one <title>"
+				}
+				w.add(depth, "n", what, value, place)
+			}
+		case program.Element:
+			tag, place, err := w.take()
+			if err != nil {
+				return err
+			}
+			if tag == "" {
+				w.add(depth, "e", "<svelte:element>: no tag, so nothing is rendered", tag, place)
 				continue
 			}
-			where := "provided by the caller"
-			if fills := w.block.Slot(op.Text); len(fills) > 0 {
-				where = fmt.Sprintf("the supplied blocks %v are in this record", fills)
-			} else if w.shared {
-				where = "provided by the page that shows this shared block; the blocks are in that page record"
+			w.add(depth, "e", "<svelte:element>: tag name", tag, place)
+			if err := w.ops(op.Bodies[0], depth+1); err != nil {
+				return err
 			}
-			w.add(depth, "o", fmt.Sprintf("slot «%s»: %s", op.Text, where), "1", slot)
+			if !program.IsVoid(tag) {
+				if err := w.ops(op.Bodies[1], depth+1); err != nil {
+					return err
+				}
+			}
 		case program.Mount:
 			w.add(depth, "m", fmt.Sprintf("framework insertion point «%s» on every page", op.Text), w.site.Mounts[op.Text], 0)
 		}
 	}
 	return nil
+}
+
+// nextChild takes the next block the block shows.
+func (w *walker) nextChild() (int, error) {
+	if w.child >= len(w.block.Children) {
+		return 0, fmt.Errorf("fewer children than calls")
+	}
+	w.child++
+	return w.block.Children[w.child-1], nil
+}
+
+// link tells, at the last step, which block it leads to.
+func (w *walker) link(child int) {
+	last := &w.out[len(w.out)-1]
+	if c := &w.rec.Blocks[child]; c.Use {
+		last.What += fmt.Sprintf(" — block %d, a reference to shared block %d", child, c.Shared)
+		last.Link, last.Ref = fmt.Sprintf("shared-%d", c.Shared), fmt.Sprintf("shared block %d", c.Shared)
+	} else {
+		last.What += fmt.Sprintf(" — block %d: %s", child, w.site.Files[c.File].Path)
+	}
 }
 
 func firstByte(s string) byte {
@@ -268,7 +318,8 @@ func firstByte(s string) byte {
 // opNames explains the operations of a program.
 var opNames = map[string]string{
 	"r": "markup", "t": "text", "h": "rendered HTML", "a": "attribute", "u": "URL",
-	"s": "spread attributes", "i": "conditional", "f": "loop", "c": "component", "o": "slot", "m": "insertion point",
+	"s": "spread attributes", "i": "conditional", "f": "loop", "c": "component", "n": "{@render}",
+	"e": "<svelte:element>", "m": "insertion point",
 }
 
 // opLine is one operation of a program as the report lists it.
@@ -277,7 +328,7 @@ type opLine struct {
 	Code  string
 	Name  string
 	Text  string
-	Slots int // how many values it takes from the tape, when that is known
+	Takes int // how many values it takes from the tape, when that is known
 }
 
 // listOps writes out a part of a program.
@@ -287,8 +338,8 @@ func listOps(ops []program.Op, depth int) []opLine {
 		code := string(rune(op.Kind))
 		line := opLine{Depth: depth, Code: code, Name: opNames[code], Text: op.Text}
 		switch op.Kind {
-		case program.Text, program.HTML, program.Attr, program.URL, program.If, program.For, program.Slot:
-			line.Slots = 1
+		case program.Text, program.HTML, program.Attr, program.URL, program.If, program.For, program.Render, program.Element:
+			line.Takes = 1
 		}
 		out = append(out, line)
 		for i, body := range op.Bodies {
@@ -297,9 +348,9 @@ func listOps(ops []program.Op, depth int) []opLine {
 			case program.If:
 				label = fmt.Sprintf("branch %d", i+1)
 			case program.For:
-				label = "loop body"
-			case program.Slot:
-				label = "default content"
+				label = map[int]string{0: "loop body", 1: "{:else}: empty list fallback"}[i]
+			case program.Element:
+				label = map[int]string{0: "attributes", 1: "content"}[i]
 			}
 			out = append(out, opLine{Depth: depth + 1, Name: label})
 			out = append(out, listOps(body, depth+2)...)

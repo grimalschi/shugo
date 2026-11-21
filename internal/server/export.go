@@ -188,8 +188,8 @@ func copyFiles(folders map[string]string, last, copied map[string]string, write 
 
 // removeOtherPages removes from dir the files of pages that are neither
 // pages nor copied files of the site now: what an export of another state
-// left. Only the files an export writes for pages are looked at, and no
-// folder whose name starts with a dot.
+// left. Only HTML files are looked at, the kind an export writes for pages,
+// and no folder whose name starts with a dot.
 func removeOtherPages(dir string, pages map[string]struct{}, copied map[string]string, remove func(name string) error) error {
 	var other []string
 	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
@@ -204,7 +204,7 @@ func removeOtherPages(dir string, pages map[string]struct{}, copied map[string]s
 		}
 		rel, _ := filepath.Rel(dir, path)
 		name := filepath.ToSlash(rel)
-		if entry.Name() != "index.html" && name != "404.html" {
+		if !strings.HasSuffix(name, ".html") {
 			return nil
 		}
 		_, page := pages[name]
@@ -239,9 +239,10 @@ func readList(dir string) (list, bool) {
 	return last, true
 }
 
-// pageFile returns the file a page is written to: a folder with index.html
-// for every address, which every web server understands. The page for
-// missing addresses is 404.html, where hosts look for it.
+// pageFile returns the file a page is written to, named the way SvelteKit
+// names the pages it prerenders: /about is about.html, and static hosts
+// serve /about from it; / is index.html. The page for missing addresses is
+// 404.html, where hosts look for it.
 func pageFile(address string) string {
 	switch address {
 	case "/":
@@ -249,5 +250,5 @@ func pageFile(address string) string {
 	case notFound:
 		return "404.html"
 	}
-	return strings.TrimPrefix(address, "/") + "/index.html"
+	return strings.TrimPrefix(address, "/") + ".html"
 }

@@ -1,0 +1,357 @@
+{
+ "id": "05-filter-sort-limit",
+ "title": "Products in stock: filtered, sorted, cut to three, with a plural count of the rest",
+ "entry": "ProductList",
+ "datasets": [
+  {
+   "products": [
+    {
+     "name": "‘North’ Pitcher",
+     "price": 2400,
+     "stock": 5,
+     "url": "/products/jug"
+    },
+    {
+     "name": "Cup",
+     "price": 900,
+     "stock": 0,
+     "url": "/products/cup"
+    },
+    {
+     "name": "Platter",
+     "price": 1800,
+     "stock": 2
+    },
+    {
+     "name": "Vase",
+     "price": 1200,
+     "stock": 1,
+     "url": "/products/vase"
+    },
+    {
+     "name": "Bowl",
+     "price": 1200,
+     "stock": 10,
+     "url": "/products/bowl"
+    },
+    {
+     "name": "Plate",
+     "price": 700,
+     "stock": 0
+    },
+    {
+     "name": "Mug",
+     "price": 3100,
+     "stock": 3,
+     "url": "/products/mug"
+    }
+   ]
+  },
+  {
+   "products": [
+    {
+     "name": "Cup",
+     "price": 900,
+     "stock": 0,
+     "url": "/products/cup"
+    },
+    {
+     "name": "Plate",
+     "price": 0,
+     "stock": 0
+    }
+   ]
+  },
+  {
+   "products": [
+    {
+     "name": "mug",
+     "price": 500,
+     "stock": 4,
+     "url": "/products/mug?size=s&color=red"
+    },
+    {
+     "name": "\"Heritage\" teapot <large>",
+     "price": 500,
+     "stock": 1
+    },
+    {
+     "name": "Étoile ornament",
+     "price": 500,
+     "stock": 0,
+     "url": "/products/toy"
+    },
+    {
+     "name": "Demo & sample",
+     "price": 0,
+     "stock": 2,
+     "url": ""
+    }
+   ]
+  },
+  {
+   "products": [
+    {
+     "name": "Cup",
+     "price": 450,
+     "stock": 2
+    },
+    {
+     "name": "garden toad",
+     "price": 100,
+     "stock": 7
+    },
+    {
+     "name": "Sugar bowl",
+     "price": 1800,
+     "stock": 3
+    },
+    {
+     "name": "Whistle",
+     "price": 50,
+     "stock": 0,
+     "url": "/products/whistle"
+    },
+    {
+     "name": "Salad bowl",
+     "price": 1050,
+     "stock": 2
+    },
+    {
+     "name": "écru hedgehog",
+     "price": 100,
+     "stock": 1,
+     "url": "/products/hedgehog"
+    },
+    {
+     "name": "Salt shaker",
+     "price": 110,
+     "stock": 0,
+     "url": "/products/salt"
+    },
+    {
+     "name": "Plate",
+     "price": 750,
+     "stock": 4,
+     "url": "/products/3"
+    },
+    {
+     "name": "‘Cat’ figurine",
+     "price": 120,
+     "stock": 2,
+     "url": "/products/cat"
+    },
+    {
+     "name": "Planter",
+     "price": 1500,
+     "stock": 1
+    },
+    {
+     "name": "Mug",
+     "price": 300,
+     "stock": 1,
+     "url": "/products/0"
+    },
+    {
+     "name": "Pitcher",
+     "price": 1200,
+     "stock": 3,
+     "url": "/products/6"
+    },
+    {
+     "name": "Saucer",
+     "price": 600,
+     "stock": 3
+    },
+    {
+     "name": "Candlestick",
+     "price": 1650,
+     "stock": 2,
+     "url": "/products/9"
+    },
+    {
+     "name": "Teapot",
+     "price": 90,
+     "stock": 0
+    },
+    {
+     "name": "Bowl",
+     "price": 900,
+     "stock": 1
+    },
+    {
+     "name": "Vase",
+     "price": 1350,
+     "stock": 4
+    }
+   ]
+  },
+  {
+   "products": [
+    {
+     "name": "vase",
+     "price": 0,
+     "stock": 3,
+     "url": "/products/vase-small"
+    },
+    {
+     "name": "Magnet",
+     "price": 95,
+     "stock": 1
+    },
+    {
+     "name": "Fork",
+     "price": 270,
+     "stock": 1,
+     "url": "/products/item-6"
+    },
+    {
+     "name": "Oven mitt",
+     "price": 445,
+     "stock": 1
+    },
+    {
+     "name": "Basket",
+     "price": 620,
+     "stock": 1,
+     "url": "/products/item-16"
+    },
+    {
+     "name": "Set No. 1",
+     "price": 1010,
+     "stock": 2
+    },
+    {
+     "name": "Postcard",
+     "price": 40,
+     "stock": 12
+    },
+    {
+     "name": "Stand",
+     "price": 200,
+     "stock": 4,
+     "url": "/products/item-4"
+    },
+    {
+     "name": "Rolling pin",
+     "price": 375,
+     "stock": 4
+    },
+    {
+     "name": "Napkin",
+     "price": 550,
+     "stock": 4,
+     "url": "/products/item-14"
+    },
+    {
+     "name": "Candle",
+     "price": 725,
+     "stock": 4
+    },
+    {
+     "name": "Set No. 4",
+     "price": 1040,
+     "stock": 2
+    },
+    {
+     "name": "Vase",
+     "price": 0,
+     "stock": 9,
+     "url": "/products/vase"
+    },
+    {
+     "name": "Pin",
+     "price": 130,
+     "stock": 2,
+     "url": "/products/item-2"
+    },
+    {
+     "name": "Butter knife",
+     "price": 305,
+     "stock": 2
+    },
+    {
+     "name": "Apron",
+     "price": 480,
+     "stock": 2,
+     "url": "/products/item-12"
+    },
+    {
+     "name": "Jewelry box",
+     "price": 655,
+     "stock": 2
+    },
+    {
+     "name": "Set No. 2",
+     "price": 1020,
+     "stock": 2
+    },
+    {
+     "name": "Key ring",
+     "price": 60,
+     "stock": 0,
+     "url": "/products/item-0"
+    },
+    {
+     "name": "Spoon",
+     "price": 235,
+     "stock": 0
+    },
+    {
+     "name": "Mold",
+     "price": 410,
+     "stock": 0,
+     "url": "/products/item-10"
+    },
+    {
+     "name": "Tablecloth",
+     "price": 585,
+     "stock": 0
+    },
+    {
+     "name": "Bell",
+     "price": 760,
+     "stock": 0,
+     "url": "/products/item-20"
+    },
+    {
+     "name": "Set No. 5",
+     "price": 1050,
+     "stock": 2
+    },
+    {
+     "name": "Catalog & price list",
+     "price": 0,
+     "stock": 0
+    },
+    {
+     "name": "Bookmark",
+     "price": 165,
+     "stock": 3
+    },
+    {
+     "name": "Board",
+     "price": 340,
+     "stock": 3,
+     "url": "/products/item-8"
+    },
+    {
+     "name": "Towel",
+     "price": 515,
+     "stock": 3
+    },
+    {
+     "name": "Frame",
+     "price": 690,
+     "stock": 3,
+     "url": "/products/item-18"
+    },
+    {
+     "name": "Set No. 3",
+     "price": 1030,
+     "stock": 2
+    }
+   ]
+  }
+ ]
+}

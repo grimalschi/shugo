@@ -235,7 +235,7 @@ func sources(project string, c *compiled) ([]sourceFile, error) {
 		f := sourceFile{Path: rel, Source: string(source), Module: c.Modules[rel], Number: -1}
 		for i, file := range c.Site.Files {
 			if file.Path == rel {
-				f.Number, f.Shared, f.Slots = i, file.Shared, file.Slots
+				f.Number, f.Shared, f.Outlets = i, file.Shared, file.Outlets
 				for p, ops := range file.Parts {
 					f.Parts = append(f.Parts, partView{Number: p, Ops: listOps(ops, 0)})
 				}
@@ -253,9 +253,9 @@ func order(path string) string {
 	switch {
 	case path == "shugo.json":
 		return "0"
-	case strings.HasPrefix(path, "pages/"):
+	case strings.HasPrefix(path, "src/pages/"):
 		return "1" + path
-	case strings.HasPrefix(path, "components/"):
+	case strings.HasPrefix(path, "src/components/"):
 		return "2" + path
 	}
 	return "3" + path

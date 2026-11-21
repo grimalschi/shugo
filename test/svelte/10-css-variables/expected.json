@@ -1,0 +1,18 @@
+[
+ {
+  "body": "<div class=\"grid\" style=\"--accent: #2a9d8f; --cols: 3; --gap: 16px;\"><div class=\"tile tile--featured\" style=\"--i: 0;\"><a href=\"/catalog/jugs\">Pitchers</a></div><div class=\"tile tile--wide\" style=\"--i: 1; --tile-color: #264653;\"><a href=\"/catalog/bowls\">Bowls and platters</a></div><div class=\"tile\" style=\"--i: 2;\"><span>Coming soon: vases</span></div></div>",
+  "head": ""
+ },
+ {
+  "body": "<div class=\"grid\" style=\"--accent: #e85d04; --cols: 4; --gap: 0px;\"><div class=\"tile tile--wide tile--featured\" style=\"--i: 0; --tile-color: rgb(233 196 106);\"><a href=\"/cups?size=s&amp;color=red\">&lt;Small> &amp; \"large\" cups</a></div><div class=\"tile\" style=\"--i: 1;\"><span>Plates</span></div><div class=\"tile\" style=\"--i: 2;\"><a href=\"/sets\">Sets</a></div><div class=\"tile tile--featured\" style=\"--i: 3; --tile-color: oklch(70% 0.12 40);\"><span>Gifts</span></div><div class=\"tile\" style=\"--i: 4;\"><span>Archive</span></div></div>",
+  "head": ""
+ },
+ {
+  "body": "<div class=\"grid\" style=\"--accent: #e85d04; --cols: 1; --gap: 8px;\"><p class=\"grid-empty\">Nothing here yet</p></div>",
+  "head": ""
+ },
+ {
+  "body": "<div class=\"grid\" style=\"--accent: hsl(200 50% 40%); --cols: 2; --gap: 24.5px;\"><div class=\"tile tile--wide\" style=\"--i: 0; --tile-color: #000;\"><a href=\"/one\">Only one</a></div></div>",
+  "head": ""
+ }
+]

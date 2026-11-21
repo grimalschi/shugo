@@ -1,0 +1,60 @@
+{
+ "id": "02-layout-slots",
+ "title": "A layout with a default slot, an optional slot and a slot with a fallback",
+ "entry": "Page",
+ "datasets": [
+  {
+   "title": "Blog",
+   "posts": [
+    {
+     "title": "Clay and the Kiln",
+     "url": "/blog/clay"
+    },
+    {
+     "title": "How We Dry Our Pottery",
+     "url": "/blog/drying"
+    }
+   ],
+   "related": [
+    {
+     "title": "Studio",
+     "url": "/about"
+    }
+   ]
+  },
+  {
+   "title": "Empty",
+   "posts": [],
+   "related": [],
+   "note": "New posts coming soon"
+  },
+  {
+   "title": "Archive & <old posts>",
+   "posts": [
+    {
+     "title": "2019",
+     "url": "/archive/2019"
+    },
+    {
+     "title": "2020",
+     "url": "/archive/2020"
+    },
+    {
+     "title": "2021",
+     "url": "/archive/2021"
+    }
+   ],
+   "related": [
+    {
+     "title": "Blog",
+     "url": "/blog"
+    },
+    {
+     "title": "New",
+     "url": "/new"
+    }
+   ],
+   "note": ""
+  }
+ ]
+}

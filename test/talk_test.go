@@ -78,7 +78,7 @@ func TestUpdateAsksNothingKnown(t *testing.T) {
 
 	// A question asked for the first time is still asked, and answered.
 	s.write(`
--- pages/new.shugo --
+-- src/pages/new.shugo --
 <p>{Shugo.query("products").where({ title: "Cup" }).order("price").all().length}</p>
 `)
 	s.build()

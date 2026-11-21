@@ -1,0 +1,70 @@
+{
+ "id": "18-grid-chunks",
+ "title": "Items split into rows of a fixed number of cells, the last row padded",
+ "entry": "Grid",
+ "datasets": [
+  {
+   "columns": 3,
+   "items": [
+    {
+     "title": "Pitcher",
+     "url": "/products/jug"
+    },
+    {
+     "title": "Cup",
+     "url": "/products/cup"
+    },
+    {
+     "title": "Platter"
+    },
+    {
+     "title": "Vase",
+     "url": "/products/vase"
+    },
+    {
+     "title": "Bowl",
+     "url": "/products/bowl"
+    },
+    {
+     "title": "Plate"
+    },
+    {
+     "title": "Mug",
+     "url": "/products/mug"
+    }
+   ]
+  },
+  {
+   "columns": 4,
+   "items": []
+  },
+  {
+   "columns": 5,
+   "items": [
+    {
+     "title": "Salt & pepper"
+    },
+    {
+     "title": "<New> \"North\"",
+     "url": "/new?a=1&b=2"
+    }
+   ]
+  },
+  {
+   "columns": 1,
+   "items": [
+    {
+     "title": "Planter",
+     "url": "/products/pot"
+    },
+    {
+     "title": "Candlestick",
+     "url": ""
+    },
+    {
+     "title": "Sugar bowl"
+    }
+   ]
+  }
+ ]
+}

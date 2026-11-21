@@ -1,0 +1,74 @@
+{
+ "id": "24-svg-bar-chart",
+ "title": "An SVG bar chart: coordinates computed from the data, labels, the highest bar marked",
+ "entry": "BarChart",
+ "datasets": [
+  {
+   "title": "Weekly sales",
+   "width": 300,
+   "height": 140,
+   "data": [
+    {
+     "label": "Mon",
+     "value": 12
+    },
+    {
+     "label": "Tue",
+     "value": 30
+    },
+    {
+     "label": "Wed",
+     "value": 18
+    },
+    {
+     "label": "Thu",
+     "value": 30
+    },
+    {
+     "label": "Fri",
+     "value": 0
+    }
+   ]
+  },
+  {
+   "title": "Revenue & \"target\"",
+   "width": 200,
+   "height": 101,
+   "data": []
+  },
+  {
+   "title": "Returns <none>",
+   "width": 250,
+   "height": 90,
+   "data": [
+    {
+     "label": "Q1",
+     "value": 0
+    },
+    {
+     "label": "Q2",
+     "value": 0
+    }
+   ]
+  },
+  {
+   "title": "Clay, kg",
+   "width": 320,
+   "height": 100,
+   "data": [
+    {
+     "label": "White & red",
+     "value": 5
+    },
+    {
+     "label": "Grog <coarse>",
+     "value": 9.5
+    },
+    {
+     "label": "Porcelain",
+     "value": 3
+    }
+   ]
+  }
+ ]
+}

@@ -8,9 +8,9 @@ import (
 func sample() *Record {
 	return &Record{Top: 3, Blocks: []Block{
 		{File: 5, Part: 0, Values: Tape(nil).Append([]byte("page")), Children: []int{1}},
-		{File: 0, Part: 0, Values: Tape(nil).Append([]byte("card")), Slots: []Slot{{"default", []int{2}}}},
+		{File: 0, Part: 0, Values: Tape(nil).Append([]byte("card")), Snippets: []Snippet{{"children", []int{2}}}},
 		{File: 5, Part: 2, Values: nil},
-		{Use: true, Shared: 7, Slots: []Slot{{"default", []int{0}}, {"head", []int{4}}}},
+		{Use: true, Shared: 7, Snippets: []Snippet{{"children", []int{0}}, {"foot", []int{4}}}},
 		{File: 5, Part: 1, Values: Tape(nil).Append([]byte("title")).Append([]byte("x\x00y"))},
 	}}
 }
@@ -27,8 +27,8 @@ func TestRoundTrip(t *testing.T) {
 	if err := back.Check(); err != nil {
 		t.Error(err)
 	}
-	if got := back.Blocks[3].Slot("head"); !reflect.DeepEqual(got, []int{4}) {
-		t.Errorf("slot head: %v", got)
+	if got := back.Blocks[3].Snippet("foot"); !reflect.DeepEqual(got, []int{4}) {
+		t.Errorf("snippet foot: %v", got)
 	}
 }
 
@@ -55,7 +55,7 @@ func TestDecodeDamaged(t *testing.T) {
 func TestCheck(t *testing.T) {
 	cases := map[string]func(r *Record){
 		"shown at two places": func(r *Record) { r.Blocks[0].Children = []int{1, 1} },
-		"shown nowhere":       func(r *Record) { r.Blocks[3].Slots = r.Blocks[3].Slots[:1] },
+		"shown nowhere":       func(r *Record) { r.Blocks[3].Snippets = r.Blocks[3].Snippets[:1] },
 		"a circle":            func(r *Record) { r.Blocks[2].Children = []int{0} },
 		"no such block":       func(r *Record) { r.Blocks[0].Children = []int{9} },
 		"no top":              func(r *Record) { r.Top = 9 },

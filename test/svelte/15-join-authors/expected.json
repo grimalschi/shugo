@@ -1,0 +1,18 @@
+[
+ {
+  "body": "<p class=\"byline\">Authors: <a href=\"/authors/anna\">Anna Irving</a>, <b>Ben Peters</b>, <a href=\"/authors/vera\">Vera Smith</a> and <b>Greg Carter</b></p>",
+  "head": ""
+ },
+ {
+  "body": "<p class=\"byline\">No author listed</p>",
+  "head": ""
+ },
+ {
+  "body": "<p class=\"byline\">By: <b>Mary &lt;Editor> &amp; Co</b></p>",
+  "head": ""
+ },
+ {
+  "body": "<p class=\"byline\">Authors: <b>Oliver Shaw</b> and <a href=\"/authors?id=7&amp;lang=ru\">Olivia \"Liv\" Kim</a></p>",
+  "head": ""
+ }
+]

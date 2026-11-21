@@ -1,30 +1,55 @@
 # Styles
 
-The document describes working with styles: Tailwind and the usual CSS.
+The document describes how to work with styles: component styles, common files CSS and Tailwind.
 
 ## Decisions
 
 - Styles are collected when the project is compiled. At this stage, you can run Tailwind and other utilities.
 - Tailwind finds classes by viewing project files as text.
+- All styles of the site are collected in one file with a hash in the name, a link to it is before `</head>`; Tailwind connects if it is installed in the project (21 solution November 2026 year).
+- `<style>` component acts only on this component, as in Svelte (21 solution November 2026 year).
+- Multiple style files and critical styles right in the page postponed (21 November 2026 solution).
 
 ## Implemented, pending approval
 
-The reasons are in [15](decisions.md#15-styles).
+### Component Styles
 
-### Connection
+```svelte
+<!-- src/components/Card.shugo -->
+<a class="card">…</a>
 
+<style>
+  .card { border: 1px solid #ddd; }
+  a:hover { color: red; }
+  :global(body.dark) .card { border-color: #444; }
+</style>
 ```
-<!-- pages/+layout.shugo -->
----
-import "../styles/main.css"
----
+
+As in Svelte:
+
+- Each component element receives a `svelte-…` class from the file path hash, and each selector requires this class. `.card` will not touch another component of `.card` from this file.
+- `:global(…)` and the `:global { … }` block are valid for the entire site.
+- The `@keyframes` names get the component prefix; the `-global-` at the beginning of the name leaves it as is.
+- The component does not stylize the elements that came into it with a snippet: they belong to the template that wrote them.
+
+One difference: Svelte puts the class only on elements that some selector chooses, and throws selectors that do not choose anything. Shugo puts the class on all elements of the component and leaves all selectors. The page looks the same.
+
+`<style>` inside the element or in `<svelte:head>` remains in the page as written, as in Svelte.
+
+### General Style Files
+
+```svelte
+<!-- src/pages/+layout.shugo -->
+<script>
+  import "../styles/main.css"
+</script>
 ```
 
-The style file is connected by importing in the code, as in Astro. You can connect it in any `.shugo` file or module; this is usually a root layout.
+The style file is connected by import to `<script>`. You can connect it in any `.shugo` file or module; this is usually the root layout.
 
 ### One stylesheet per site
 
-All the connected files and contents of all `<style>` tags are collected into one `_build/assets/styles.<hash>.css` file. The order is import order. A link to the file is added before `</head>` each page. The file name changes along with the content, so the browser caches it forever.
+All connected files and styles of all components are collected in one file `_build/assets/styles.<hash>.css`. The order is the order of import. A link to the file is added before `</head>` of each page. The file name changes with the content, so the browser caches it forever.
 
 Fonts and images that styles link to via `url(…)` are copied alongside.
 
@@ -37,25 +62,12 @@ npm install tailwindcss @tailwindcss/cli
 ```
 
 ```css
-/* styles/main.css */
+/* src/styles/main.css */
 @import "tailwindcss";
 ```
 
 Classes are in both markup and code lines: `` class={`rounded-lg ${look}`} ``. An example is [examples/tailwind](../examples/tailwind).
 
-### `<style>` in template
-
-```
-<a class="card">…</a>
-<style>
-  .card { border: 1px solid #ddd; }
-</style>
-```
-
-The contents of `<style>` go into the general file and act on the entire site. `<style is:inline>` remains in the page as written.
-
 ## Open questions
 
-- Styles that only work inside their component. In Astro, each component tag is added with a hash attribute, and selectors are rewritten. Agents who know Astro expect exactly this behavior from `<style>`.
-- Multiple style files: a separate file for the site partition.
-- Critical styles are right on the page.
+- Whether to put the component class only on the selected elements and throw out extra selectors, like Svelte. Then HTML will coincide with Svelte in this, and Shugo will warn about the selector that does not choose anything.
