@@ -367,7 +367,12 @@ func part(w *worker, k *keeper, readers map[string]struct{}, took func(string)) 
 	}
 	// A page of a route that gives its pages more than their addresses is
 	// computed from what the route gives it, so the route is listed again.
+	asked := map[int]struct{}{}
 	for _, route := range pages {
+		if _, already := asked[route]; already {
+			continue
+		}
+		asked[route] = struct{}{}
 		props, _, _, err := k.update.Route(route)
 		if err != nil {
 			return err
