@@ -76,9 +76,10 @@ type storeDiff struct {
 	ReadsAdded, ReadsRemoved                  []readRow
 	ShowsAdded, ShowsRemoved                  []showRow
 	Version                                   [2]string
-	// Export is the pages whose HTML the update found changed: an export
-	// made before it builds these again, and no others.
-	Export []string
+	// Build is the pages whose HTML the update found changed, and Remove
+	// the pages that went away: an export made before it builds the first
+	// and removes the files of the second, and touches no other page.
+	Build, Remove []string
 }
 
 func diff(before, after storeLook) storeDiff {
@@ -158,9 +159,17 @@ func diff(before, after storeLook) storeDiff {
 	}
 	d.Version = [2]string{metaValue(before, "version"), metaValue(after, "version")}
 	if was, err := strconv.ParseInt(d.Version[0], 10, 64); err == nil {
+		there := map[string]bool{}
+		for _, p := range after.Pages {
+			there[p.Path] = true
+		}
 		for _, c := range after.Changed {
-			if c.Version > was {
-				d.Export = append(d.Export, c.Path)
+			switch {
+			case c.Version <= was:
+			case there[c.Path]:
+				d.Build = append(d.Build, c.Path)
+			default:
+				d.Remove = append(d.Remove, c.Path)
 			}
 		}
 	}

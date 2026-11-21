@@ -37,6 +37,7 @@ const schema = `
 CREATE TABLE meta   (name TEXT PRIMARY KEY, value BLOB NOT NULL) WITHOUT ROWID;
 CREATE TABLE page   (path TEXT PRIMARY KEY, hash BLOB NOT NULL, record BLOB NOT NULL, route INTEGER NOT NULL, reads BLOB NOT NULL) WITHOUT ROWID;
 CREATE TABLE changed (path TEXT PRIMARY KEY, version INTEGER NOT NULL) WITHOUT ROWID;
+CREATE INDEX changed_version ON changed (version);
 CREATE TABLE shared (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, hash BLOB NOT NULL, record BLOB NOT NULL, reads BLOB NOT NULL);
 CREATE TABLE shows  (shared INTEGER NOT NULL, user TEXT NOT NULL, PRIMARY KEY (shared, user)) WITHOUT ROWID;
 CREATE TABLE route  (id INTEGER PRIMARY KEY, props INTEGER NOT NULL, reads BLOB NOT NULL);
@@ -213,6 +214,7 @@ const (
 	metaBuild   = "build"   // which compiled project the records belong to
 	metaSite    = "site"    // the program of that project
 	metaVersion = "version" // grows with every update
+	metaOrigin  = "origin"  // the version from which changed tells every page whose HTML changed
 	metaTotals  = "totals"  // how many pages and shared blocks there are
 	metaData    = "data"    // which state of the data database the records were computed from
 )
@@ -262,8 +264,12 @@ func (r *reader) BuildID() (string, error) {
 // Mark names one state of one store. Versions are counted within a store,
 // and a store laid out anew is another one, even in the same file.
 type Mark struct {
-	Store   string `json:"store"`
-	Version int64  `json:"version"` // grows with every update; 0 before the first
+	Store   string
+	Version int64 // grows with every update; 0 before the first
+	// Origin is the version from which the store knows every page whose
+	// HTML has changed, the pages that went away among them: Changes can
+	// tell what changed after any version from Origin on.
+	Origin int64
 }
 
 // Mark returns which store this is and its version.
@@ -273,11 +279,12 @@ func (r *reader) Mark() (Mark, error) {
 		return Mark{}, err
 	}
 	mark := Mark{Store: string(store)}
-	err = r.meta.QueryRow(metaVersion).Scan(&mark.Version)
-	if errors.Is(err, sql.ErrNoRows) {
-		err = nil
+	for name, number := range map[string]*int64{metaVersion: &mark.Version, metaOrigin: &mark.Origin} {
+		if err := r.meta.QueryRow(name).Scan(number); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return mark, err
+		}
 	}
-	return mark, err
+	return mark, nil
 }
 
 // Page returns the record of the page at path.
@@ -290,13 +297,23 @@ func (r *reader) Shared(id int64) (data []byte, found bool, err error) {
 	return r.blob(r.shared, id)
 }
 
-// Pages calls visit with the address of every page, and with its record if
-// the HTML of the page has changed after version since of the store, nil if
-// not: since 0 gives every record. It stops at the first error of visit.
-func (r *reader) Pages(since int64, visit func(path string, record []byte) error) error {
-	// The records of the other pages are not read at all. A page with no
-	// version is taken to have changed.
-	rows, err := r.query("SELECT page.path, CASE WHEN changed.version <= ? THEN NULL ELSE page.record END FROM page LEFT JOIN changed ON changed.path = page.path", since)
+// Pages calls visit with the address and the record of every page. It
+// stops at the first error of visit.
+func (r *reader) Pages(visit func(path string, record []byte) error) error {
+	return r.each("SELECT path, record FROM page", visit)
+}
+
+// Changes calls visit with every page whose HTML has changed after version
+// since, with its record; and with every page that has gone away since,
+// with nil. Since must not be below the origin of the store: see Mark. It
+// reads only those pages, and stops at the first error of visit.
+func (r *reader) Changes(since int64, visit func(path string, record []byte) error) error {
+	return r.each("SELECT changed.path, page.record FROM changed LEFT JOIN page ON page.path = changed.path WHERE changed.version > ?", visit, since)
+}
+
+// each calls visit with the address and the record of every page a query gives.
+func (r *reader) each(query string, visit func(path string, record []byte) error, arguments ...any) error {
+	rows, err := r.query(query, arguments...)
 	if err != nil {
 		return err
 	}
@@ -761,8 +778,8 @@ func (u *Update) DeletePage(path string) error {
 	if _, err := u.write.Exec("DELETE FROM page WHERE path = ?", path); err != nil {
 		return err
 	}
-	_, err := u.write.Exec("DELETE FROM changed WHERE path = ?", path)
-	return err
+	// A page that went away has changed too: an export removes its file.
+	return u.Changed(path)
 }
 
 func (u *Update) DeleteShared(id int64) error {
@@ -793,9 +810,13 @@ func (u *Update) Shown(shared int64) (bool, error) {
 
 // ClearRecords drops the records of all pages and shared blocks with what
 // they read: those computed by another compiled project say nothing to this
-// one.
+// one. Which pages changed before goes too, so the store knows changes from
+// this update on.
 func (u *Update) ClearRecords() error {
-	_, err := u.write.Exec("DELETE FROM page; DELETE FROM changed; DELETE FROM shared; DELETE FROM shows; DELETE FROM route; DELETE FROM shape; DELETE FROM reads; DELETE FROM plan")
+	if _, err := u.write.Exec("DELETE FROM page; DELETE FROM changed; DELETE FROM shared; DELETE FROM shows; DELETE FROM route; DELETE FROM shape; DELETE FROM reads; DELETE FROM plan"); err != nil {
+		return err
+	}
+	_, err := u.write.Exec(put, metaOrigin, u.number)
 	return err
 }
 
@@ -816,9 +837,10 @@ func (u *Update) SetBuild(id string, site []byte) error {
 	return err
 }
 
-// Changed notes that the HTML of a page is other than it was: an export
-// that follows an earlier version builds the page again. It is kept apart
-// from the record, which is not written again for it.
+// Changed notes that the HTML of a page is other than it was, or that the
+// page went away: an export that follows an earlier version writes or
+// removes its file. The note is kept apart from the record, which is not
+// written again for it, and stays when the page goes.
 func (u *Update) Changed(path string) error {
 	_, err := u.changed.Exec(path, u.number)
 	return err

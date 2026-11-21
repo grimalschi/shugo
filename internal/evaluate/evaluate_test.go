@@ -123,7 +123,7 @@ func (l *lab) held() (pages []string) {
 		if err != nil {
 			return err
 		}
-		err = v.Pages(0, func(path string, _ []byte) error {
+		err = v.Pages(func(path string, _ []byte) error {
 			pages = append(pages, path)
 			return nil
 		})
@@ -145,28 +145,30 @@ func (l *lab) held() (pages []string) {
 	return pages
 }
 
-// version returns the version of the store.
-func (l *lab) version() (version int64) {
+// mark returns which state of the store it is.
+func (l *lab) mark() (mark store.Mark) {
 	l.t.Helper()
-	err := l.store.View(func(v *store.View) error {
-		mark, err := v.Mark()
-		version = mark.Version
+	err := l.store.View(func(v *store.View) (err error) {
+		mark, err = v.Mark()
 		return err
 	})
 	if err != nil {
 		l.t.Fatal(err)
 	}
-	return version
+	return mark
 }
 
-// exported returns the pages an export made at version since would build
-// again: those whose HTML has changed after it.
-func (l *lab) exported(since int64) (pages []string) {
+// changes returns what an export made at version since would do: the pages
+// it builds again, whose HTML has changed after it, and the pages whose
+// files it removes.
+func (l *lab) changes(since int64) (built, gone []string) {
 	l.t.Helper()
 	err := l.store.View(func(v *store.View) error {
-		return v.Pages(since, func(path string, record []byte) error {
+		return v.Changes(since, func(path string, record []byte) error {
 			if record != nil {
-				pages = append(pages, path)
+				built = append(built, path)
+			} else {
+				gone = append(gone, path)
 			}
 			return nil
 		})
@@ -174,8 +176,9 @@ func (l *lab) exported(since int64) (pages []string) {
 	if err != nil {
 		l.t.Fatal(err)
 	}
-	sort.Strings(pages)
-	return pages
+	sort.Strings(built)
+	sort.Strings(gone)
+	return built, gone
 }
 
 func talk(stream []byte) *wire {
@@ -385,7 +388,7 @@ func TestPartOfTheSite(t *testing.T) {
 
 	// The shared block alone: two pages show it, and an export writes them
 	// and no others.
-	before := l.version()
+	before := l.mark().Version
 	card := l.must(leafRecord("card{}", "new card"))
 	if card.Computed.Shared != 1 || card.Shared.Changed != 1 || card.Pages.Changed != 0 {
 		t.Errorf("the card: %+v", card)
@@ -393,11 +396,11 @@ func TestPartOfTheSite(t *testing.T) {
 	if want := []string{"/", "/a"}; !reflect.DeepEqual(card.RenderNames, want) {
 		t.Errorf("pages with new HTML: %v, want %v", card.RenderNames, want)
 	}
-	if want, got := []string{"/", "/a"}, l.exported(before); !reflect.DeepEqual(got, want) {
-		t.Errorf("an export builds %v, want %v", got, want)
+	if built, gone := l.changes(before); !reflect.DeepEqual(built, []string{"/", "/a"}) || gone != nil {
+		t.Errorf("an export builds %v and removes %v", built, gone)
 	}
-	if got := l.exported(0); len(got) != 3 {
-		t.Errorf("an export from scratch builds %v", got)
+	if built, _ := l.changes(0); len(built) != 3 {
+		t.Errorf("an export from scratch builds %v", built)
 	}
 
 	// The same record again is no change.
@@ -427,6 +430,7 @@ func TestPartOfTheSite(t *testing.T) {
 func TestRemovedPage(t *testing.T) {
 	l := newLab(t)
 	l.must(pageWith("/", "home", "card{}"), pageRecord("/a", "a"), leafRecord("card{}", "card"))
+	before := l.mark().Version
 	report, err := l.update(func(k *keeper) error { return k.remove("/") })
 	if err != nil {
 		t.Fatal(err)
@@ -436,6 +440,10 @@ func TestRemovedPage(t *testing.T) {
 	}
 	if pages := l.held(); !reflect.DeepEqual(pages, []string{"/a"}) {
 		t.Errorf("pages: %v", pages)
+	}
+	// An export made before removes the file of the page.
+	if built, gone := l.changes(before); built != nil || !reflect.DeepEqual(gone, []string{"/"}) {
+		t.Errorf("an export builds %v and removes %v", built, gone)
 	}
 }
 
@@ -473,8 +481,8 @@ func TestSharedBlockThatShowsItself(t *testing.T) {
 	}
 }
 
-// Records of another compiled project are dropped, and the pages computed
-// again are all written by the next export.
+// Records of another compiled project are dropped, and with them what the
+// store knew of the pages before: an export made before writes everything.
 func TestRecordsOfAnotherProject(t *testing.T) {
 	l := newLab(t)
 	l.must(pageRecord("/", "home"), pageRecord("/gone", "gone"))
@@ -490,8 +498,8 @@ func TestRecordsOfAnotherProject(t *testing.T) {
 	if report.Pages.Added != 1 || report.Pages.Total != 1 {
 		t.Errorf("%+v", report)
 	}
-	if pages := l.exported(l.version() - 1); !reflect.DeepEqual(pages, []string{"/"}) {
-		t.Errorf("an export builds %v", pages)
+	if mark := l.mark(); mark.Origin != mark.Version {
+		t.Errorf("the store knows changes from version %d on, and is at %d", mark.Origin, mark.Version)
 	}
 }
 

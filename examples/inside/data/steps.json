@@ -34,5 +34,13 @@
       "INSERT INTO products VALUES ('p4', 'cup', 'Smoke Cup', 900, 'c1', '')",
       "INSERT INTO variants VALUES ('p4-s', 'p4', 'one size', 7, 1)"
     ]
+  },
+  {
+    "title": "The Salt Platter was discontinued",
+    "why": "The product row was deleted. Its page disappears, and queries that matched it now find one fewer row in the route's page list, the home page, the category page, and the header count. Export deletes the file for the removed page.",
+    "sql": [
+      "DELETE FROM variants WHERE product = 'p3'",
+      "DELETE FROM products WHERE id = 'p3'"
+    ]
   }
 ]

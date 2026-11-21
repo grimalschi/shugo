@@ -153,8 +153,17 @@ func TestExport(t *testing.T) {
 	s.build()
 	out := filepath.Join(s.root, "dist")
 	export := func() server.Exported { return s.export(out) }
+	// What was in the folder before the first export is not the export's.
+	for name, text := range map[string]string{"old/index.html": "old", "notes.txt": "notes", ".git/x/index.html": "git"} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(out, name)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(out, name), []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	// Four pages, two public files and the style sheet.
-	if done := export(); done.Pages != 4 || done.Files != 7 || done.Written != 7 {
+	if done := export(); done.Pages != 4 || done.Files != 7 || done.Written != 7 || done.Removed != 0 {
 		t.Errorf("first export: %+v", done)
 	}
 	for _, name := range []string{"index.html", "about/index.html", "404.html", "café au lait/index.html", "robots.txt", "img/dot.svg"} {
@@ -166,14 +175,18 @@ func TestExport(t *testing.T) {
 		t.Errorf("an export with nothing new: %+v", done)
 	}
 	// One page changes and one goes away: one file is written, one removed.
+	// The project has changed, so every page is built again, and the
+	// folder is cleared of pages the site does not have.
 	s.write("-- pages/about.shugo --\n<h1>about us</h1>")
 	s.remove("pages/café au lait.shugo")
 	s.build()
-	if done := export(); done.Pages != 3 || done.Written != 1 || done.Removed != 1 {
+	if done := export(); done.Pages != 3 || done.Built != 3 || done.Written != 1 || done.Removed != 2 {
 		t.Errorf("after a change: %+v", done)
 	}
-	if _, err := os.Stat(filepath.Join(out, "café au lait", "index.html")); err == nil {
-		t.Error("the file of the removed page is still there")
+	for name, there := range map[string]bool{"café au lait/index.html": false, "café au lait": false, "old/index.html": false, "notes.txt": true, ".git/x/index.html": true} {
+		if _, err := os.Stat(filepath.Join(out, filepath.FromSlash(name))); (err == nil) != there {
+			t.Errorf("%s: there %v, want %v", name, err == nil, there)
+		}
 	}
 }
 

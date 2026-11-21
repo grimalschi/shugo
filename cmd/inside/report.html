@@ -255,7 +255,7 @@
 <p>The store is <code>_build/store.db</code>. The server serves pages from this store.</p>
 <h3>meta</h3>
 <table>{{range .Build.Look.Store.Meta}}<tr><td class="mono">{{.Name}}</td><td class="mono">{{.Value}}</td></tr>{{end}}</table>
-<p class="note"><code>data</code> is the journal name and the last journal row reflected in the store. <code>version</code> increases with every update. <code>store</code> is a random identifier for the store. Versions are relative to it. <code>totals</code> counts pages and shared blocks.</p>
+<p class="note"><code>data</code> is the journal name and the last journal row reflected in the store. <code>version</code> increases with every update. <code>store</code> is a random identifier for the store. Versions are relative to it. <code>origin</code> is the earliest version for which the store has a complete record of changes to page HTML. <code>totals</code> counts pages and shared blocks.</p>
 
 <h3>page — page records</h3>
 {{range .Build.Look.Store.Pages}}{{$p := .}}
@@ -291,7 +291,7 @@
 </table>
 
 <h3>changed — when a page's HTML last changed</h3>
-<p class="note">The store version when the HTML last changed, either through the page record or through a shared block it renders. Export remembers its last version and rebuilds pages with newer markers. The markers live in their own narrow table, separate from the page records.</p>
+<p class="note">The store version when the HTML last changed, either through the page record or through a shared block it renders. A removed page retains the version in which it disappeared. Export remembers its last version and uses the index to find newer entries. It rebuilds changed pages and deletes files for removed pages. These markers live in their own narrow table, so writing one leaves the page record unchanged. A full rebuild clears the table and advances <code>origin</code> in meta. An export from an earlier version then writes every page.</p>
 <table><tr><th>Page</th><th>Version</th></tr>
 {{range .Build.Look.Store.Changed}}<tr><td><a href="#{{anchor "page" .Path}}">{{.Path}}</a></td><td>{{.Version}}</td></tr>{{end}}
 </table>
@@ -383,7 +383,8 @@
 <table>
 <tr><td>Page records</td><td>{{if .Diff.PagesChanged}}changed: {{join .Diff.PagesChanged ", "}}. {{end}}{{if .Diff.PagesAdded}}added: {{join .Diff.PagesAdded ", "}}. {{end}}{{if .Diff.PagesRemoved}}removed: {{join .Diff.PagesRemoved ", "}}.{{end}}</td></tr>
 <tr><td>Shared block records</td><td>{{if .Diff.SharedChanged}}changed: {{join .Diff.SharedChanged ", "}}. {{end}}{{if .Diff.SharedAdded}}added: {{join .Diff.SharedAdded ", "}}. {{end}}{{if .Diff.SharedRemoved}}removed: {{join .Diff.SharedRemoved ", "}}.{{end}}</td></tr>
-<tr><td>Pages the export will rebuild</td><td>{{if .Diff.Export}}{{join .Diff.Export ", "}}: their marker in <code>changed</code> is version {{index .Diff.Version 1}}{{else}}none{{end}}</td></tr>
+<tr><td>Pages the export will rebuild</td><td>{{if .Diff.Build}}{{join .Diff.Build ", "}} — their version in <code>changed</code> is now {{index .Diff.Version 1}}{{else}}none{{end}}</td></tr>
+{{if .Diff.Remove}}<tr><td>Page files the export will remove</td><td>{{join .Diff.Remove ", "}} — removed in version {{index .Diff.Version 1}}</td></tr>{{end}}
 <tr><td>Reads</td><td>{{range .Diff.ReadsAdded}}<div class="add">+ shape {{.Shape}}, {{key .Key}} — {{reader .Reader}}</div>{{end}}{{range .Diff.ReadsRemoved}}<div class="del">− shape {{.Shape}}, {{key .Key}} — {{reader .Reader}}</div>{{end}}</td></tr>
 <tr><td>Shared block users</td><td>{{range .Diff.ShowsAdded}}<div class="add">+ {{.Shared}} ← {{reader .User}}</div>{{end}}{{range .Diff.ShowsRemoved}}<div class="del">− {{.Shared}} ← {{reader .User}}</div>{{end}}</td></tr>
 </table>
