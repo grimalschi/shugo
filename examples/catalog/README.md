@@ -59,4 +59,4 @@ One benchmark run used 100,000 products, 104,202 pages, and 100,009 shared block
 | Delete the last product | 15 | 89 / 0 | 88 | 414 | 32 |
 | Add a product | 5 | 86 / 2 | 104,202 | 481 | 8,314 |
 
-The first update after the build is the no-op row. It takes longer than most updates because SQLite reads the journal for the first time since the build. For a change visible on all pages, export must rewrite every file.
+The first update after the build is the no-op row. It takes 0.4 s without evaluating anything. This run did not investigate the cause. For a change visible on all pages, export must rewrite every file.
