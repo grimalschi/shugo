@@ -740,12 +740,6 @@ func (k *keeper) rendered() error {
 		k.report.RenderNames = append(k.report.RenderNames, path)
 	}
 	sort.Strings(k.report.RenderNames)
-	// An export writes these pages again, and no others.
-	for _, path := range k.report.RenderNames {
-		if err := k.update.Changed(path); err != nil {
-			return err
-		}
-	}
 	if len(k.report.RenderNames) > k.limit {
 		k.report.RenderNames = k.report.RenderNames[:k.limit]
 	}

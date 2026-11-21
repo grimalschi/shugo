@@ -255,12 +255,12 @@
 <p>The store is <code>_build/store.db</code>. The server serves pages from this store.</p>
 <h3>meta</h3>
 <table>{{range .Build.Look.Store.Meta}}<tr><td class="mono">{{.Name}}</td><td class="mono">{{.Value}}</td></tr>{{end}}</table>
-<p class="note"><code>data</code> is the journal name and the last journal row reflected in the store. <code>version</code> increases with every update. <code>store</code> is a random identifier for the store. Versions are relative to it. <code>origin</code> is the earliest version for which the store has a complete record of changes to page HTML. <code>totals</code> counts pages and shared blocks.</p>
+<p class="note"><code>data</code> is the journal name and the last journal row reflected in the store. <code>version</code> increases with every update. <code>store</code> is a random identifier for the store. Versions are relative to it. <code>origin</code> is the earliest version for which the store has a complete record of changes and removed pages. <code>totals</code> counts pages and shared blocks.</p>
 
 <h3>page — page records</h3>
 {{range .Build.Look.Store.Pages}}{{$p := .}}
 <div class="card" id="{{anchor "page" .Path}}">
-<h4>{{.Path}} <span class="n">route {{.Route}}, record {{len .Raw}} bytes, hash {{short .Hash}}</span></h4>
+<h4>{{.Path}} <span class="n">route {{.Route}}, record {{len .Raw}} bytes, hash {{short .Hash}}, changed in version {{.Version}}</span></h4>
 <table><tr><th>Block</th><th>Template or shared block</th><th>Value tape</th><th>Nested blocks</th><th>Slots</th></tr>
 {{range $i, $b := .Record.Blocks}}<tr><td>{{$i}}{{if eq $i $p.Record.Top}} <span class="pill">root</span>{{end}}</td>
 <td>{{if $b.Use}}<a href="#shared-{{$b.Shared}}">shared block {{$b.Shared}}</a> <span class="n">{{$store.SharedName $b.Shared}}</span>{{else}}{{(index $.Compiled.Site.Files $b.File).Path}}, part {{$b.Part}}{{end}}</td>
@@ -275,7 +275,7 @@
 <h3>shared — shared blocks</h3>
 {{range .Build.Look.Store.Shared}}{{$s := .}}
 <div class="card" id="shared-{{.ID}}">
-<h4>{{.ID}}: {{.Name}} <span class="n">record {{len .Raw}} bytes</span></h4>
+<h4>{{.ID}}: {{.Name}} <span class="n">record {{len .Raw}} bytes, changed in version {{.Version}}</span></h4>
 <p>Rendered by: {{range $store.Users .ID}}{{reader .}}; {{end}}</p>
 <table><tr><th>Block</th><th>Template or shared block</th><th>Value tape</th><th>Nested blocks</th></tr>
 {{range $i, $b := .Record.Blocks}}<tr><td>{{$i}}</td><td>{{if $b.Use}}<a href="#shared-{{$b.Shared}}">shared block {{$b.Shared}}</a>{{else}}{{(index $.Compiled.Site.Files $b.File).Path}}, part {{$b.Part}}{{end}}</td><td class="mono">{{if not $b.Use}}{{template "tape" $b.Values.Strings}}{{end}}</td><td>{{range $b.Children}}{{.}} {{end}}</td></tr>{{end}}
@@ -290,11 +290,11 @@
 {{range .Build.Look.Store.Routes}}<tr><td>{{.ID}}</td><td>{{.Props}}</td><td>{{range .Readings}}{{$sh := $store.Shape .Shape}}<div><a href="#shape-{{.Shape}}">shape {{.Shape}}</a>: {{$sh.Table}}{{if $sh.By}} where {{join $sh.By ", "}} = {{key .Key}}{{end}}; relevant columns: {{join $sh.Columns ", "}}</div>{{end}}</td></tr>{{end}}
 </table>
 
-<h3>changed — when a page's HTML last changed</h3>
-<p class="note">The store version when the HTML last changed, either through the page record or through a shared block it renders. A removed page retains the version in which it disappeared. Export remembers its last version and uses the index to find newer entries. It rebuilds changed pages and deletes files for removed pages. These markers live in their own narrow table, so writing one leaves the page record unchanged. A full rebuild clears the table and advances <code>origin</code> in meta. An export from an earlier version then writes every page.</p>
-<table><tr><th>Page</th><th>Version</th></tr>
-{{range .Build.Look.Store.Changed}}<tr><td><a href="#{{anchor "page" .Path}}">{{.Path}}</a></td><td>{{.Version}}</td></tr>{{end}}
-</table>
+<h3>gone — removed pages</h3>
+<p class="note">A removed page retains the version in which it disappeared. Page and shared block records also store the version when they last changed. An update writes that version with the record. Export remembers its last version and rebuilds pages with newer records. It follows <code>shows</code> to find pages that render a newer shared block, directly or through another shared block. It deletes files for pages removed since the previous export. Version indexes support these lookups. A full rebuild clears the table and advances <code>origin</code> in meta. An export from an earlier version then writes every page.</p>
+{{if .Build.Look.Store.Gone}}<table><tr><th>Page</th><th>Removed in version</th></tr>
+{{range .Build.Look.Store.Gone}}<tr><td>{{.Path}}</td><td>{{.Version}}</td></tr>{{end}}
+</table>{{else}}<p>No pages are missing after the build. One will disappear in the last step of section 7.</p>{{end}}
 
 <h3>shape — read shapes</h3>
 <table><tr><th>shape</th><th>Table</th><th>Lookup columns</th><th>Other relevant columns</th><th>As sent by JS</th></tr>
@@ -383,8 +383,8 @@
 <table>
 <tr><td>Page records</td><td>{{if .Diff.PagesChanged}}changed: {{join .Diff.PagesChanged ", "}}. {{end}}{{if .Diff.PagesAdded}}added: {{join .Diff.PagesAdded ", "}}. {{end}}{{if .Diff.PagesRemoved}}removed: {{join .Diff.PagesRemoved ", "}}.{{end}}</td></tr>
 <tr><td>Shared block records</td><td>{{if .Diff.SharedChanged}}changed: {{join .Diff.SharedChanged ", "}}. {{end}}{{if .Diff.SharedAdded}}added: {{join .Diff.SharedAdded ", "}}. {{end}}{{if .Diff.SharedRemoved}}removed: {{join .Diff.SharedRemoved ", "}}.{{end}}</td></tr>
-<tr><td>Pages the export will rebuild</td><td>{{if .Diff.Build}}{{join .Diff.Build ", "}} — their version in <code>changed</code> is now {{index .Diff.Version 1}}{{else}}none{{end}}</td></tr>
-{{if .Diff.Remove}}<tr><td>Page files the export will remove</td><td>{{join .Diff.Remove ", "}} — removed in version {{index .Diff.Version 1}}</td></tr>{{end}}
+<tr><td>Pages an export from before this update would rebuild</td><td>{{if .Diff.Build}}{{join .Diff.Build ", "}}{{else}}none{{end}}</td></tr>
+{{if .Diff.Remove}}<tr><td>Page files the export will remove</td><td>{{join .Diff.Remove ", "}}: recorded in <code>gone</code> with version {{index .Diff.Version 1}}</td></tr>{{end}}
 <tr><td>Reads</td><td>{{range .Diff.ReadsAdded}}<div class="add">+ shape {{.Shape}}, {{key .Key}} — {{reader .Reader}}</div>{{end}}{{range .Diff.ReadsRemoved}}<div class="del">− shape {{.Shape}}, {{key .Key}} — {{reader .Reader}}</div>{{end}}</td></tr>
 <tr><td>Shared block users</td><td>{{range .Diff.ShowsAdded}}<div class="add">+ {{.Shared}} ← {{reader .User}}</div>{{end}}{{range .Diff.ShowsRemoved}}<div class="del">− {{.Shared}} ← {{reader .User}}</div>{{end}}</td></tr>
 </table>

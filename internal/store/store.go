@@ -35,16 +35,18 @@ const layout = "5"
 
 const schema = `
 CREATE TABLE meta   (name TEXT PRIMARY KEY, value BLOB NOT NULL) WITHOUT ROWID;
-CREATE TABLE page   (path TEXT PRIMARY KEY, hash BLOB NOT NULL, record BLOB NOT NULL, route INTEGER NOT NULL, reads BLOB NOT NULL) WITHOUT ROWID;
-CREATE TABLE changed (path TEXT PRIMARY KEY, version INTEGER NOT NULL) WITHOUT ROWID;
-CREATE INDEX changed_version ON changed (version);
-CREATE TABLE shared (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, hash BLOB NOT NULL, record BLOB NOT NULL, reads BLOB NOT NULL);
+CREATE TABLE page   (path TEXT PRIMARY KEY, hash BLOB NOT NULL, record BLOB NOT NULL, route INTEGER NOT NULL, reads BLOB NOT NULL, version INTEGER NOT NULL) WITHOUT ROWID;
+CREATE TABLE shared (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, hash BLOB NOT NULL, record BLOB NOT NULL, reads BLOB NOT NULL, version INTEGER NOT NULL);
+CREATE TABLE gone   (path TEXT PRIMARY KEY, version INTEGER NOT NULL) WITHOUT ROWID;
 CREATE TABLE shows  (shared INTEGER NOT NULL, user TEXT NOT NULL, PRIMARY KEY (shared, user)) WITHOUT ROWID;
 CREATE TABLE route  (id INTEGER PRIMARY KEY, props INTEGER NOT NULL, reads BLOB NOT NULL);
 CREATE TABLE shape  (id INTEGER PRIMARY KEY, spec TEXT NOT NULL UNIQUE);
 CREATE TABLE reads  (shape INTEGER NOT NULL, key BLOB NOT NULL, reader TEXT NOT NULL, PRIMARY KEY (shape, key, reader)) WITHOUT ROWID;
 CREATE TABLE plan   (question TEXT PRIMARY KEY) WITHOUT ROWID;
 CREATE INDEX page_route ON page (route);
+CREATE INDEX page_version ON page (version);
+CREATE INDEX shared_version ON shared (version);
+CREATE INDEX gone_version ON gone (version);
 `
 
 // Store is an open store.
@@ -227,7 +229,7 @@ const (
 	metaBuild   = "build"   // which compiled project the records belong to
 	metaSite    = "site"    // the program of that project
 	metaVersion = "version" // grows with every update
-	metaOrigin  = "origin"  // the version from which changed tells every page whose HTML changed
+	metaOrigin  = "origin"  // the version from which the store knows every change: see Mark
 	metaTotals  = "totals"  // how many pages and shared blocks there are
 	metaData    = "data"    // which state of the data database the records were computed from
 )
@@ -279,9 +281,9 @@ func (r *reader) BuildID() (string, error) {
 type Mark struct {
 	Store   string
 	Version int64 // grows with every update; 0 before the first
-	// Origin is the version from which the store knows every page whose
-	// HTML has changed, the pages that went away among them: Changes can
-	// tell what changed after any version from Origin on.
+	// Origin is the version from which the store knows every change of its
+	// records and every page that went away: Changes can tell what changed
+	// after any version from Origin on.
 	Origin int64
 }
 
@@ -316,12 +318,77 @@ func (r *reader) Pages(visit func(path string, record []byte) error) error {
 	return r.each("SELECT path, record FROM page", visit)
 }
 
-// Changes calls visit with every page whose HTML has changed after version
-// since, with its record; and with every page that has gone away since,
-// with nil. Since must not be below the origin of the store: see Mark. It
-// reads only those pages, and stops at the first error of visit.
+// Changes calls visit with every page whose HTML may have changed after
+// version since, with its record, and with every page that went away since,
+// with nil. A page has changed when its own record has, or the record of a
+// shared block it shows, directly or through other shared blocks. Since
+// must not be below the origin of the store: see Mark. Only those pages are
+// read; visit is called once for each, and an error of it stops the walk.
 func (r *reader) Changes(since int64, visit func(path string, record []byte) error) error {
-	return r.each("SELECT changed.path, page.record FROM changed LEFT JOIN page ON page.path = changed.path WHERE changed.version > ?", visit, since)
+	seen := map[string]struct{}{}
+	err := r.each("SELECT path, record FROM page WHERE version > ?", func(path string, record []byte) error {
+		seen[path] = struct{}{}
+		return visit(path, record)
+	}, since)
+	if err != nil {
+		return err
+	}
+
+	// The pages that show a shared block that has changed. Every list is
+	// read whole before its pages are, so that one query runs at a time.
+	var queue []int64
+	rows, err := r.query("SELECT id FROM shared WHERE version > ?", since)
+	if err := column(rows, err, func(id int64) { queue = append(queue, id) }); err != nil {
+		return err
+	}
+	met := map[int64]struct{}{}
+	for _, id := range queue {
+		met[id] = struct{}{}
+	}
+	for len(queue) > 0 {
+		id := queue[len(queue)-1]
+		queue = queue[:len(queue)-1]
+		var users []string
+		rows, err := r.query("SELECT user FROM shows WHERE shared = ?", id)
+		if err := column(rows, err, func(user string) { users = append(users, user) }); err != nil {
+			return err
+		}
+		for _, user := range users {
+			if shared, is := UserShared(user); is {
+				if _, already := met[shared]; !already {
+					met[shared] = struct{}{}
+					queue = append(queue, shared)
+				}
+				continue
+			}
+			if _, already := seen[user]; already {
+				continue
+			}
+			seen[user] = struct{}{}
+			record, found, err := r.Page(user)
+			if err != nil {
+				return err
+			}
+			if found {
+				if err := visit(user, record); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	// The pages that went away, unless they came back.
+	var gone []string
+	rows, err = r.query("SELECT gone.path FROM gone LEFT JOIN page ON page.path = gone.path WHERE gone.version > ? AND page.path IS NULL", since)
+	if err := column(rows, err, func(path string) { gone = append(gone, path) }); err != nil {
+		return err
+	}
+	for _, path := range gone {
+		if err := visit(path, nil); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // each calls visit with the address and the record of every page a query gives.
@@ -437,7 +504,7 @@ type Update struct {
 	number                                    int64 // the version of the store it makes
 	keptPage, named, name, putPage, putShared *sql.Stmt
 	show, unshow, shown, users                *sql.Stmt
-	read, unread, readers, changed            *sql.Stmt
+	read, unread, readers                     *sql.Stmt
 }
 
 // Update starts a change. It waits for an update that is under way.
@@ -457,8 +524,8 @@ func (s *Store) Update() (*Update, error) {
 		&u.keptPage:  "SELECT hash, route, reads FROM page WHERE path = ?",
 		&u.named:     "SELECT id, hash, reads FROM shared WHERE name = ?",
 		&u.name:      "SELECT name FROM shared WHERE id = ?",
-		&u.putPage:   "INSERT INTO page (path, hash, record, route, reads) VALUES (?, ?, ?, ?, ?) ON CONFLICT (path) DO UPDATE SET hash = excluded.hash, record = excluded.record, route = excluded.route, reads = excluded.reads",
-		&u.putShared: "UPDATE shared SET hash = ?, record = ?, reads = ? WHERE id = ?",
+		&u.putPage:   "INSERT INTO page (path, hash, record, route, reads, version) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (path) DO UPDATE SET hash = excluded.hash, record = excluded.record, route = excluded.route, reads = excluded.reads, version = excluded.version",
+		&u.putShared: "UPDATE shared SET hash = ?, record = ?, reads = ?, version = ? WHERE id = ?",
 		&u.read:      "INSERT OR IGNORE INTO reads (shape, key, reader) VALUES (?, ?, ?)",
 		&u.unread:    "DELETE FROM reads WHERE shape = ? AND key = ? AND reader = ?",
 		&u.show:      "INSERT OR IGNORE INTO shows (shared, user) VALUES (?, ?)",
@@ -466,7 +533,6 @@ func (s *Store) Update() (*Update, error) {
 		&u.shown:     "SELECT 1 FROM shows WHERE shared = ? LIMIT 1",
 		&u.users:     "SELECT user FROM shows WHERE shared = ?",
 		&u.readers:   "SELECT reader FROM reads WHERE shape = ? AND key = ?",
-		&u.changed:   "INSERT INTO changed (path, version) VALUES (?, ?) ON CONFLICT (path) DO UPDATE SET version = excluded.version",
 	} {
 		if *statement, err = tx.Prepare(query); err != nil {
 			tx.Rollback()
@@ -571,7 +637,7 @@ func (u *Update) SharedReads(id int64) (reads []byte, err error) {
 // PutPage keeps the record of a page in place of the one it had, with the
 // route that gave the page and what it read from the data.
 func (u *Update) PutPage(path string, hash record.Hash, data []byte, route int, reads []byte) error {
-	_, err := u.putPage.Exec(path, hash[:], data, route, orEmpty(reads))
+	_, err := u.putPage.Exec(path, hash[:], data, route, orEmpty(reads), u.number)
 	return err
 }
 
@@ -593,7 +659,7 @@ func orEmpty(data []byte) []byte {
 // NewShared gives a number to a shared block that the store has not had.
 // Its record follows with PutShared.
 func (u *Update) NewShared(name string) (int64, error) {
-	result, err := u.write.Exec("INSERT INTO shared (name, hash, record, reads) VALUES (?, x'', x'', x'')", name)
+	result, err := u.write.Exec("INSERT INTO shared (name, hash, record, reads, version) VALUES (?, x'', x'', x'', ?)", name, u.number)
 	if err != nil {
 		return 0, err
 	}
@@ -603,7 +669,7 @@ func (u *Update) NewShared(name string) (int64, error) {
 // PutShared keeps the record of a shared block in place of the one it had,
 // with what it read from the data.
 func (u *Update) PutShared(id int64, hash record.Hash, data []byte, reads []byte) error {
-	_, err := u.putShared.Exec(hash[:], data, orEmpty(reads), id)
+	_, err := u.putShared.Exec(hash[:], data, orEmpty(reads), u.number, id)
 	return err
 }
 
@@ -688,8 +754,9 @@ func (u *Update) DeletePage(path string) error {
 	if _, err := u.write.Exec("DELETE FROM page WHERE path = ?", path); err != nil {
 		return err
 	}
-	// A page that went away has changed too: an export removes its file.
-	return u.Changed(path)
+	// An export removes its file.
+	_, err := u.write.Exec("INSERT INTO gone (path, version) VALUES (?, ?) ON CONFLICT (path) DO UPDATE SET version = excluded.version", path, u.number)
+	return err
 }
 
 func (u *Update) DeleteShared(id int64) error {
@@ -779,10 +846,10 @@ func column[T any](rows *sql.Rows, err error, visit func(T)) error {
 
 // ClearRecords drops the records of all pages and shared blocks with what
 // they read: those computed by another compiled project say nothing to this
-// one. Which pages changed before goes too, so the store knows changes from
-// this update on.
+// one. Which pages went away before goes too, so the store knows changes
+// from this update on.
 func (u *Update) ClearRecords() error {
-	if _, err := u.write.Exec("DELETE FROM page; DELETE FROM changed; DELETE FROM shared; DELETE FROM shows; DELETE FROM route; DELETE FROM shape; DELETE FROM reads; DELETE FROM plan"); err != nil {
+	if _, err := u.write.Exec("DELETE FROM page; DELETE FROM gone; DELETE FROM shared; DELETE FROM shows; DELETE FROM route; DELETE FROM shape; DELETE FROM reads; DELETE FROM plan"); err != nil {
 		return err
 	}
 	_, err := u.write.Exec(put, metaOrigin, u.number)
@@ -803,15 +870,6 @@ func (u *Update) SetBuild(id string, site []byte) error {
 		return err
 	}
 	_, err := u.write.Exec(put, metaSite, site)
-	return err
-}
-
-// Changed notes that the HTML of a page is other than it was, or that the
-// page went away: an export that follows an earlier version writes or
-// removes its file. The note is kept apart from the record, which is not
-// written again for it, and stays when the page goes.
-func (u *Update) Changed(path string) error {
-	_, err := u.changed.Exec(path, u.number)
 	return err
 }
 

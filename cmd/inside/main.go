@@ -21,6 +21,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -143,6 +144,11 @@ func walkThrough(project, shugo string) error {
 		s.Report = pretty(updated)
 		json.Unmarshal([]byte(updated), &s.Summary)
 		s.Diff = diff(before.Store, now.Store)
+		if since, err := strconv.ParseInt(s.Diff.Version[0], 10, 64); err == nil {
+			if s.Diff.Build, s.Diff.Remove, err = exportAfter(filepath.Join(project, "_build", "store.db"), since); err != nil {
+				return err
+			}
+		}
 		s.HTML = pagesThatDiffer(before.HTML, now.HTML)
 		if s.Requests, s.Answers, err = talk(filepath.Join(out, "talk", fmt.Sprintf("step-%d", i+1))); err != nil {
 			return err

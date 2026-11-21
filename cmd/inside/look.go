@@ -70,12 +70,12 @@ type storeLook struct {
 	Routes []routeRow
 	Shapes []shapeRow
 	Reads  []readRow
-	// Changed is the version of the store in which the HTML of every page
-	// last changed: an export builds the pages changed after its own.
-	Changed []changedRow
+	// Gone is every page that went away, with the version it went in: an
+	// export removes its file.
+	Gone []goneRow
 }
 
-type changedRow struct {
+type goneRow struct {
 	Path    string
 	Version int64
 }
@@ -83,6 +83,7 @@ type changedRow struct {
 type pageRow struct {
 	Path     string
 	Hash     string
+	Version  int64 // in which the record last changed
 	Route    int
 	Raw      []byte
 	Record   *record.Record
@@ -94,6 +95,7 @@ type sharedRow struct {
 	ID       int64
 	Name     string
 	Hash     string
+	Version  int64 // in which the record last changed
 	Raw      []byte
 	Record   *record.Record
 	Readings []reading
@@ -260,12 +262,12 @@ func lookAtStore(path string) (storeLook, error) {
 		s.Meta = append(s.Meta, pair{text(r[0]), value})
 	}
 
-	pages, err := all(db, "SELECT path, hash, record, route, reads FROM page ORDER BY path")
+	pages, err := all(db, "SELECT path, hash, record, route, reads, version FROM page ORDER BY path")
 	if err != nil {
 		return s, err
 	}
 	for _, r := range pages {
-		p := pageRow{Path: text(r[0]), Hash: hexOf(r[1]), Raw: r[2].([]byte), Route: int(r[3].(int64)), RawReads: bytesOf(r[4])}
+		p := pageRow{Path: text(r[0]), Hash: hexOf(r[1]), Raw: r[2].([]byte), Route: int(r[3].(int64)), RawReads: bytesOf(r[4]), Version: r[5].(int64)}
 		if p.Record, err = record.Decode(p.Raw); err != nil {
 			return s, err
 		}
@@ -274,12 +276,12 @@ func lookAtStore(path string) (storeLook, error) {
 		}
 		s.Pages = append(s.Pages, p)
 	}
-	shared, err := all(db, "SELECT id, name, hash, record, reads FROM shared ORDER BY id")
+	shared, err := all(db, "SELECT id, name, hash, record, reads, version FROM shared ORDER BY id")
 	if err != nil {
 		return s, err
 	}
 	for _, r := range shared {
-		b := sharedRow{ID: r[0].(int64), Name: text(r[1]), Hash: hexOf(r[2]), Raw: r[3].([]byte), RawReads: bytesOf(r[4])}
+		b := sharedRow{ID: r[0].(int64), Name: text(r[1]), Hash: hexOf(r[2]), Raw: r[3].([]byte), RawReads: bytesOf(r[4]), Version: r[5].(int64)}
 		if b.Record, err = record.Decode(b.Raw); err != nil {
 			return s, err
 		}
@@ -288,12 +290,12 @@ func lookAtStore(path string) (storeLook, error) {
 		}
 		s.Shared = append(s.Shared, b)
 	}
-	changed, err := all(db, "SELECT path, version FROM changed ORDER BY path")
+	gone, err := all(db, "SELECT path, version FROM gone ORDER BY path")
 	if err != nil {
 		return s, err
 	}
-	for _, r := range changed {
-		s.Changed = append(s.Changed, changedRow{text(r[0]), r[1].(int64)})
+	for _, r := range gone {
+		s.Gone = append(s.Gone, goneRow{text(r[0]), r[1].(int64)})
 	}
 	shows, err := all(db, "SELECT shared, user FROM shows ORDER BY shared, user")
 	if err != nil {

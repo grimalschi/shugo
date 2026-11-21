@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/grimalschi/shugo/internal/record"
+	"github.com/grimalschi/shugo/internal/store"
 )
 
 // report is everything the page shows.
@@ -76,9 +77,10 @@ type storeDiff struct {
 	ReadsAdded, ReadsRemoved                  []readRow
 	ShowsAdded, ShowsRemoved                  []showRow
 	Version                                   [2]string
-	// Build is the pages whose HTML the update found changed, and Remove
-	// the pages that went away: an export made before it builds the first
-	// and removes the files of the second, and touches no other page.
+	// Build and Remove are what an export made before the update does after
+	// it: it builds the pages whose HTML may have changed and removes the
+	// files of the pages that went away, and touches no other page. The
+	// store tells it: see exportAfter.
 	Build, Remove []string
 }
 
@@ -158,22 +160,30 @@ func diff(before, after storeLook) storeDiff {
 		sort.Slice(list, func(a, b int) bool { return list[a].Reader+string(list[a].Raw) < list[b].Reader+string(list[b].Raw) })
 	}
 	d.Version = [2]string{metaValue(before, "version"), metaValue(after, "version")}
-	if was, err := strconv.ParseInt(d.Version[0], 10, 64); err == nil {
-		there := map[string]bool{}
-		for _, p := range after.Pages {
-			there[p.Path] = true
-		}
-		for _, c := range after.Changed {
-			switch {
-			case c.Version <= was:
-			case there[c.Path]:
-				d.Build = append(d.Build, c.Path)
-			default:
-				d.Remove = append(d.Remove, c.Path)
-			}
-		}
-	}
 	return d
+}
+
+// exportAfter asks the store what an export made at version since would
+// do now: which pages it would build again, and whose files it would remove.
+func exportAfter(path string, since int64) (build, remove []string, err error) {
+	st, err := store.Open(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer st.Close()
+	err = st.View(func(v *store.View) error {
+		return v.Changes(since, func(path string, record []byte) error {
+			if record == nil {
+				remove = append(remove, path)
+			} else {
+				build = append(build, path)
+			}
+			return nil
+		})
+	})
+	sort.Strings(build)
+	sort.Strings(remove)
+	return build, remove, err
 }
 
 func metaValue(s storeLook, name string) string {

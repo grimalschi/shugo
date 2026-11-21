@@ -34,10 +34,10 @@ Only `pages/` is required. `@/` in an import is the root of the project.
 
 ```
 shugo build     compile the project and compute every page
-shugo update    bring the site up to date after the data changed
-shugo dev       build, serve at http://localhost:4321, rebuild on every change
+shugo update    bring the site up to date after the data or the project changed
+shugo dev       update, serve at http://localhost:4321, update again on every change
 shugo serve     serve the site: every page is built on request from what build and update computed
-shugo export    write the site as files into _build/dist
+shugo export    write the site as files into _build/dist; after the first time, only what changed
 ```
 
 Run `shugo build` after every change and read the errors: each names a file, a line and a column.
@@ -46,7 +46,9 @@ Run `shugo build` after every change and read the errors: each names a file, a l
 
 `shugo update -check` computes every page and names the ones that came out different although no row they read has changed. Such a page reads data past the data database. Run it when a page looks stale.
 
-`shugo export` writes `/about` as `about/index.html`, the page for missing addresses as `404.html`, and copies `public/` and the style sheet.
+`shugo serve` keeps nothing of the site in memory: every request reads its page from the store, so a page shows an update as soon as the update ends.
+
+`shugo export` writes `/about` as `about/index.html`, the page for missing addresses as `404.html`, and copies `public/` and the style sheet. It leaves a list in the folder, `.shugo-export.json`, and the next export follows it: it builds only the pages whose HTML changed since, removes the files of pages that are gone, and copies only the files that changed. After `shugo build`, or into the folder of another project, it builds every page and removes the page files the site no longer has. The folder belongs to the export: a file edited there by hand stays so until its page changes, and a folder whose name starts with a dot is left alone. `-out` names another folder.
 
 ## A page
 
@@ -76,7 +78,7 @@ const total = products.reduce((sum, item) => sum + item.price, 0)
 
 - The script is optional: a file may be markup alone.
 - The script runs once for every page the file gives. Everything it declares is visible in the markup: values, functions, imports.
-- Top-level `await` is fine. Top-level `return` is an error.
+- There is no `await`: a page is computed without waiting, since `Shugo.query` answers at once. What takes time and needs doing once, such as making a highlighter, can be awaited at the top of a module in `lib/`. Top-level `return` is an error.
 - TypeScript everywhere: in the script and inside `{…}`. Types are removed, not checked: a type error does not stop the build, and `post.titel` shows nothing.
 - Markup goes to the page as written, HTML entities included: `&nbsp;`, `&lt;`.
 
@@ -220,7 +222,7 @@ import "../styles/main.css"
 - `<g-slot />` is where the page goes. A layout must have it.
 - A page gives markup to its layout with `slot="name"` on a tag at the top level of the page: `<title slot="head">About</title>`. The nearest layout that has `<g-slot name="head">` shows it. Giving markup for a slot that no layout around the page has is an error.
 - Pages do not import or call layouts.
-- The script of a layout runs for every page it wraps, unless neither the layout nor any component it imports reads `Shugo.url` or `Shugo.params`: then it runs once. A layout whose header highlights the current page runs for every page, so do not load data in its script; put the loading into a module in `lib/`.
+- The script of a layout runs for every page it wraps, unless neither the layout nor any component it imports reads `Shugo.url` or `Shugo.params`: then it runs once. A layout whose header highlights the current page runs for every page, and so does every query in it: a change of what it reads computes every page. Put what is the same on every page into a component without props, such as `<Menu />` that reads the menu itself; it is computed once, and a change of the menu computes it alone.
 
 ## Addresses
 
