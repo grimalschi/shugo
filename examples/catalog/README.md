@@ -37,26 +37,26 @@ Only the list of product URLs specifies columns. Each page depends on the column
 
 ## Results
 
-The benchmark used 100,000 products, 104,202 pages, and 100,009 shared blocks. It ran with Bun on eight cores and an ext4 filesystem.
+One benchmark run used 100,000 products, 104,202 pages, and 100,009 shared blocks. It ran with Bun on eight cores and an ext4 filesystem.
 
-- The initial build took 13.7–14.1 s, including 0.8 s to create eight indexes automatically. The first export took 7.1–8.5 s.
-- Changing one price evaluated one page and one card and changed the HTML on seven pages. The update took 28–32 ms, the full command took 36–41 ms, and the export took 7–8 ms.
+- The initial build took 14.1 s, including 0.8 s to create eight indexes automatically. The first export took 7.1 s.
+- Changing one price evaluated one page and one card and changed the HTML on seven pages. The update took 28 ms, the full command took 36 ms, and the export took 8 ms.
 - Changing an unread column on 5,000 products or one variant's shelf location triggered no evaluations.
 - Updating the header evaluated one shared block record and took 0.11–0.12 s. Export rewrote all 104,202 files in 8.1–8.7 s. `shugo serve` displayed the change immediately.
-- Deleting a product took 0.34–0.41 s to update. Export wrote 88 pages and deleted one file in 25–32 ms.
+- Deleting a product took 0.41 s to update. Export wrote 88 pages and deleted one file in 32 ms.
 
 | Change | Rows | Pages / shared blocks evaluated | Pages with changed HTML | Update (ms) | Export (ms) |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| No changes | 0 | 0 / 0 | 0 | 380–495 | 6–7 |
-| Unread column on every 20th product | 5,000 | 0 / 0 | 0 | 104–113 | 7 |
-| Price of one product | 1 | 1 / 1 | 7 | 28–32 | 7–8 |
-| Prices of 20 products | 20 | 20 / 20 | 70 | 36–37 | 17 |
+| No changes | 0 | 0 / 0 | 0 | 424 | 6 |
+| Unread column on every 20th product | 5,000 | 0 / 0 | 0 | 104 | 7 |
+| Price of one product | 1 | 1 / 1 | 7 | 28 | 8 |
+| Prices of 20 products | 20 | 20 / 20 | 70 | 36 | 17 |
 | Title of the featured product | 1 | 1 / 2 | 104,202 | 116 | 8,121 |
 | Footer phone number | 1 | 0 / 1 | 104,202 | 118 | 8,225 |
 | Move a product to another category | 1 | 168 / 1 | 104,202 | 249 | 8,509 |
 | Approved review text | 1 | 1 / 0 | 1 | 22 | 7 |
 | Stock of one variant | 1 | 1 / 0 | 1 | 25 | 7 |
-| Delete the last product | 15 | 89 / 0 | 88 | 340–414 | 25–32 |
-| Add a product | 5 | 86 / 2 | 104,202 | 481–920 | 8,314 |
+| Delete the last product | 15 | 89 / 0 | 88 | 414 | 32 |
+| Add a product | 5 | 86 / 2 | 104,202 | 481 | 8,314 |
 
 The first update after the build is the no-op row. It takes longer than most updates because SQLite reads the journal for the first time since the build. For a change visible on all pages, export must rewrite every file.
