@@ -1,0 +1,18 @@
+[
+ {
+  "body": "<article class=\"product\"><h1>‘North’ Pitcher</h1> <img src=\"https://pottery.example/img/jug.jpg\" alt=\"‘North’ Pitcher\" loading=\"lazy\"/> <p class=\"brand\">Brand: Pottery Shop</p> <p class=\"description\">A 1.5 L pitcher with ‘northern lights’ glaze.</p> <p class=\"sku\">SKU: JUG-001</p> <p class=\"offer\"><span class=\"price\">$2400.00</span> <span class=\"stock\">In stock</span></p> <p class=\"rating\">Rating 4.3 out of 5, reviews: 3</p></article> <script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@type\":\"Product\",\"name\":\"‘North’ Pitcher\",\"sku\":\"JUG-001\",\"description\":\"A 1.5 L pitcher with ‘northern lights’ glaze.\",\"image\":\"https://pottery.example/img/jug.jpg\",\"brand\":{\"@type\":\"Brand\",\"name\":\"Pottery Shop\"},\"offers\":{\"@type\":\"Offer\",\"price\":\"2400.00\",\"priceCurrency\":\"USD\",\"availability\":\"https://schema.org/InStock\"},\"aggregateRating\":{\"@type\":\"AggregateRating\",\"ratingValue\":4.3,\"reviewCount\":3}}</script>",
+  "head": ""
+ },
+ {
+  "body": "<article class=\"product\"><h1>\"Sky\" glaze &lt;sample></h1>   <p class=\"description\">Glaze sample. Do not confuse with &lt;/script>&lt;b>‘bold’&lt;/b> &amp; \"quotes\".</p> <p class=\"sku\">SKU: GL-0</p> <p class=\"offer\"><span class=\"price\">$0.00</span> <span class=\"stock\">Out of stock</span></p> <p class=\"rating\">Rating 5 out of 5, reviews: 1</p></article> <script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@type\":\"Product\",\"name\":\"\\\"Sky\\\" glaze \\u003csample>\",\"sku\":\"GL-0\",\"description\":\"Glaze sample. Do not confuse with \\u003c/script>\\u003cb>‘bold’\\u003c/b> & \\\"quotes\\\".\",\"offers\":{\"@type\":\"Offer\",\"price\":\"0.00\",\"priceCurrency\":\"USD\",\"availability\":\"https://schema.org/OutOfStock\"},\"aggregateRating\":{\"@type\":\"AggregateRating\",\"ratingValue\":5,\"reviewCount\":1}}</script>",
+  "head": ""
+ },
+ {
+  "body": "<article class=\"product\"><h1>Custom vase</h1>   <p class=\"description\">Made to your measurements.</p> <p class=\"sku\">SKU: VASE-?</p> <p class=\"offer\">Price on request</p> </article> <script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@type\":\"Product\",\"name\":\"Custom vase\",\"sku\":\"VASE-?\",\"description\":\"Made to your measurements.\"}</script>",
+  "head": ""
+ },
+ {
+  "body": "<article class=\"product\"><h1>Platter</h1> <img src=\"/img/dish.jpg?w=800&amp;h=600\" alt=\"Platter\" loading=\"lazy\"/> <p class=\"brand\">Brand: Studio &amp; Co.</p> <p class=\"description\">A flat platter for pies.</p> <p class=\"sku\">SKU: DISH-12&amp;B</p> <p class=\"offer\"><span class=\"price\">$1999.90</span> <span class=\"stock\">In stock</span></p> <p class=\"rating\">Rating 4.8 out of 5, reviews: 4</p></article> <script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@type\":\"Product\",\"name\":\"Platter\",\"sku\":\"DISH-12&B\",\"description\":\"A flat platter for pies.\",\"image\":\"/img/dish.jpg?w=800&h=600\",\"brand\":{\"@type\":\"Brand\",\"name\":\"Studio & Co.\"},\"offers\":{\"@type\":\"Offer\",\"price\":\"1999.90\",\"priceCurrency\":\"USD\",\"availability\":\"https://schema.org/InStock\"},\"aggregateRating\":{\"@type\":\"AggregateRating\",\"ratingValue\":4.8,\"reviewCount\":4}}</script>",
+  "head": ""
+ }
+]

@@ -1,0 +1,92 @@
+{
+ "id": "09-progress-bars",
+ "title": "Progress bars: a computed percent, a width and a colour in the style, ARIA values",
+ "entry": "ProgressBars",
+ "datasets": [
+  {
+   "bars": [
+    {
+     "label": "Shaping",
+     "value": 12,
+     "max": 12
+    },
+    {
+     "label": "Drying",
+     "value": 3,
+     "max": 10
+    },
+    {
+     "label": "Firing",
+     "value": 1,
+     "max": 8
+    },
+    {
+     "label": "Glaze",
+     "value": 45,
+     "max": 60
+    }
+   ]
+  },
+  {
+   "bars": [
+    {
+     "label": "Slip & \"white\" <new>",
+     "value": 139,
+     "max": 200
+    },
+    {
+     "label": "Over budget",
+     "value": 130,
+     "max": 120
+    },
+    {
+     "label": "Return",
+     "value": -5,
+     "max": 20
+    },
+    {
+     "label": "No plan",
+     "value": 5,
+     "max": 0
+    },
+    {
+     "label": "Empty",
+     "value": 0,
+     "max": 0
+    }
+   ]
+  },
+  {
+   "bars": []
+  },
+  {
+   "bars": [
+    {
+     "label": "Nearly a third",
+     "value": 29.6,
+     "max": 100
+    },
+    {
+     "label": "A little less",
+     "value": 7,
+     "max": 24
+    },
+    {
+     "label": "Two thirds",
+     "value": 2,
+     "max": 3
+    },
+    {
+     "label": "Threshold",
+     "value": 7,
+     "max": 10
+    },
+    {
+     "label": "Not started",
+     "value": 0,
+     "max": 50
+    }
+   ]
+  }
+ ]
+}

@@ -1,9 +1,10 @@
 package compile
 
 import (
-	"encoding/json"
 	"html"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -12,9 +13,11 @@ import (
 	"github.com/grimalschi/shugo/internal/syntax"
 )
 
-// The parser gives a tree of tags. Lowering decides what the tags mean and
-// gives the template as the compiler sees it: markup that goes to the page
-// as written, and the places where something is computed.
+// The parser gives a tree of tags and blocks. Lowering decides what they
+// mean and gives the template as the compiler sees it: markup that goes to
+// the page as written, and the places where something is computed. The rules
+// are those of the server renderer of Svelte 5, so that a template gives the
+// same HTML here and there.
 
 // role is what a file is used for; some tags make sense only in some roles.
 type role int
@@ -31,53 +34,107 @@ type node any
 type (
 	// markup goes to the page as written.
 	markup struct{ text string }
-	// output writes the result of an expression: as text, or as markup for <g-html>.
+	// output writes the result of an expression: as text, or as markup for {@html}.
 	output struct {
 		kind program.Kind
 		expr code
 	}
-	// attribute is name={expr}: it is left out when the result is null,
-	// undefined or false.
+	// constant is {@const name = value}: code that runs at its place and shows nothing.
+	constant struct{ code code }
+	// attribute is an attribute whose value is computed: written by the
+	// rules of Svelte, and left out where they say so.
 	attribute struct {
-		kind program.Kind // Attr, or URL for an address
-		name string
-		expr code
+		kind    program.Kind // Attr, or URL for an address
+		name    string
+		value   value
+		boolean bool
+		// class and style, with the directives and the scoping class.
+		class, style bool
+		directives   []directive
+		hash         string
 	}
-	// spread is {...attributes}.
-	spread struct{ expr code }
-	// choice is <g-if> with the <g-else-if> and <g-else> after it.
-	choice struct{ branches []branch }
+	// spread is every attribute of an element that has {...attributes}:
+	// which of them are written is known only when the page is computed.
+	spread struct {
+		entries    []entry
+		classes    []directive
+		styles     []directive
+		hash       string
+		preserve   bool // the names keep their case: the element is not HTML
+		// chooses names the variable that gets the value of a <select>,
+		// which is not written as an attribute.
+		chooses string
+	}
+	// choice is {#if} with its branches, or {#await}.
+	choice struct {
+		branches []branch
+		await    *code // the value of {#await}; nil for {#if}
+	}
 	branch struct {
-		test *code // nil for <g-else>
+		test *code // the condition; for {#await}, the name of the value; nil for {:else}
 		body []node
 	}
-	// loop is <g-for>.
+	// loop is {#each}.
 	loop struct {
-		each  code
-		item  code
-		index *code
+		list  code
+		item  *code
+		index string
 		body  []node
+		empty []node // {:else}; nil when there is none
 	}
 	// call shows a component.
 	call struct {
-		target code // the tag: Card, ui.Button
-		props  []prop
-		fills  []fill
+		target   code // the tag: Card, ui.Button, or the expression of svelte:component
+		self     bool // <svelte:self>
+		optional bool // <svelte:component this={…}> shows nothing for a value that is not a component
+		props    []prop
+		fills    []fill  // snippets without parameters: markup the caller gives
+		snippets []snipp // snippets with parameters, given as props
 	}
-	// fill is markup the caller puts into a slot of the component.
+	// fill is markup the caller gives to a component: its children, or a
+	// snippet without parameters written inside its tag.
 	fill struct {
 		name string
 		body []node
 	}
-	// outlet is <g-slot>: the place where a component shows a fill.
-	outlet struct {
-		name     string
-		fallback []node
+	// snipp is {#snippet name(parameters)}: a piece of the template that is
+	// shown by {@render}, maybe in another component.
+	snipp struct {
+		name   string
+		params code
+		body   []node
 	}
-	// provide is a fill that a page or a layout gives to the layouts around it.
+	// render is {@render snippet(…)}.
+	render struct {
+		expr     code // the snippet
+		args     code // what stands between the parentheses
+		optional bool // snippet?.(): nothing for a missing snippet
+	}
+	// dynamic is <svelte:element this={tag}>.
+	dynamic struct {
+		tag      code
+		attrs    []node
+		children []node
+	}
+	// provide is markup a page or a layout gives to the layouts around it:
+	// <svelte:head>.
 	provide struct{ fill }
+	// outlet is the place in a layout where what was provided is shown.
+	outlet struct{ name string }
 	// mount is a place where the framework adds markup of its own.
 	mount struct{ name string }
+	// selected says whether an <option> is the chosen one of its <select>.
+	selected struct {
+		value  value
+		within string // the name of the variable that holds the value of the select
+	}
+	// declare keeps a value in a variable: the value of a <select>.
+	declare struct {
+		name  string
+		value value
+	}
+	// shown writes a value as text: the value of a <textarea>.
+	shown struct{ value value }
 )
 
 // code is a piece of the project's JavaScript and where it starts in the file.
@@ -86,109 +143,396 @@ type code struct {
 	start int
 }
 
-// prop is one parameter given to a component.
-type prop struct {
-	name    string
-	literal string // JavaScript for a value written in the template: "text", true
-	expr    *code  // or the expression
-	spread  bool   // {...props}: expr holds the object
+// value is the value of an attribute: text and expressions in a row.
+type value struct {
+	parts []valuePart
+	bare  bool // written without a value: true
 }
 
-const defaultSlot = "default"
+type valuePart struct {
+	text string // decoded
+	expr *code
+}
 
-// What Astro has and Shugo writes differently. The usual authors of
-// templates know Astro well, so the message says what to write instead.
-var notSupported = map[string]string{
-	"set:html":    `use <g-html value={…} /> inside the element`,
-	"set:text":    `write {…} inside the element`,
-	"class:list":  `build the string in an expression: class={[…].filter(Boolean).join(" ")}`,
-	"define:vars": `it is not supported: write the values into data- attributes or into a <script type="application/json">`,
-	"is:raw":      `it is not supported`,
+// static tells whether a value is text alone, and gives it.
+func (v value) static() (string, bool) {
+	if v.bare {
+		return "", false
+	}
+	var out strings.Builder
+	for _, p := range v.parts {
+		if p.expr != nil {
+			return "", false
+		}
+		out.WriteString(p.text)
+	}
+	return out.String(), true
+}
+
+// single returns the expression of a value that is one expression alone.
+func (v value) single() (code, bool) {
+	if len(v.parts) == 1 && v.parts[0].expr != nil {
+		return *v.parts[0].expr, true
+	}
+	return code{}, false
+}
+
+// entry is one attribute among those of an element with a spread.
+type entry struct {
+	name   string
+	value  value
+	spread *code
+}
+
+// directive is class:name={…} or style:name={…}.
+type directive struct {
+	name      string
+	value     value
+	important bool
+}
+
+// prop is one parameter given to a component.
+type prop struct {
+	name   string
+	value  value
+	spread *code // {...props}
+}
+
+// The tags of Shugo's first syntax and of Astro, with what to write instead.
+var oldTags = map[string]string{
+	"g-if":       "{#if condition}…{:else if other}…{:else}…{/if}",
+	"g-else-if":  "{:else if condition} inside {#if}",
+	"g-else":     "{:else} inside {#if} or {#each}",
+	"g-for":      "{#each items as item, i}…{/each}",
+	"g-html":     "{@html value}",
+	"g-slot":     "{@render children?.()}, with children taken from $props()",
+	"g-fragment": "{#snippet name()}…{/snippet} inside the component's tag",
+	"slot":       "{@render children?.()}, with children taken from $props(): Svelte 5 passes markup as snippets",
+	"Fragment":   "{#snippet name()}…{/snippet} inside the component's tag",
 }
 
 type lowerer struct {
-	file   *syntax.File
-	role   role
-	errs   Errors
-	styles []string
-	// outlets are the names of the slots the template shows, and provided
-	// the names of the slots it fills for the layouts around it, each with
-	// the place it does so.
-	outlets  []string
+	file *syntax.File
+	role role
+	errs Errors
+	// hash is the class that scopes the <style> of the component to its own
+	// elements; empty when it has none.
+	hash string
+	// outlets are where what pages give to layouts is shown: "head".
+	outlets []string
+	// provided are what the template gives to the layouts around it, each
+	// with the place it does so.
 	provided map[string]int
+	// selects counts the <select> elements met, to name their variables.
+	selects int
 }
 
 func (l *lowerer) errorf(offset int, format string, arguments ...any) {
 	l.errs = append(l.errs, l.file.Errorf(offset, format, arguments...))
 }
 
-// list lowers the nodes of one level. top tells that this is the top level of
-// a page or a layout, where slot="name" gives markup to the layouts around.
-// nested tells that the level belongs to a control tag standing right inside
-// a component, where slot="name" would have no effect.
-func (l *lowerer) list(nodes []syntax.Node, top, nested bool) []node {
-	var out []node
-	for i := 0; i < len(nodes); i++ {
-		switch n := nodes[i].(type) {
-		case *syntax.Text:
-			out = append(out, markup{n.Value})
-		case *syntax.Expr:
-			out = append(out, output{program.Text, code{n.Code, n.Start}})
+// context is what lowering needs to know about where a fragment stands.
+type context struct {
+	parent   string // the element the fragment stands in; "" for others
+	top      bool   // the top level of the component
+	preserve bool   // inside <pre> or <textarea>: white space stays as written
+	svg      bool   // inside <svg>
+	raw      bool   // inside <script> or <style>: text is written as it is
+	within   string // the variable that holds the value of the <select> around, if any
+	head     bool   // inside <svelte:head>
+}
+
+var (
+	startSpaces = regexp.MustCompile(`^[ \t\r\n]+`)
+	endSpaces   = regexp.MustCompile(`[ \t\r\n]+$`)
+	notSpace    = regexp.MustCompile(`[^ \t\r\n]`)
+)
+
+// clean applies the rules of white space of Svelte to the nodes of one
+// fragment: comments go, {@const} and snippets are taken out to come first,
+// white space at the edges goes and white space between nodes shrinks to one
+// space, unless the fragment is inside <pre> or <textarea>.
+func (l *lowerer) clean(nodes []syntax.Node, ctx context) (hoisted, regular []syntax.Node) {
+	for _, n := range nodes {
+		switch n := n.(type) {
+		case *syntax.HTMLComment:
+			continue
+		case *syntax.Tag:
+			if n.Kind == syntax.ConstTag || n.Kind == syntax.DebugTag {
+				hoisted = append(hoisted, n)
+				continue
+			}
+		case *syntax.SnippetBlock:
+			hoisted = append(hoisted, n)
+			continue
 		case *syntax.Element:
-			if name, ok := slotOf(n); ok && top && l.role != component {
-				if _, seen := l.provided[name]; !seen {
-					if l.provided == nil {
-						l.provided = map[string]int{}
-					}
-					l.provided[name] = n.Start
-				}
-				body := l.fillBody(n)
-				if space, ok := spaceAfter(nodes, i); ok {
-					body = append(body, markup{space})
-					i++
-				}
-				out = append(out, provide{fill{name, body}})
-				continue
-			} else if ok && nested {
-				l.errorf(n.Start, `slot="%s" works only on a tag that stands right inside the component, not inside <g-if> or <g-for>`, name)
-			}
-			if n.Name == "g-if" {
-				var chain choice
-				chain, i = l.choice(nodes, i, nested)
-				out = append(out, chain)
+			switch n.Name {
+			case "svelte:head", "svelte:window", "svelte:document", "svelte:body", "svelte:options":
+				hoisted = append(hoisted, n)
 				continue
 			}
-			out = append(out, l.element(n, nested)...)
+		case *syntax.Text:
+			// Decoded once here: the rules work on the text a reader sees.
+			data := n.Raw
+			if !ctx.raw {
+				data = html.UnescapeString(n.Raw)
+			}
+			regular = append(regular, &syntax.Text{Start: n.Start, Raw: data})
+			continue
 		}
+		regular = append(regular, n)
+	}
+	if ctx.preserve || ctx.raw {
+		if ctx.parent == "pre" && len(regular) > 0 {
+			if first, ok := regular[0].(*syntax.Text); ok && (first.Raw == "\n" || first.Raw == "\r\n") {
+				regular = regular[1:]
+			}
+		}
+		return hoisted, regular
+	}
+
+	text := func(n syntax.Node) (*syntax.Text, bool) {
+		t, ok := n.(*syntax.Text)
+		return t, ok
+	}
+	for len(regular) > 0 {
+		if t, ok := text(regular[0]); ok && !notSpace.MatchString(t.Raw) {
+			regular = regular[1:]
+			continue
+		}
+		break
+	}
+	if len(regular) > 0 {
+		if t, ok := text(regular[0]); ok {
+			t.Raw = startSpaces.ReplaceAllString(t.Raw, "")
+		}
+	}
+	for len(regular) > 0 {
+		if t, ok := text(regular[len(regular)-1]); ok && !notSpace.MatchString(t.Raw) {
+			regular = regular[:len(regular)-1]
+			continue
+		}
+		break
+	}
+	if len(regular) > 0 {
+		if t, ok := text(regular[len(regular)-1]); ok {
+			t.Raw = endSpaces.ReplaceAllString(t.Raw, "")
+		}
+	}
+	removable := ctx.svg && ctx.parent != "text"
+	switch ctx.parent {
+	case "select", "tr", "table", "tbody", "thead", "tfoot", "colgroup", "datalist":
+		removable = true
+	}
+	isExpression := func(n syntax.Node) bool {
+		t, ok := n.(*syntax.Tag)
+		return ok && t.Kind == syntax.Expression
+	}
+	var out []syntax.Node
+	for i, n := range regular {
+		t, ok := text(n)
+		if !ok {
+			out = append(out, n)
+			continue
+		}
+		var prev, next syntax.Node
+		if i > 0 {
+			prev = regular[i-1]
+		}
+		if i+1 < len(regular) {
+			next = regular[i+1]
+		}
+		if prev == nil || !isExpression(prev) {
+			replace := " "
+			if pt, ok := text(prev); ok && endSpaces.MatchString(pt.Raw) {
+				replace = ""
+			}
+			t.Raw = startSpaces.ReplaceAllString(t.Raw, replace)
+		}
+		if next == nil || !isExpression(next) {
+			t.Raw = endSpaces.ReplaceAllString(t.Raw, " ")
+		}
+		if t.Raw != "" && (t.Raw != " " || !removable) {
+			out = append(out, t)
+		}
+	}
+	return hoisted, out
+}
+
+// fragment lowers the nodes of one level.
+func (l *lowerer) fragment(nodes []syntax.Node, ctx context) []node {
+	hoisted, regular := l.clean(nodes, ctx)
+	var out []node
+	for _, n := range hoisted {
+		out = append(out, l.hoisted(n, ctx)...)
+	}
+	for _, n := range regular {
+		out = append(out, l.node(n, ctx)...)
 	}
 	return out
 }
 
-func (l *lowerer) element(e *syntax.Element, nested bool) []node {
-	switch {
-	case e.Name == "g-else-if" || e.Name == "g-else":
-		l.errorf(e.Start, "<%s> must come right after a <g-if> or a <g-else-if>", e.Name)
-	case e.Name == "g-for":
-		return l.loop(e, nested)
-	case e.Name == "g-html":
-		return l.html(e)
-	case e.Name == "g-slot":
-		return l.outlet(e)
-	case e.Name == "g-fragment":
-		l.only(e)
-		return l.list(e.Children, false, nested)
-	case strings.HasPrefix(e.Name, "g-"):
-		l.errorf(e.Start, "there is no <%s>: the tags of Shugo are g-if, g-else-if, g-else, g-for, g-html, g-slot and g-fragment", e.Name)
-	case e.Name == "slot":
-		l.errorf(e.Start, "use <g-slot> for the place where a component shows what was put inside it")
-	case e.Name == "Fragment":
-		l.errorf(e.Start, "use <g-fragment> to group markup without a tag of its own")
-	case isComponent(e.Name):
-		return []node{l.call(e)}
-	default:
-		return l.html5(e)
+func (l *lowerer) hoisted(n syntax.Node, ctx context) []node {
+	switch n := n.(type) {
+	case *syntax.Tag:
+		if n.Kind == syntax.ConstTag {
+			return []node{constant{code{n.Code.Text, n.Code.Start}}}
+		}
+	case *syntax.SnippetBlock:
+		return []node{snipp{n.Name, code{n.Params.Text, n.Params.Start}, l.fragment(n.Body, context{svg: ctx.svg})}}
+	case *syntax.Element:
+		if n.Name != "svelte:head" {
+			return nil // window, document, body and options do nothing on a server
+		}
+		if !ctx.top {
+			l.errorf(n.Start, "<svelte:head> stands at the top level of a component, not inside elements or blocks")
+			return nil
+		}
+		if l.role == component {
+			l.errorf(n.Start, "<svelte:head> works in pages and in +layout files for now")
+			return nil
+		}
+		if l.provided == nil {
+			l.provided = map[string]int{}
+		}
+		if _, seen := l.provided["head"]; !seen {
+			l.provided["head"] = n.Start
+		}
+		return []node{provide{fill{"head", l.fragment(n.Children, context{head: true})}}}
 	}
 	return nil
+}
+
+func (l *lowerer) node(n syntax.Node, ctx context) []node {
+	switch n := n.(type) {
+	case *syntax.Text:
+		if ctx.raw {
+			return []node{markup{n.Raw}}
+		}
+		return []node{markup{escapeText(n.Raw)}}
+	case *syntax.Doctype:
+		return []node{markup{n.Raw}}
+	case *syntax.Tag:
+		switch n.Kind {
+		case syntax.Expression:
+			return []node{output{program.Text, code{n.Code.Text, n.Code.Start}}}
+		case syntax.HTMLTag:
+			return []node{output{program.HTML, code{n.Code.Text, n.Code.Start}}}
+		case syntax.RenderTag:
+			return l.render(n)
+		}
+	case *syntax.IfBlock:
+		var out choice
+		for _, b := range n.Branches {
+			br := branch{body: l.fragment(b.Body, ctx.inner())}
+			if b.Test != nil {
+				br.test = &code{b.Test.Text, b.Test.Start}
+			}
+			out.branches = append(out.branches, br)
+		}
+		return []node{out}
+	case *syntax.EachBlock:
+		out := loop{list: code{n.List.Text, n.List.Start}, index: n.Index, body: l.fragment(n.Body, ctx.inner())}
+		if n.Item != nil {
+			out.item = &code{n.Item.Text, n.Item.Start}
+		}
+		if n.Else != nil {
+			out.empty = l.fragment(n.Else, ctx.inner())
+			if out.empty == nil {
+				out.empty = []node{}
+			}
+		}
+		return []node{out}
+	case *syntax.AwaitBlock:
+		// On a server the value is not waited for: a promise shows the
+		// pending markup, anything else is the value itself.
+		out := choice{await: &code{n.Value.Text, n.Value.Start}}
+		out.branches = append(out.branches, branch{body: l.fragment(n.Pending, ctx.inner())})
+		then := branch{body: []node{}}
+		if n.Then != nil {
+			then.body = l.fragment(n.Then.Body, ctx.inner())
+			if n.Then.Test != nil {
+				then.test = &code{n.Then.Test.Text, n.Then.Test.Start}
+			}
+		}
+		out.branches = append(out.branches, then)
+		return []node{out}
+	case *syntax.KeyBlock:
+		return l.fragment(n.Body, ctx.inner())
+	case *syntax.Element:
+		return l.element(n, ctx)
+	}
+	return nil
+}
+
+// inner is the context of a fragment inside a block: the same element and
+// white space, no longer the top of the component.
+func (c context) inner() context {
+	c.top = false
+	return c
+}
+
+func (l *lowerer) render(n *syntax.Tag) []node {
+	expr := strings.TrimSpace(n.Code.Text)
+	open := strings.IndexByte(expr, '(')
+	if open < 0 || !strings.HasSuffix(expr, ")") {
+		l.errorf(n.Start, "{@render} calls a snippet: {@render children()}, {@render row(item)}")
+		return nil
+	}
+	callee := strings.TrimSpace(expr[:open])
+	optional := strings.HasSuffix(callee, "?.")
+	callee = strings.TrimSuffix(callee, "?.")
+	start := n.Code.Start + strings.Index(n.Code.Text, expr)
+	return []node{render{expr: code{callee, start}, args: code{expr[open+1 : len(expr)-1], start + open + 1}, optional: optional}}
+}
+
+// element lowers a tag: an element of HTML, a component or one of svelte:.
+func (l *lowerer) element(e *syntax.Element, ctx context) []node {
+	if hint, old := oldTags[e.Name]; old {
+		l.errorf(e.Start, "there is no <%s>: write %s", e.Name, hint)
+		return nil
+	}
+	switch e.Name {
+	case "svelte:element":
+		return l.dynamicElement(e, ctx)
+	case "svelte:self":
+		return []node{l.call(e, ctx, code{"$$self", e.Start}, true, false)}
+	case "svelte:component":
+		this, ok := l.this(e)
+		if !ok {
+			return nil
+		}
+		return []node{l.call(e, ctx, this, false, true)}
+	case "svelte:boundary":
+		return l.fragment(e.Children, ctx.inner())
+	case "svelte:fragment":
+		l.errorf(e.Start, "<svelte:fragment> is a part of the slots of Svelte 4: write {#snippet name()}…{/snippet} inside the component's tag")
+		return nil
+	}
+	if strings.HasPrefix(e.Name, "svelte:") {
+		l.errorf(e.Start, "there is no <%s>", e.Name)
+		return nil
+	}
+	if isComponent(e.Name) {
+		return []node{l.call(e, ctx, code{e.Name, e.Start + 1}, false, false)}
+	}
+	return l.html5(e, ctx)
+}
+
+// this returns the expression of this={…}.
+func (l *lowerer) this(e *syntax.Element) (code, bool) {
+	for _, a := range e.Attrs {
+		if a.Kind == syntax.Plain && a.Name == "this" {
+			if c, ok := a.Expr(); ok {
+				return code{c.Text, c.Start}, true
+			}
+			if text, ok := l.value(a).static(); ok {
+				return code{quote(text), a.Start}, true
+			}
+		}
+	}
+	l.errorf(e.Start, "<%s> needs this={…}", e.Name)
+	return code{}, false
 }
 
 // isComponent tells a component from an element of HTML by its name:
@@ -198,316 +542,387 @@ func isComponent(name string) bool {
 	return unicode.IsUpper(first) || strings.Contains(name, ".")
 }
 
-// slotOf returns the name in slot="name".
-func slotOf(e *syntax.Element) (string, bool) {
-	a, ok := e.Attr("slot")
-	if !ok || a.Kind != syntax.Literal {
-		return "", false
+// value turns the parts of an attribute into a value, with the text decoded.
+func (l *lowerer) value(a syntax.Attr) value {
+	if a.Value == nil {
+		return value{bare: true}
 	}
-	return a.Value, true
-}
-
-// fillBody lowers a tag that fills a slot: the tag without its slot="name",
-// or just what is inside it for <g-fragment>.
-func (l *lowerer) fillBody(e *syntax.Element) []node {
-	if name, _ := slotOf(e); !validSlot(name) {
-		l.errorf(e.Start, "slot=%q: the name of a slot is made of letters, digits, - and _", name)
-	}
-	if e.Name == "g-fragment" {
-		l.only(e, "slot")
-		return l.list(e.Children, false, false)
-	}
-	bare := *e
-	bare.Attrs = nil
-	for _, a := range e.Attrs {
-		if a.Name != "slot" {
-			bare.Attrs = append(bare.Attrs, a)
-		}
-	}
-	return l.list([]syntax.Node{&bare}, false, false)
-}
-
-func validSlot(name string) bool {
-	return name != "" && strings.IndexFunc(name, func(r rune) bool {
-		return !(r == '-' || r == '_' || r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z')
-	}) < 0
-}
-
-// html5 lowers an element of HTML: its markup, with the attributes and the
-// content that are computed.
-func (l *lowerer) html5(e *syntax.Element) []node {
-	inline := false
-	out := []node{markup{"<" + e.Name}}
-	for _, a := range e.Attrs {
-		switch {
-		case a.Name == "is:inline":
-			inline = true
-		case a.Name == "is:global":
-			// Styles are not scoped to their component yet: all of them are global.
-		case notSupported[a.Name] != "":
-			l.errorf(a.Start, "%s is not a part of Shugo: %s", a.Name, notSupported[a.Name])
-		case strings.HasPrefix(a.Name, "client:") || strings.HasPrefix(a.Name, "transition:"):
-			l.errorf(a.Start, "%s is not a part of Shugo: pages are static, write a <script> for what happens in the browser", a.Name)
-		case a.Kind == syntax.Spread:
-			out = append(out, spread{code{a.Value, a.ValueStart}})
-		case a.Kind == syntax.Dynamic:
-			kind := program.Attr
-			if program.IsAddress(a.Name) {
-				kind = program.URL
-			}
-			out = append(out, attribute{kind, a.Name, code{a.Value, a.ValueStart}})
-		default:
-			out = append(out, markup{" " + a.Raw})
-		}
-	}
-	if e.Name == "style" && !inline {
-		// The style sheets of all templates go into one file of the site.
-		if len(out) > 1 {
-			l.errorf(e.Start, "a <style> with attributes stays where it is only with is:inline")
-		}
-		for _, child := range e.Children {
-			l.styles = append(l.styles, child.(*syntax.Text).Value)
-		}
-		return nil
-	}
-	out = append(out, markup{">"})
-	if e.Closed && syntax.Void(e.Name) {
-		return out
-	}
-	out = append(out, l.list(e.Children, false, false)...)
-	// The framework adds its own markup at the end of the head and of the body.
-	if e.Name == "head" || e.Name == "body" {
-		out = append(out, mount{e.Name})
-	}
-	return append(out, markup{"</" + e.Name + ">"})
-}
-
-// choice lowers the <g-if> at nodes[at] and the branches after it. It returns
-// the position of the last node it took.
-func (l *lowerer) choice(nodes []syntax.Node, at int, nested bool) (choice, int) {
-	var out choice
-	add := func(e *syntax.Element) {
-		b := branch{body: l.list(e.Children, false, nested)}
-		if e.Name != "g-else" {
-			if test, ok := l.expr(e, "cond"); ok {
-				b.test = &test
-			}
-			l.only(e, "cond")
+	var out value
+	for _, p := range a.Value {
+		if p.Expr != nil {
+			out.parts = append(out.parts, valuePart{expr: &code{p.Expr.Text, p.Expr.Start}})
 		} else {
-			l.only(e)
-		}
-		out.branches = append(out.branches, b)
-	}
-	add(nodes[at].(*syntax.Element))
-	for last := at; ; {
-		// White space between the branches belongs to the way they are written.
-		next := last + 1
-		if next < len(nodes) {
-			if text, ok := nodes[next].(*syntax.Text); ok && strings.TrimSpace(text.Value) == "" {
-				next++
-			}
-		}
-		if next >= len(nodes) {
-			return out, last
-		}
-		e, ok := nodes[next].(*syntax.Element)
-		if !ok || (e.Name != "g-else-if" && e.Name != "g-else") {
-			return out, last
-		}
-		add(e)
-		if last = next; e.Name == "g-else" {
-			return out, last
-		}
-	}
-}
-
-func (l *lowerer) loop(e *syntax.Element, nested bool) []node {
-	out := loop{body: l.list(e.Children, false, nested)}
-	each, ok := l.expr(e, "each")
-	out.each = each
-	item, found := e.Attr("as")
-	switch {
-	case !found:
-		l.errorf(e.Start, `<g-for> needs as="name": the name of one item, as in <g-for each={items} as="item">`)
-		ok = false
-	case item.Kind != syntax.Literal || strings.TrimSpace(item.Value) == "":
-		l.errorf(item.Start, `as must be a name in quotes: as="item"`)
-		ok = false
-	}
-	out.item = code{item.Value, item.ValueStart}
-	if index, found := e.Attr("index"); found {
-		if index.Kind != syntax.Literal || !isIdentifier(index.Value) {
-			l.errorf(index.Start, `index must be a name in quotes: index="i"`)
-			ok = false
-		}
-		out.index = &code{index.Value, index.ValueStart}
-	}
-	l.only(e, "each", "as", "index")
-	if !ok {
-		return nil
-	}
-	return []node{out}
-}
-
-func (l *lowerer) html(e *syntax.Element) []node {
-	value, ok := l.expr(e, "value")
-	l.only(e, "value")
-	if strings.TrimSpace(textOf(e.Children)) != "" || len(e.Children) > 1 {
-		l.errorf(e.Start, "<g-html> has nothing inside: write <g-html value={…} />")
-	}
-	if !ok {
-		return nil
-	}
-	return []node{output{program.HTML, value}}
-}
-
-func (l *lowerer) outlet(e *syntax.Element) []node {
-	name := defaultSlot
-	if a, ok := e.Attr("name"); ok {
-		if a.Kind != syntax.Literal || !validSlot(a.Value) {
-			l.errorf(a.Start, `the name of a slot is written in quotes and made of letters, digits, - and _: name="aside"`)
-		} else {
-			name = a.Value
-		}
-	}
-	l.only(e, "name")
-	if l.role == page {
-		l.errorf(e.Start, "a page is not called by anything, so it has nothing to show in <g-slot>; it works in components and in +layout files")
-	}
-	if !slices.Contains(l.outlets, name) {
-		l.outlets = append(l.outlets, name)
-	}
-	return []node{outlet{name, l.list(e.Children, false, false)}}
-}
-
-func (l *lowerer) call(e *syntax.Element) node {
-	out := call{target: code{e.Name, e.Start + 1}}
-	for _, a := range e.Attrs {
-		switch {
-		case strings.HasPrefix(a.Name, "client:"):
-			l.errorf(a.Start, "%s is not a part of Shugo: components are shown when the site is built, write a <script> for what happens in the browser", a.Name)
-		case notSupported[a.Name] != "":
-			l.errorf(a.Start, "%s is not a part of Shugo: %s", a.Name, notSupported[a.Name])
-		case a.Kind == syntax.Spread:
-			out.props = append(out.props, prop{spread: true, expr: &code{a.Value, a.ValueStart}})
-		case a.Kind == syntax.Dynamic:
-			out.props = append(out.props, prop{name: a.Name, expr: &code{a.Value, a.ValueStart}})
-		case a.Kind == syntax.Literal:
-			text, _ := json.Marshal(html.UnescapeString(a.Value))
-			out.props = append(out.props, prop{name: a.Name, literal: string(text)})
-		default:
-			out.props = append(out.props, prop{name: a.Name, literal: "true"})
-		}
-	}
-
-	// What is inside the tag goes into the slots of the component: a tag with
-	// slot="name" into that slot, everything else into the default one.
-	var rest []syntax.Node
-	named := map[string]int{}
-	for i := 0; i < len(e.Children); i++ {
-		child := e.Children[i]
-		element, _ := child.(*syntax.Element)
-		name, ok := "", false
-		if element != nil {
-			name, ok = slotOf(element)
-		}
-		if !ok {
-			rest = append(rest, child)
-			continue
-		}
-		body := l.fillBody(element)
-		if space, ok := spaceAfter(e.Children, i); ok {
-			body = append(body, markup{space})
-			i++
-		}
-		if at, seen := named[name]; seen {
-			out.fills[at].body = append(out.fills[at].body, body...)
-			continue
-		}
-		named[name] = len(out.fills)
-		out.fills = append(out.fills, fill{name, body})
-	}
-	if !blankNodes(rest) {
-		body := l.list(rest, false, true)
-		if at, seen := named[defaultSlot]; seen {
-			out.fills[at].body = append(body, out.fills[at].body...)
-		} else {
-			out.fills = append([]fill{{defaultSlot, body}}, out.fills...)
+			out.parts = append(out.parts, valuePart{text: html.UnescapeString(p.Text)})
 		}
 	}
 	return out
 }
 
-// spaceAfter returns the white space that follows the node at the given
-// place, if white space is all that stands there. It goes into a slot with
-// the tag before it, so that tags written on lines of their own stay so.
-func spaceAfter(nodes []syntax.Node, at int) (string, bool) {
-	if at+1 >= len(nodes) {
-		return "", false
+// html5 lowers an element of HTML.
+func (l *lowerer) html5(e *syntax.Element, ctx context) []node {
+	name := e.Name
+	svg := ctx.svg || name == "svg"
+	if !svg {
+		name = strings.ToLower(name)
 	}
-	text, ok := nodes[at+1].(*syntax.Text)
-	if !ok || strings.TrimSpace(text.Value) != "" {
-		return "", false
+	if name == "head" && l.role == layout && !slices.Contains(l.outlets, "head") {
+		l.outlets = append(l.outlets, "head")
 	}
-	return text.Value, true
-}
-
-// expr returns the expression of an attribute that must be written as name={…}.
-func (l *lowerer) expr(e *syntax.Element, name string) (code, bool) {
-	a, ok := e.Attr(name)
+	hash := ""
+	if l.hash != "" {
+		hash = l.hash
+	}
+	attrs, content, selectValue, err := l.attributes(e, name, hash, svg, ctx)
+	if err {
+		return nil
+	}
+	out := []node{markup{"<" + name}}
+	out = append(out, attrs...)
+	inner := context{parent: name, preserve: ctx.preserve || name == "pre" || name == "textarea", svg: svg && name != "foreignObject", within: ctx.within}
+	if len(attrs) == 1 {
+		if sp, ok := attrs[0].(spread); ok && sp.chooses != "" {
+			inner.within = sp.chooses
+		}
+	}
+	var prelude []node
+	if selectValue != nil {
+		l.selects++
+		inner.within = "$$select" + strconv.Itoa(l.selects)
+		prelude = append(prelude, declare{inner.within, *selectValue})
+	}
+	if name == "option" && ctx.within != "" {
+		if v, ok := optionValue(e, l); ok {
+			out = append(out, selected{v, ctx.within})
+		}
+	}
+	if syntax.Void(name) {
+		return append(append(prelude, out...), markup{"/>"})
+	}
+	out = append(out, markup{">"})
 	switch {
-	case !ok:
-		l.errorf(e.Start, "<%s> needs %s={…}", e.Name, name)
-	case a.Kind != syntax.Dynamic:
-		l.errorf(a.Start, "%s must be an expression in braces: %s={…}", name, name)
+	case content != nil:
+		out = append(out, *content)
+	case raw(name):
+		inner.raw = true
+		out = append(out, l.fragment(e.Children, inner)...)
 	default:
-		return code{a.Value, a.ValueStart}, true
+		out = append(out, l.fragment(e.Children, inner)...)
 	}
-	return code{}, false
+	// The framework adds its own markup at the end of the head and of the body.
+	if name == "head" && l.role == layout {
+		out = append(out, outlet{"head"})
+	}
+	if name == "head" || name == "body" {
+		out = append(out, mount{name})
+	}
+	out = append(out, markup{"</" + name + ">"})
+	return append(prelude, out...)
 }
 
-// only reports the attributes of a tag of Shugo that it does not have.
-func (l *lowerer) only(e *syntax.Element, allowed ...string) {
-next:
+func raw(name string) bool { return name == "script" || name == "style" }
+
+// optionValue returns what an <option> is compared with: its value
+// attribute, or else its content when that is text and expressions alone.
+func optionValue(e *syntax.Element, l *lowerer) (value, bool) {
 	for _, a := range e.Attrs {
-		for _, name := range allowed {
-			if a.Name == name {
-				continue next
+		if a.Kind == syntax.Plain && a.Name == "value" {
+			return l.value(a), true
+		}
+	}
+	var out value
+	for _, child := range e.Children {
+		switch child := child.(type) {
+		case *syntax.Text:
+			out.parts = append(out.parts, valuePart{text: html.UnescapeString(child.Raw)})
+		case *syntax.Tag:
+			if child.Kind != syntax.Expression {
+				return value{}, false
 			}
-		}
-		if len(allowed) == 0 {
-			l.errorf(a.Start, "<%s> has no attributes", e.Name)
-		} else {
-			l.errorf(a.Start, "<%s> has no attribute %q; it has %s", e.Name, a.Name, strings.Join(allowed, ", "))
+			out.parts = append(out.parts, valuePart{expr: &code{child.Code.Text, child.Code.Start}})
+		case *syntax.HTMLComment:
+		default:
+			return value{}, false
 		}
 	}
+	// Svelte compares the HTML of the content, white space cleaned up.
+	if len(out.parts) > 0 && out.parts[0].expr == nil {
+		out.parts[0].text = strings.TrimLeft(out.parts[0].text, " \t\r\n")
+	}
+	if last := len(out.parts) - 1; last >= 0 && out.parts[last].expr == nil {
+		out.parts[last].text = strings.TrimRight(out.parts[last].text, " \t\r\n")
+	}
+	return out, true
 }
 
-// blankNodes tells whether nodes hold nothing but white space.
-func blankNodes(nodes []syntax.Node) bool {
-	for _, n := range nodes {
-		if text, ok := n.(*syntax.Text); !ok || strings.TrimSpace(text.Value) != "" {
-			return false
+// attributes lowers the attributes of an element of HTML. It returns what
+// goes into the opening tag, the content that an attribute gives (the value
+// of a <textarea>), and the value of a <select>.
+func (l *lowerer) attributes(e *syntax.Element, name, hash string, svg bool, ctx context) ([]node, *node, *value, bool) {
+	var (
+		plain       []entry
+		classes     []directive
+		styles      []directive
+		hasSpread   bool
+		content     *node
+		selectValue *value
+	)
+	for _, a := range e.Attrs {
+		switch a.Kind {
+		case syntax.Attach:
+		case syntax.Spread:
+			hasSpread = true
+			c, _ := a.Expr()
+			plain = append(plain, entry{spread: &code{c.Text, c.Start}})
+		case syntax.Directive:
+			switch a.Directive {
+			case "class":
+				v := l.value(a)
+				if v.bare {
+					v = value{parts: []valuePart{{expr: &code{a.Name, a.Start + len("class:")}}}}
+				}
+				classes = append(classes, directive{name: a.Name, value: v})
+			case "style":
+				v := l.value(a)
+				if v.bare {
+					v = value{parts: []valuePart{{expr: &code{a.Name, a.Start + len("style:")}}}}
+				}
+				styles = append(styles, directive{name: a.Name, value: v, important: slices.Contains(a.Modifiers, "important")})
+			case "bind":
+				c, ok := a.Expr()
+				if !ok {
+					c = syntax.Code{Text: a.Name, Start: a.Start + len("bind:")}
+				}
+				v := value{parts: []valuePart{{expr: &code{c.Text, c.Start}}}}
+				switch {
+				case a.Name == "value" && name == "textarea":
+					var n node = output{program.Text, code{c.Text, c.Start}}
+					content = &n
+				case a.Name == "value" && name == "select":
+					selectValue = &v
+				case a.Name == "this" || a.Name == "group":
+				case a.Name == "innerHTML":
+					var n node = output{program.HTML, code{c.Text, c.Start}}
+					content = &n
+				case a.Name == "textContent" || a.Name == "innerText":
+					var n node = output{program.Text, code{c.Text, c.Start}}
+					content = &n
+				default:
+					plain = append(plain, entry{name: a.Name, value: v})
+				}
+			}
+			// on:, use:, transition:, in:, out:, animate: and let: do nothing on a server.
+		default: // a plain attribute, or {name}
+			if isEvent(a.Name) {
+				continue // handlers run in the browser
+			}
+			v := l.value(a)
+			switch {
+			case a.Name == "value" && name == "textarea":
+				var n node = shown{v}
+				if text, ok := v.static(); ok {
+					n = markup{escapeText(text)}
+				}
+				content = &n
+				continue
+			case a.Name == "value" && name == "select":
+				selectValue = &v
+				continue
+			}
+			plain = append(plain, entry{name: a.Name, value: v})
 		}
 	}
-	return true
+	if hasSpread || (name == "input" && hasDefault(plain)) {
+		sp := spread{entries: plain, classes: classes, styles: styles, hash: hash, preserve: svg}
+		if name == "select" {
+			// The value of a <select> may come with the spread: it chooses an
+			// option and is not written.
+			if selectValue != nil {
+				sp.entries = append(sp.entries, entry{name: "value", value: *selectValue})
+				selectValue = nil
+			}
+			l.selects++
+			sp.chooses = "$$select" + strconv.Itoa(l.selects)
+		}
+		return []node{sp}, content, selectValue, false
+	}
+	var out []node
+	classDone, styleDone := false, false
+	for _, en := range plain {
+		attrName := en.name
+		if !svg {
+			attrName = strings.ToLower(attrName)
+		}
+		switch {
+		case attrName == "class":
+			classDone = true
+			out = append(out, l.classAttr(en.value, classes, hash))
+			continue
+		case attrName == "style":
+			styleDone = true
+			out = append(out, l.styleAttr(en.value, styles))
+			continue
+		}
+		if en.value.bare {
+			out = append(out, markup{" " + attrName + `=""`})
+			continue
+		}
+		if text, ok := en.value.static(); ok {
+			out = append(out, markup{" " + attrName + `="` + escapeAttr(text) + `"`})
+			continue
+		}
+		kind := program.Attr
+		if program.IsAddress(attrName) {
+			kind = program.URL
+		}
+		out = append(out, attribute{kind: kind, name: attrName, value: en.value, boolean: !svg && booleanAttribute(attrName)})
+	}
+	if !classDone && (len(classes) > 0 || hash != "") {
+		out = append(out, l.classAttr(value{parts: nil}, classes, hash))
+	}
+	if !styleDone && len(styles) > 0 {
+		out = append(out, l.styleAttr(value{parts: nil}, styles))
+	}
+	return out, content, selectValue, false
 }
 
-func textOf(nodes []syntax.Node) string {
-	var out strings.Builder
-	for _, n := range nodes {
-		if text, ok := n.(*syntax.Text); ok {
-			out.WriteString(text.Value)
+func hasDefault(entries []entry) bool {
+	for _, e := range entries {
+		if e.name == "defaultValue" || e.name == "defaultChecked" {
+			return true
 		}
 	}
-	return out.String()
+	return false
 }
 
-func isIdentifier(text string) bool {
-	if text == "" || (text[0] >= '0' && text[0] <= '9') {
-		return false
+// classAttr lowers the class of an element with its directives and the
+// scoping class of the component.
+func (l *lowerer) classAttr(v value, classes []directive, hash string) node {
+	if text, ok := v.static(); ok && len(classes) == 0 {
+		text = strings.TrimSpace(strings.Join(strings.Fields(text), " "))
+		if hash != "" {
+			text = strings.TrimSpace(text + " " + hash)
+		}
+		if text == "" && !v.bare {
+			return markup{""}
+		}
+		return markup{` class="` + escapeAttr(text) + `"`}
 	}
-	return strings.IndexFunc(text, func(r rune) bool {
-		return !(r == '_' || r == '$' || unicode.IsLetter(r) || unicode.IsDigit(r))
-	}) < 0
+	if v.bare {
+		v = value{parts: []valuePart{{text: ""}}}
+	}
+	return attribute{kind: program.Attr, name: "class", value: v, class: true, directives: classes, hash: hash}
+}
+
+// styleAttr lowers the style of an element with its directives.
+func (l *lowerer) styleAttr(v value, styles []directive) node {
+	if text, ok := v.static(); ok && len(styles) == 0 {
+		text = strings.TrimSpace(strings.Join(strings.Fields(text), " "))
+		return markup{` style="` + escapeAttr(text) + `"`}
+	}
+	if v.bare {
+		v = value{parts: []valuePart{{text: ""}}}
+	}
+	return attribute{kind: program.Attr, name: "style", value: v, style: true, directives: styles}
+}
+
+// isEvent tells an attribute that handles an event in the browser: onclick.
+func isEvent(name string) bool {
+	return len(name) > 2 && strings.HasPrefix(strings.ToLower(name), "on")
+}
+
+// booleanAttribute tells the attributes of HTML that are there or not: the
+// list of Svelte.
+func booleanAttribute(name string) bool {
+	switch strings.ToLower(name) {
+	case "allowfullscreen", "async", "autofocus", "autoplay", "checked", "controls", "default", "disabled",
+		"formnovalidate", "indeterminate", "inert", "ismap", "loop", "multiple", "muted", "nomodule",
+		"novalidate", "open", "playsinline", "readonly", "required", "reversed", "seamless", "selected",
+		"webkitdirectory", "defer", "disablepictureinpicture", "disableremoteplayback":
+		return true
+	}
+	return false
+}
+
+func (l *lowerer) dynamicElement(e *syntax.Element, ctx context) []node {
+	this, ok := l.this(e)
+	if !ok {
+		return nil
+	}
+	rest := *e
+	rest.Attrs = nil
+	for _, a := range e.Attrs {
+		if !(a.Kind == syntax.Plain && a.Name == "this") {
+			rest.Attrs = append(rest.Attrs, a)
+		}
+	}
+	attrs, _, _, failed := l.attributes(&rest, "svelte:element", l.hash, ctx.svg, ctx)
+	if failed {
+		return nil
+	}
+	return []node{dynamic{tag: this, attrs: attrs, children: l.fragment(e.Children, context{svg: ctx.svg})}}
+}
+
+// call lowers the tag of a component: its parameters, and what is written
+// inside it, which becomes its snippets.
+func (l *lowerer) call(e *syntax.Element, ctx context, target code, self, optional bool) node {
+	out := call{target: target, self: self, optional: optional}
+	for _, a := range e.Attrs {
+		switch a.Kind {
+		case syntax.Spread:
+			c, _ := a.Expr()
+			out.props = append(out.props, prop{spread: &code{c.Text, c.Start}})
+		case syntax.Shorthand, syntax.Plain:
+			if (e.Name == "svelte:component" || e.Name == "svelte:element") && a.Name == "this" {
+				continue
+			}
+			if a.Name == "slot" {
+				l.errorf(a.Start, `slot="…" is a part of the slots of Svelte 4: write {#snippet %s()}…{/snippet} inside the component's tag`, "name")
+				continue
+			}
+			out.props = append(out.props, prop{name: a.Name, value: l.value(a)})
+		case syntax.Directive:
+			if a.Directive == "bind" {
+				c, ok := a.Expr()
+				if !ok {
+					c = syntax.Code{Text: a.Name, Start: a.Start + len("bind:")}
+				}
+				out.props = append(out.props, prop{name: a.Name, value: value{parts: []valuePart{{expr: &code{c.Text, c.Start}}}}})
+			}
+			// on: and let: do nothing on a server.
+		}
+	}
+
+	// What is inside the tag: snippets declared there are props of the
+	// component, everything else is its children.
+	var rest []syntax.Node
+	for _, child := range e.Children {
+		if s, ok := child.(*syntax.SnippetBlock); ok {
+			body := l.fragment(s.Body, context{svg: ctx.svg})
+			if strings.TrimSpace(s.Params.Text) == "" {
+				out.fills = append(out.fills, fill{s.Name, body})
+			} else {
+				out.snippets = append(out.snippets, snipp{s.Name, code{s.Params.Text, s.Params.Start}, body})
+			}
+			continue
+		}
+		rest = append(rest, child)
+	}
+	if hoisted, regular := l.clean(rest, context{svg: ctx.svg}); len(regular) > 0 || len(hoisted) > 0 {
+		body := l.fragment(rest, context{svg: ctx.svg})
+		if len(regular) > 0 {
+			out.fills = append([]fill{{"children", body}}, out.fills...)
+		}
+	}
+	return out
+}
+
+// escapeText escapes text between tags the way Svelte does: "&" and "<".
+func escapeText(text string) string {
+	return strings.NewReplacer("&", "&amp;", "<", "&lt;").Replace(text)
+}
+
+// escapeAttr escapes the value of an attribute, which is always written in
+// double quotes: "&", the quote and "<".
+func escapeAttr(text string) string {
+	return strings.NewReplacer("&", "&amp;", `"`, "&quot;", "<", "&lt;").Replace(text)
 }

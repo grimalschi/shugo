@@ -1,0 +1,65 @@
+{
+ "id": "07-breadcrumbs",
+ "title": "Breadcrumbs with separators, the current page and long labels cut",
+ "entry": "Breadcrumbs",
+ "datasets": [
+  {
+   "items": [
+    {
+     "label": "Home",
+     "href": "/"
+    },
+    {
+     "label": "Catalog",
+     "href": "/catalog"
+    },
+    {
+     "label": "Handmade pottery",
+     "href": "/catalog/handmade"
+    },
+    {
+     "label": "‘North’ Pitcher",
+     "href": "/catalog/handmade/jug"
+    }
+   ]
+  },
+  {
+   "items": [
+    {
+     "label": "Home",
+     "href": "/"
+    }
+   ]
+  },
+  {
+   "items": [
+    {
+     "label": "Home",
+     "href": "/"
+    },
+    {
+     "label": "Mugs and glasses, 0.5 L",
+     "href": "/cups"
+    },
+    {
+     "label": "Platters, plates, and bowls"
+    },
+    {
+     "label": "Empty link",
+     "href": ""
+    },
+    {
+     "label": "\"North\" pitchers & vases <handmade>",
+     "href": "/c?a=1&b=2"
+    },
+    {
+     "label": "Large ‘North’ pitcher, 3 L",
+     "href": "/c/jug-3l"
+    }
+   ]
+  },
+  {
+   "items": []
+  }
+ ]
+}

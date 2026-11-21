@@ -1,0 +1,18 @@
+[
+ {
+  "body": "<div class=\"tiles\" style=\"--columns: 3;\"><a class=\"tile\" href=\"/about\"><img src=\"/img/studio.jpg\" alt=\"Studio\" loading=\"lazy\"/> <h3>About the studio</h3> <p>How it all began.</p></a><a class=\"tile wide\" href=\"https://t.me/pottery\" target=\"_blank\" rel=\"noopener\"> <h3>Find us on Telegram</h3> <p>News and kiln firings.</p></a><div class=\"tile\"><img src=\"/img/soon.png\" alt=\"\" loading=\"lazy\"/> <h3>Coming soon</h3> <p>A new section is in the works.</p></div></div>",
+  "head": ""
+ },
+ {
+  "body": "<div class=\"tiles\" style=\"--columns: 2;\"><div class=\"tile\"> <h3>No link</h3> <p>Empty href</p></div><a class=\"tile\" href=\"http://old.example/?a=1&amp;b=2\" target=\"_blank\" rel=\"noopener\"> <h3>Old site</h3> <p>HTTP link</p></a><a class=\"tile\" href=\"/http-guide\"> <h3>HTTP guide</h3> <p>Internal page</p></a><a class=\"tile\" href=\"mailto:hi@pottery.example\"> <h3>Email</h3> </a><div class=\"tile wide\"><img src=\"/img/cups.jpg?w=400&amp;h=300\" alt=\"&quot;Morning&quot; &amp; &lt;Evening> mugs\" loading=\"lazy\"/> <h3>&lt;New> &amp; \"old\" mugs</h3> <p>&lt;b>Not bold&lt;/b> &amp; plain text</p></div></div>",
+  "head": ""
+ },
+ {
+  "body": "",
+  "head": ""
+ },
+ {
+  "body": "<div class=\"tiles\" style=\"--columns: 1;\"><a class=\"tile wide\" href=\"https://pottery.example/catalog?sort=new&amp;page=1\" target=\"_blank\" rel=\"noopener\"><img src=\"https://cdn.pottery.example/catalog.jpg\" alt=\"\" loading=\"lazy\"/> <h3>Catalog</h3> <p>Everything currently available.</p></a></div>",
+  "head": ""
+ }
+]

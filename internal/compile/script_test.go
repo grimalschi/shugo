@@ -9,11 +9,11 @@ import (
 
 func parseScript(t *testing.T, code string) (*syntax.File, *script, error) {
 	t.Helper()
-	f, err := syntax.Parse("pages/a.shugo", "---\n"+code+"\n---\n<p/>")
+	f, err := syntax.Parse("pages/a.shugo", "<script>\n"+code+"\n</script>\n<p/>")
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := compileScript(f)
+	s, err := compileScript(f, f.Script, false)
 	return f, s, err
 }
 

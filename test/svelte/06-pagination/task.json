@@ -1,0 +1,27 @@
+{
+ "id": "06-pagination",
+ "title": "Pagination with previous and next links, neighbours of the current page and gaps",
+ "entry": "Pagination",
+ "datasets": [
+  {
+   "current": 5,
+   "total": 10,
+   "base": "/blog"
+  },
+  {
+   "current": 1,
+   "total": 1,
+   "base": "/blog"
+  },
+  {
+   "current": 1,
+   "total": 4,
+   "base": "/catalog/café"
+  },
+  {
+   "current": 2,
+   "total": 2,
+   "base": "/news"
+  }
+ ]
+}

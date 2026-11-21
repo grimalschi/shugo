@@ -1,16 +1,18 @@
----
-import Header from "../components/Header.shugo"
-import "../styles/main.css"
----
+<script lang="ts">
+  import Header from "../components/Header.shugo"
+  import "../styles/main.css"
+
+  let { children } = $props()
+</script>
+
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <g-slot name="head"><title>Shop</title></g-slot>
   </head>
   <body>
     <Header />
-    <main><g-slot /></main>
+    <main>{@render children()}</main>
     <footer>© 2026</footer>
   </body>
 </html>

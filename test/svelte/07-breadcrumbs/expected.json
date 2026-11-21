@@ -1,0 +1,18 @@
+[
+ {
+  "body": "<nav class=\"breadcrumbs\" aria-label=\"Breadcrumbs\"><ol> <li><a href=\"/\">Home</a></li><li class=\"sep\" aria-hidden=\"true\">/</li> <li><a href=\"/catalog\">Catalog</a></li><li class=\"sep\" aria-hidden=\"true\">/</li> <li><a href=\"/catalog/handmade\">Handmade pottery</a></li><li class=\"sep\" aria-hidden=\"true\">/</li> <li><span aria-current=\"page\">‘North’ Pitcher</span></li></ol></nav>",
+  "head": ""
+ },
+ {
+  "body": "<nav class=\"breadcrumbs\" aria-label=\"Breadcrumbs\"><ol> <li><span aria-current=\"page\">Home</span></li></ol></nav>",
+  "head": ""
+ },
+ {
+  "body": "<nav class=\"breadcrumbs\" aria-label=\"Breadcrumbs\"><ol> <li><a href=\"/\">Home</a></li><li class=\"sep\" aria-hidden=\"true\">/</li> <li><a href=\"/cups\" title=\"Mugs and glasses, 0.5 L\">Mugs and glasses, 0…</a></li><li class=\"sep\" aria-hidden=\"true\">/</li> <li><span title=\"Platters, plates, and bowls\">Platters, plates, a…</span></li><li class=\"sep\" aria-hidden=\"true\">/</li> <li><span>Empty link</span></li><li class=\"sep\" aria-hidden=\"true\">/</li> <li><a href=\"/c?a=1&amp;b=2\" title=\"&quot;North&quot; pitchers &amp; vases &lt;handmade>\">\"North\" pitchers &amp; …</a></li><li class=\"sep\" aria-hidden=\"true\">/</li> <li><span aria-current=\"page\" title=\"Large ‘North’ pitcher, 3 L\">Large ‘North’ pitch…</span></li></ol></nav>",
+  "head": ""
+ },
+ {
+  "body": "",
+  "head": ""
+ }
+]

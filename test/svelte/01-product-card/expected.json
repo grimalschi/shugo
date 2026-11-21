@@ -1,0 +1,14 @@
+[
+ {
+  "body": "<article class=\"card\"><a href=\"/products/jug\"><h3>‘North’ Pitcher</h3></a> <p class=\"price\"><s>$2,800</s> <b>$2,400</b></p> <ul class=\"badges\"><li>bestseller</li><li>new</li></ul> <p class=\"rating\" title=\"Rating: 4.5\">★ 4.5</p> <button type=\"button\">Add to cart</button></article>",
+  "head": ""
+ },
+ {
+  "body": "<article class=\"card out\"><a href=\"/products/cup?color=red&amp;size=s\"><h3>&lt;Morning> cup &amp; saucer</h3></a> <p class=\"price\"><b>$900</b></p>   <button type=\"button\" disabled=\"\">Out of stock</button></article>",
+  "head": ""
+ },
+ {
+  "body": "<article class=\"card\"><a href=\"/products/vase\"><h3>Vase</h3></a> <p class=\"price\"><b>$1,200</b></p> <ul class=\"badges\"><li>eco</li></ul> <p class=\"rating\" title=\"Rating: 0\">★ 0</p> <button type=\"button\">Add to cart</button></article>",
+  "head": ""
+ }
+]

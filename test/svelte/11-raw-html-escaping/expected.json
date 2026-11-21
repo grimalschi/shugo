@@ -1,0 +1,18 @@
+[
+ {
+  "body": "<article class=\"post\"><h1>How We Fire Clay</h1> <img class=\"cover\" src=\"/img/kiln.jpg\" alt=\"How We Fire Clay\" loading=\"lazy\"/> <p class=\"byline\">By: <a href=\"/authors/anna\" rel=\"author\">Anna Peters</a></p> <p class=\"lead\">A short story about a kiln and patience.</p> <div class=\"body\"><p>The kiln heats up for <strong>eight hours</strong> and cools for a day.</p><ul><li>morning — loading</li><li>evening — firing</li></ul></div> <ul class=\"tags\"><li><a href=\"/tags/kiln\" rel=\"tag\">#kiln</a></li><li><a href=\"/tags/handmade\" rel=\"tag\">#handmade</a></li></ul></article>",
+  "head": ""
+ },
+ {
+  "body": "<article class=\"post\"><h1>\"Morning\" mug &lt;new> &amp; old</h1> <img class=\"cover\" src=\"/img/cup.jpg?size=l&amp;fmt=webp\" alt=\"&quot;Morning&quot; mug &lt;new> &amp; old\" loading=\"lazy\"/> <p class=\"byline\">By: <span>Ben &lt;B.> &amp; Son</span></p>  <div class=\"body\"><p>Price: &lt;$100&gt; &amp; ‘free’ delivery</p><p><a href=\"/faq?x=1&amp;y=2\" title=\"Questions &quot;and&quot; answers\">FAQ</a><br>end</p></div> <ul class=\"tags\"><li><a href=\"/tags/kiln%20%26%20firing\" rel=\"tag\">#kiln &amp; firing</a></li><li><a href=\"/tags/%231\" rel=\"tag\">##1</a></li><li><a href=\"/tags/a%2Fb%3Fc%3Dd\" rel=\"tag\">#a/b?c=d</a></li><li><a href=\"/tags/%22quotes%22\" rel=\"tag\">#\"quotes\"</a></li></ul></article>",
+  "head": ""
+ },
+ {
+  "body": "<article class=\"post\"><h1>No cover</h1>  <p class=\"byline\">By: <span>Vera</span></p> <p class=\"lead\">The &lt;b>bold&lt;/b> tag does not work here &amp; should not</p> <div class=\"body\"><h2>Results</h2><p>It all <em>worked</em>.</p></div> </article>",
+  "head": ""
+ },
+ {
+  "body": "<article class=\"post\"><h1>&lt;script>alert(1)&lt;/script></h1>  <p class=\"byline\">By: <a href=\"/authors?id=7&amp;from=post\" rel=\"author\">Guest</a></p>  <div class=\"body\"></div> <ul class=\"tags\"><li><a href=\"/tags/0\" rel=\"tag\">#0</a></li></ul></article>",
+  "head": ""
+ }
+]

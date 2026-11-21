@@ -1,21 +1,24 @@
----
-import { formatPrice, type Product } from "../lib/shop"
+<script lang="ts">
+  import { formatPrice, type Product } from "../lib/shop"
 
-interface Props {
-  product: Product
-  featured?: boolean
-}
-const { product, featured = false } = Shugo.props as Props
-const price = product.discount ? product.price * (100 - product.discount) / 100 : product.price
----
+  interface Props {
+    product: Product
+    featured?: boolean
+    children?: unknown
+  }
+  let { product, featured = false, children }: Props = $props()
+  const price = product.discount ? product.price * (100 - product.discount) / 100 : product.price
+</script>
+
 <a class={featured ? "card featured" : "card"} href={`/products/${product.slug}`}>
   <b>{product.title}</b>
   <span>{formatPrice(price)}</span>
-  <g-if cond={product.discount}>
+  {#if product.discount}
     <s>{formatPrice(product.price)}</s>
-  </g-if>
-  <g-slot />
+  {/if}
+  {@render children?.()}
 </a>
+
 <style>
   .card.featured { border-color: #c60; }
 </style>

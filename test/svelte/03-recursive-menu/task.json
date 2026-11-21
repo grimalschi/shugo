@@ -1,0 +1,71 @@
+{
+ "id": "03-recursive-menu",
+ "title": "A menu of any depth",
+ "entry": "Menu",
+ "datasets": [
+  {
+   "items": [
+    {
+     "label": "Catalog",
+     "href": "/catalog",
+     "children": [
+      {
+       "label": "Pitchers",
+       "href": "/catalog/jugs",
+       "active": true
+      },
+      {
+       "label": "Platters",
+       "href": "/catalog/dishes"
+      }
+     ]
+    },
+    {
+     "label": "About us",
+     "href": "/about"
+    }
+   ]
+  },
+  {
+   "items": [
+    {
+     "label": "Shop",
+     "href": "/",
+     "active": true,
+     "children": [
+      {
+       "label": "Tableware",
+       "href": "/dishes",
+       "children": [
+        {
+         "label": "Cups",
+         "href": "/dishes/cups",
+         "children": [
+          {
+           "label": "Large & <small>",
+           "href": "/dishes/cups?size=all"
+          }
+         ]
+        },
+        {
+         "label": "Bowls",
+         "href": "/dishes/bowls",
+         "children": []
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "label": "Delivery",
+     "href": "/delivery",
+     "children": []
+    }
+   ],
+   "depth": 2
+  },
+  {
+   "items": []
+  }
+ ]
+}

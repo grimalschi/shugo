@@ -1,0 +1,18 @@
+[
+ {
+  "body": "<article class=\"doc\"><h2 class=\"heading level-2\" id=\"intro\">Introduction <a class=\"anchor\" href=\"#intro\" aria-hidden=\"true\">#</a></h2> <p>What this page is about.</p><h3 class=\"heading level-3\" id=\"clay\">Clay <a class=\"anchor\" href=\"#clay\" aria-hidden=\"true\">#</a></h3> <p>What clay we use and why.</p><h4 class=\"heading level-4\">Additives </h4> <p>Grog and sand.</p><h3 class=\"heading level-3\" id=\"glaze\">Glaze <a class=\"anchor\" href=\"#glaze\" aria-hidden=\"true\">#</a></h3> <h2 class=\"heading level-2\" id=\"firing\">Firing <a class=\"anchor\" href=\"#firing\" aria-hidden=\"true\">#</a></h2> <p>Two stages: bisque and glaze firing.</p></article>",
+  "head": ""
+ },
+ {
+  "body": "<article class=\"doc\"><h2 class=\"heading level-2\" id=\"top\">Too high <a class=\"anchor\" href=\"#top\" aria-hidden=\"true\">#</a></h2> <p>Level 1 becomes level 2.</p><h2 class=\"heading level-2\" id=\"zero\">Zero <a class=\"anchor\" href=\"#zero\" aria-hidden=\"true\">#</a></h2> <h2 class=\"heading level-2\">Below zero </h2> <h6 class=\"heading level-6\" id=\"deep\">Deeper &lt;h6> &amp; \"beyond\" <a class=\"anchor\" href=\"#deep\" aria-hidden=\"true\">#</a></h6> <p>Text with a &lt;b>tag&lt;/b> &amp; an ampersand</p><h6 class=\"heading level-6\">Very deep </h6> <h5 class=\"heading level-5\" id=\"five\">Fifth <a class=\"anchor\" href=\"#five\" aria-hidden=\"true\">#</a></h5> <h6 class=\"heading level-6\" id=\"six\">Sixth <a class=\"anchor\" href=\"#six\" aria-hidden=\"true\">#</a></h6> <p>Last level.</p></article>",
+  "head": ""
+ },
+ {
+  "body": "<article class=\"doc\"></article>",
+  "head": ""
+ },
+ {
+  "body": "<article class=\"doc\"><h4 class=\"heading level-4\" id=\"café-1\">Section 1 <a class=\"anchor\" href=\"#café-1\" aria-hidden=\"true\">#</a></h4> <p>An anchor with a non-ASCII character.</p><h4 class=\"heading level-4\">Section 2 </h4> </article>",
+  "head": ""
+ }
+]

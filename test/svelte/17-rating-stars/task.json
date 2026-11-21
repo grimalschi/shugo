@@ -1,0 +1,23 @@
+{
+ "id": "17-rating-stars",
+ "title": "Five stars from a rating rounded to a half, an ARIA label and the votes",
+ "entry": "Rating",
+ "datasets": [
+  {
+   "rating": 3.74,
+   "votes": 128
+  },
+  {
+   "rating": 4.75,
+   "votes": 1
+  },
+  {
+   "rating": 4.2,
+   "votes": 0
+  },
+  {
+   "rating": 0.25,
+   "votes": 10000
+  }
+ ]
+}

@@ -1,0 +1,15 @@
+<script lang="ts">
+  import CommentItem, { count, type Comment } from "./CommentItem.shugo";
+  let { comments }: { comments: Comment[] } = $props();
+</script>
+
+<section class="comments">
+  <h2>Comments ({count(comments)})</h2>
+  {#if comments.length === 0}
+    <p class="empty">No comments yet</p>
+  {:else}
+    <ul class="thread">
+      {#each comments as comment}<CommentItem {comment} depth={0} />{/each}
+    </ul>
+  {/if}
+</section>

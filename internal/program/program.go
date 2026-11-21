@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // Version changes when an older runtime could not read the format any more.
@@ -35,7 +36,8 @@ type File struct {
 	// called with the same parameters: it reads nothing of the page it is on.
 	// Such a block is computed and kept once for the whole site.
 	Shared bool `json:"shared,omitempty"`
-	// Slots are the names of the slots the template shows with <g-slot>.
+	// Slots are the names of what pages give to layouts that the template
+	// shows: "head" for a layout with a <head>.
 	Slots []string `json:"slots,omitempty"`
 	// Parts are the template itself and then every piece of markup it puts
 	// inside the components it calls.
@@ -63,27 +65,28 @@ type Segment struct {
 type Kind byte
 
 const (
-	Markup Kind = 'r' // write markup as it is
-	Text   Kind = 't' // write the next value as text
-	HTML   Kind = 'h' // write the next value as markup
-	Attr   Kind = 'a' // write an attribute that may be absent
-	URL    Kind = 'u' // the same for an attribute that holds an address
-	Spread Kind = 's' // write attributes known only when the page is computed
-	If     Kind = 'i' // go on with one of several branches, or with none
-	For    Kind = 'f' // repeat the body for every item
-	Call   Kind = 'c' // show the next component the block calls
-	Slot   Kind = 'o' // show what the caller put inside this component
-	Mount  Kind = 'm' // write markup the framework adds
+	Markup  Kind = 'r' // write markup as it is
+	Text    Kind = 't' // write the next value as text
+	HTML    Kind = 'h' // write the next value as markup
+	Attr    Kind = 'a' // write an attribute that may be absent
+	URL     Kind = 'u' // the same for an attribute that holds an address
+	Spread  Kind = 's' // write attributes known only when the page is computed
+	If      Kind = 'i' // go on with one of several branches, or with none
+	For     Kind = 'f' // repeat the body for every item, or show the second body for none
+	Call    Kind = 'c' // show the next component the block calls
+	Render  Kind = 'n' // show a snippet: given by a caller, or a block of its own
+	Element Kind = 'e' // write an element whose tag is a value: <svelte:element>
+	Mount   Kind = 'm' // write markup the framework adds
 )
 
 // Op is one step of showing a template. Every step except Markup, Call and
 // Mount takes the next value the block has computed.
 type Op struct {
 	Kind Kind
-	// Text is the markup of Markup and the name of Attr, URL, Slot and Mount.
+	// Text is the markup of Markup and the name of Attr, URL and Mount.
 	Text string
-	// Bodies are the branches of If, the body of For and the markup Slot
-	// shows when the caller put nothing there.
+	// Bodies are the branches of If; the body of For and what it shows for
+	// no items; the attributes and the content of Element.
 	Bodies [][]Op
 }
 
@@ -141,7 +144,7 @@ func (o *Op) UnmarshalJSON(data []byte) error {
 
 func (o Op) hasText() bool {
 	switch o.Kind {
-	case Markup, Attr, URL, Slot, Mount:
+	case Markup, Attr, URL, Mount:
 		return true
 	}
 	return false
@@ -151,9 +154,11 @@ func (o Op) hasText() bool {
 func (o Op) check() error {
 	want := 0
 	switch o.Kind {
-	case Markup, Text, HTML, Attr, URL, Spread, Call, Mount:
-	case For, Slot:
-		want = 1
+	case Markup, Text, HTML, Attr, URL, Spread, Call, Render, Mount:
+	case For:
+		want = min(max(1, len(o.Bodies)), 2)
+	case Element:
+		want = 2
 	case If:
 		want = max(1, len(o.Bodies))
 	default:
@@ -200,3 +205,12 @@ var addresses = map[string]bool{
 
 // IsAddress tells whether an attribute holds an address.
 func IsAddress(name string) bool { return addresses[name] }
+
+// Elements that never have content or a closing tag. Svelte writes them as <br/>.
+var void = map[string]bool{
+	"area": true, "base": true, "br": true, "col": true, "command": true, "embed": true, "hr": true, "img": true,
+	"input": true, "keygen": true, "link": true, "meta": true, "param": true, "source": true, "track": true, "wbr": true,
+}
+
+// IsVoid tells whether an element of HTML never has content or a closing tag.
+func IsVoid(name string) bool { return void[strings.ToLower(name)] }

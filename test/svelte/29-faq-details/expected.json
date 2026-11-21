@@ -1,0 +1,18 @@
+[
+ {
+  "body": "<section class=\"faq\"><h2>Frequently asked questions</h2> <details class=\"faq-item\" open=\"\"><summary>1. How do I pay for my order?</summary> <div class=\"answer\"><p>Pay by card online or in cash on delivery.</p><p>Businesses can pay by invoice.</p></div></details><details class=\"faq-item\"><summary>2. How long does delivery take?</summary> <div class=\"answer\"><p>Within Boston — one or two days.<br/>Nationwide — up to a week.</p></div></details><details class=\"faq-item\"><summary>3. Can I return an item?</summary> <div class=\"answer\"><p>Yes, within 14 days.</p></div></details></section>",
+  "head": ""
+ },
+ {
+  "body": "<section class=\"faq\"><h2>FAQ &amp; &lt;help></h2> <details class=\"faq-item\"><summary>1. First &lt;closed>?</summary> <div class=\"answer\"><p>An answer with a &lt;b>tag&lt;/b> &amp; an ampersand.</p><p>Second paragraph<br/>with indentation<br/>and a third line.</p><p>Third paragraph.</p></div></details><details class=\"faq-item\" open=\"\"><summary>2. Second is open</summary> <div class=\"answer\"><p>Briefly.</p></div></details><details class=\"faq-item\" open=\"\"><summary>3. Third is also \"open\"</summary> <div class=\"answer\"><p>Line 1<br/>Line 2</p></div></details><details class=\"faq-item\"><summary>4. Fourth</summary> <div class=\"answer\"><p>No flag.</p></div></details></section>",
+  "head": ""
+ },
+ {
+  "body": "<section class=\"faq\"><h2>Questions</h2> <p class=\"empty\">No questions yet</p></section>",
+  "head": ""
+ },
+ {
+  "body": "<section class=\"faq\"><h2>Frequently asked questions</h2> <details class=\"faq-item\" open=\"\"><summary>1. Empty answer</summary> <div class=\"answer\"><p class=\"empty\">No answer yet</p></div></details><details class=\"faq-item\"><summary>2. The answer is zero</summary> <div class=\"answer\"><p>0</p></div></details></section>",
+  "head": ""
+ }
+]

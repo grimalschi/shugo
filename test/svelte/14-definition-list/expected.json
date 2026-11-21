@@ -1,0 +1,18 @@
+[
+ {
+  "body": "<section class=\"specs\"><h2>Specifications</h2> <dl><dt>Volume</dt> <dd>350 mL</dd><dt>Color</dt> <dd>white</dd><dd>blue</dd><dt>Dimensions</dt> <dd>9 cm</dd><dd>12 cm</dd><dt>Material</dt> <dd>ceramics</dd></dl></section>",
+  "head": ""
+ },
+ {
+  "body": "<section class=\"specs\"><h2>Details &amp; &lt;other></h2> <dl><dt>Discount</dt> <dd>0 %</dd><dt>Temperature</dt> <dd>-4 °C</dd><dd>1.5 °C</dd><dd>0 °C</dd><dt>Note</dt> <dd>fragile &lt;glass></dd><dt>Size \"XL\" &amp; &lt;larger></dt> <dd>44–46</dd><dt>Weight</dt> <dd>0.25 kg</dd></dl></section>",
+  "head": ""
+ },
+ {
+  "body": "<section class=\"specs\"><h2>Nothing</h2> <p class=\"empty\">No specifications provided</p></section>",
+  "head": ""
+ },
+ {
+  "body": "<section class=\"specs\"><h2>All empty</h2> <p class=\"empty\">No specifications provided</p></section>",
+  "head": ""
+ }
+]

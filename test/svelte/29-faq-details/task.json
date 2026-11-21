@@ -1,0 +1,64 @@
+{
+ "id": "29-faq-details",
+ "title": "Questions and answers in details elements, answers split into paragraphs",
+ "entry": "Faq",
+ "datasets": [
+  {
+   "items": [
+    {
+     "question": "How do I pay for my order?",
+     "answer": "Pay by card online or in cash on delivery.\n\nBusinesses can pay by invoice."
+    },
+    {
+     "question": "How long does delivery take?",
+     "answer": "Within Boston — one or two days.\nNationwide — up to a week."
+    },
+    {
+     "question": "Can I return an item?",
+     "answer": "Yes, within 14 days."
+    }
+   ]
+  },
+  {
+   "title": "FAQ & <help>",
+   "items": [
+    {
+     "question": "First <closed>?",
+     "answer": "\n\nAn answer with a <b>tag</b> & an ampersand.\n\n\n\nSecond paragraph\n   with indentation   \nand a third line.\n  \n  Third paragraph.  \n\n",
+     "open": false
+    },
+    {
+     "question": "Second is open",
+     "answer": "Briefly.",
+     "open": true
+    },
+    {
+     "question": "Third is also \"open\"",
+     "answer": "Line 1\nLine 2",
+     "open": true
+    },
+    {
+     "question": "Fourth",
+     "answer": "No flag."
+    }
+   ]
+  },
+  {
+   "title": "Questions",
+   "items": []
+  },
+  {
+   "items": [
+    {
+     "question": "Empty answer",
+     "answer": "   \n\n  ",
+     "open": false
+    },
+    {
+     "question": "The answer is zero",
+     "answer": "0"
+    }
+   ]
+  }
+ ]
+}

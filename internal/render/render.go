@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/grimalschi/shugo/internal/program"
 	"github.com/grimalschi/shugo/internal/record"
@@ -169,7 +170,7 @@ func (r *renderer) ops(ops []program.Op, c *cursor) error {
 			if err != nil {
 				return err
 			}
-			r.out = appendEscaped(r.out, value)
+			r.out = appendEscaped(r.out, value, false)
 
 		case program.HTML:
 			value, err := c.next()
@@ -233,6 +234,11 @@ func (r *renderer) ops(ops []program.Op, c *cursor) error {
 					return errors.New("the page is too large")
 				}
 			}
+			if count == 0 && len(op.Bodies) == 2 {
+				if err := r.ops(op.Bodies[1], c); err != nil {
+					return err
+				}
+			}
 
 		case program.Call:
 			if c.child >= len(c.block.Children) {
@@ -246,26 +252,39 @@ func (r *renderer) ops(ops []program.Op, c *cursor) error {
 				return err
 			}
 
-		case program.Slot:
-			filled, err := c.number(1)
+		case program.Render:
+			value, err := c.next()
 			if err != nil {
 				return err
 			}
-			if filled == 0 {
-				if err := r.ops(op.Bodies[0], c); err != nil {
-					return err
-				}
+			if err := r.snippet(value, c); err != nil {
+				return err
+			}
+
+		case program.Element:
+			tag, err := c.next()
+			if err != nil {
+				return err
+			}
+			if len(tag) == 0 {
 				continue
 			}
-			if r.dry || c.frame == nil {
+			if !tagName(tag) {
+				return fmt.Errorf("%q cannot be the name of a tag", tag)
+			}
+			r.out = append(append(r.out, '<'), tag...)
+			if err := r.ops(op.Bodies[0], c); err != nil {
+				return err
+			}
+			if program.IsVoid(string(tag)) {
+				r.out = append(r.out, "/>"...)
 				continue
 			}
-			// What fills the slot was written in the template of the caller.
-			for _, fill := range c.frame.block.Slot(op.Text) {
-				if err := r.show(c.frame.rec, fill, c.frame.outer); err != nil {
-					return err
-				}
+			r.out = append(r.out, '>')
+			if err := r.ops(op.Bodies[1], c); err != nil {
+				return err
 			}
+			r.out = append(append(append(r.out, "</"...), tag...), '>')
 
 		case program.Mount:
 			r.out = append(r.out, r.site.Mounts[op.Text]...)
@@ -278,7 +297,8 @@ func (r *renderer) ops(ops []program.Op, c *cursor) error {
 }
 
 // attribute writes one attribute. The value starts with a sign: "-" for no
-// attribute, "+" for the name alone, "=" before the text of the value.
+// attribute, "+" for one that is there without a value, as disabled="",
+// "=" before the text of the value.
 func (r *renderer) attribute(name string, value []byte, address bool) error {
 	if len(value) == 0 {
 		return errors.New("an empty value stands where an attribute is expected")
@@ -286,18 +306,94 @@ func (r *renderer) attribute(name string, value []byte, address bool) error {
 	switch value[0] {
 	case '-':
 	case '+':
-		r.out = append(append(r.out, ' '), name...)
+		r.out = append(append(append(r.out, ' '), name...), `=""`...)
 	case '=':
 		text := value[1:]
 		if address && !safeAddress(text) {
 			text = blockedAddress
 		}
 		r.out = append(append(append(r.out, ' '), name...), '=', '"')
-		r.out = append(appendEscaped(r.out, text), '"')
+		r.out = append(appendEscaped(r.out, text, true), '"')
 	default:
 		return fmt.Errorf("the value %q stands where an attribute is expected", value)
 	}
 	return nil
+}
+
+// snippet shows what {@render} rendered. The value says what: "-" nothing;
+// "c" and a number, the next child block, a snippet computed where it was
+// rendered, which belongs to the component that many levels out; "f", a
+// number, ":" and a name, what the caller of the component that many levels
+// out gave under that name.
+func (r *renderer) snippet(value []byte, c *cursor) error {
+	if len(value) == 0 {
+		return errors.New("an empty value stands where a snippet is expected")
+	}
+	if value[0] == '-' && len(value) == 1 {
+		return nil
+	}
+	kind := value[0]
+	text := string(value[1:])
+	depthText, name, _ := strings.Cut(text, ":")
+	depth, err := strconv.Atoi(depthText)
+	if err != nil || depth < 0 || depth > maxDepth || (kind != 'c' && kind != 'f') {
+		return fmt.Errorf("the value %q stands where a snippet is expected", value)
+	}
+	if kind == 'c' {
+		if c.child >= len(c.block.Children) {
+			return errors.New("the block has fewer snippets than its template shows")
+		}
+		c.child++
+		if r.dry {
+			return nil
+		}
+		from, err := up(c.frame, depth)
+		if err != nil {
+			return err
+		}
+		return r.show(c.rec, c.block.Children[c.child-1], from)
+	}
+	if r.dry {
+		return nil
+	}
+	f, err := up(c.frame, depth)
+	if err != nil {
+		return err
+	}
+	if f == nil {
+		return fmt.Errorf("the snippet %s is shown where no component gave it", name)
+	}
+	// What the caller gave was written in the template of the caller.
+	for _, given := range f.block.Slot(name) {
+		if err := r.show(f.rec, given, f.outer); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// up returns the frame that many levels out.
+func up(f *frame, depth int) (*frame, error) {
+	for range depth {
+		if f == nil {
+			return nil, errors.New("a snippet names a component further out than there are")
+		}
+		f = f.outer
+	}
+	return f, nil
+}
+
+// tagName tells whether a value can be the name of a tag.
+func tagName(name []byte) bool {
+	if len(name) == 0 || !(name[0] >= 'a' && name[0] <= 'z' || name[0] >= 'A' && name[0] <= 'Z') {
+		return false
+	}
+	for _, c := range name {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == ':' || c == '.' || c == '_') {
+			return false
+		}
+	}
+	return true
 }
 
 // attributeName tells whether a name that came with the values can be

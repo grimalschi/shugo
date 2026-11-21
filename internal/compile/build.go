@@ -290,7 +290,7 @@ func (b *builder) routes() ([]program.Route, error) {
 				r.Segments = append(r.Segments, program.Segment{Text: s.Name})
 			}
 		}
-		if dynamic && !u.script.paths {
+		if dynamic && !u.paths {
 			errs = append(errs, u.file.Errorf(0, "the name of this page has a parameter, so its script must say which pages there are: export function getStaticPaths({ query }) { return query(\"products\").select(\"slug\").all().map((row) => ({ params: { slug: row.slug } })) }; without a data database, return the list itself: [{ params: { … } }]"))
 		}
 		// Every folder from pages/ down to the page may hold a layout.
@@ -328,7 +328,7 @@ func (b *builder) provided(page *unit, layouts []int) Errors {
 				shown = shown || slices.Contains(b.units[layout].outlets, name)
 			}
 			if !shown {
-				errs = append(errs, u.file.Errorf(at, `slot=%q gives markup to a layout, and no layout around this file has <g-slot name=%q />`, name, name))
+				errs = append(errs, u.file.Errorf(at, `<svelte:%s> gives markup to the <%s> of a layout, and no layout around this file has a <%s>`, name, name, name))
 			}
 		}
 	}
@@ -399,7 +399,7 @@ func (b *builder) bundle(routes []program.Route) (*bundled, error) {
 				return api.OnLoadResult{}, fmt.Errorf("this file is not among the sources of the project")
 			}
 			u := b.units[id]
-			contents := u.module.text(u.script)
+			contents := u.module.text()
 			return api.OnLoadResult{Contents: &contents, Loader: api.LoaderTS, ResolveDir: filepath.Dir(args.Path)}, nil
 		})
 		// Style sheets do not go into JavaScript: they are collected and
@@ -490,13 +490,13 @@ func (b *builder) diagnose(message api.Message) *syntax.Error {
 	u := b.units[id]
 	text := message.Text
 	if line := at.Line - 1; line < len(u.module.from) && u.module.from[line].kind == 't' && markupInCode.MatchString(u.module.lines[line]) {
-		text += "; markup cannot stand inside {…}: put <g-if> or <g-for> around it instead"
+		text += "; markup cannot stand inside {…}: write {#if …}…{/if} or {#each …}…{/each} around it instead"
 	}
 	if strings.Contains(text, `"await" can only be used inside an "async" function`) {
 		text = "a page is computed without waiting: its data comes from Shugo.query, which answers at once, so there is nothing to wait for. " +
 			"What takes time and needs doing once, such as making a highlighter, can be awaited at the top of a module in lib/ and used here"
 	}
-	return u.file.Errorf(u.module.locate(u.script, at.Line-1, at.Column), "%s", text)
+	return u.file.Errorf(u.module.locate(at.Line-1, at.Column), "%s", text)
 }
 
 // graph reads from the bundler which module imports which. It gives the

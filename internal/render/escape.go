@@ -1,22 +1,19 @@
 package render
 
-// appendEscaped appends text so that it is text in HTML, between tags and
-// inside a quoted attribute alike.
-func appendEscaped(dst, text []byte) []byte {
+// appendEscaped appends text the way Svelte escapes it: "&" and "<"
+// between tags, and the double quote too inside an attribute, which is
+// always written in double quotes.
+func appendEscaped(dst, text []byte, attribute bool) []byte {
 	from := 0
 	for i, c := range text {
 		var entity string
-		switch c {
-		case '&':
+		switch {
+		case c == '&':
 			entity = "&amp;"
-		case '<':
+		case c == '<':
 			entity = "&lt;"
-		case '>':
-			entity = "&gt;"
-		case '"':
-			entity = "&#34;"
-		case '\'':
-			entity = "&#39;"
+		case c == '"' && attribute:
+			entity = "&quot;"
 		default:
 			continue
 		}

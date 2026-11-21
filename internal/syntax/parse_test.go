@@ -6,136 +6,205 @@ import (
 	"testing"
 )
 
-// dump writes a tree in one line, so that a test reads like the template.
-func dump(nodes []Node) string {
-	var b strings.Builder
+// show writes a parsed template compactly, to compare with what a test expects.
+func show(nodes []Node) string {
+	var out strings.Builder
 	for _, n := range nodes {
 		switch n := n.(type) {
 		case *Text:
-			fmt.Fprintf(&b, "%q", n.Value)
-		case *Expr:
-			fmt.Fprintf(&b, "{%s}", n.Code)
-		case *Element:
-			b.WriteString("<" + n.Name)
-			for _, a := range n.Attrs {
-				switch a.Kind {
-				case Bare:
-					b.WriteString(" " + a.Name)
-				case Literal:
-					fmt.Fprintf(&b, " %s=%q", a.Name, a.Value)
-				case Dynamic:
-					fmt.Fprintf(&b, " %s={%s}", a.Name, a.Value)
-				case Spread:
-					fmt.Fprintf(&b, " {...%s}", a.Value)
+			out.WriteString(n.Raw)
+		case *HTMLComment:
+			fmt.Fprintf(&out, "<!--%s-->", n.Data)
+		case *Doctype:
+			out.WriteString(n.Raw)
+		case *Tag:
+			kinds := map[TagKind]string{Expression: "", HTMLTag: "@html ", ConstTag: "@const ", RenderTag: "@render ", DebugTag: "@debug "}
+			fmt.Fprintf(&out, "{%s%s}", kinds[n.Kind], n.Code.Text)
+		case *IfBlock:
+			for i, b := range n.Branches {
+				switch {
+				case i == 0:
+					fmt.Fprintf(&out, "{#if %s}", b.Test.Text)
+				case b.Test != nil:
+					fmt.Fprintf(&out, "{:else if %s}", b.Test.Text)
+				default:
+					out.WriteString("{:else}")
 				}
+				out.WriteString(show(b.Body))
 			}
-			if n.Closed {
-				b.WriteString("/>")
-			} else {
-				b.WriteString(">" + dump(n.Children) + "</" + n.Name + ">")
+			out.WriteString("{/if}")
+		case *EachBlock:
+			fmt.Fprintf(&out, "{#each %s", n.List.Text)
+			if n.Item != nil {
+				fmt.Fprintf(&out, " as %s", n.Item.Text)
 			}
+			if n.Index != "" {
+				fmt.Fprintf(&out, ", %s", n.Index)
+			}
+			if n.Key != nil {
+				fmt.Fprintf(&out, " (%s)", n.Key.Text)
+			}
+			out.WriteString("}" + show(n.Body))
+			if n.Else != nil {
+				out.WriteString("{:else}" + show(n.Else))
+			}
+			out.WriteString("{/each}")
+		case *AwaitBlock:
+			fmt.Fprintf(&out, "{#await %s}%s", n.Value.Text, show(n.Pending))
+			if n.Then != nil {
+				fmt.Fprintf(&out, "{:then %s}%s", n.Then.Test.Text, show(n.Then.Body))
+			}
+			out.WriteString("{/await}")
+		case *KeyBlock:
+			fmt.Fprintf(&out, "{#key %s}%s{/key}", n.Value.Text, show(n.Body))
+		case *SnippetBlock:
+			fmt.Fprintf(&out, "{#snippet %s(%s)}%s{/snippet}", n.Name, n.Params.Text, show(n.Body))
+		case *Element:
+			out.WriteString("<" + n.Name)
+			for _, a := range n.Attrs {
+				out.WriteString(" " + showAttr(a))
+			}
+			if n.SelfClosing {
+				out.WriteString("/>")
+				continue
+			}
+			out.WriteString(">" + show(n.Children) + "</" + n.Name + ">")
 		}
 	}
-	return b.String()
+	return out.String()
+}
+
+func showAttr(a Attr) string {
+	name := a.Name
+	if a.Kind == Directive {
+		name = a.Directive + ":" + a.Name
+		for _, m := range a.Modifiers {
+			name += "|" + m
+		}
+	}
+	switch a.Kind {
+	case Spread:
+		return "{..." + a.Value[0].Expr.Text + "}"
+	case Shorthand:
+		return "{" + a.Name + "}"
+	case Attach:
+		return "{@attach}"
+	}
+	if a.Value == nil {
+		return name
+	}
+	var value strings.Builder
+	for _, part := range a.Value {
+		if part.Expr != nil {
+			value.WriteString("{" + part.Expr.Text + "}")
+		} else {
+			value.WriteString(part.Text)
+		}
+	}
+	if a.Quoted {
+		return name + `="` + value.String() + `"`
+	}
+	return name + "=" + value.String()
 }
 
 func TestParse(t *testing.T) {
-	cases := []struct{ name, source, script, want string }{
-		{"text only", "hello", "", `"hello"`},
-		{"script and template", "---\nconst a = 1\n---\n<p>{a}</p>\n", "const a = 1\n", `<p>{a}</p>`},
-		{"empty script", "---\n---\n<p/>", "", `<p/>`},
-		{"dashes later are text", "<p>a</p>\n---\n", "", `<p>"a"</p>"\n---"`},
-		{"void and self-closing", `<br><img src="a.png"><div class="x" />`, "", `<br/><img src="a.png"/><div class="x"/>`},
-		{"attributes", `<a href={url} {id} {...rest} hidden data-x='1' title=plain>t</a>`, "",
-			`<a href={url} id={id} {...rest} hidden data-x="1" title="plain">"t"</a>`},
-		{"nested braces and strings", `{fn({a: "}"}, '}', ` + "`${ {b: 1}.b }`" + `)}`, "", `{fn({a: "}"}, '}', ` + "`${ {b: 1}.b }`" + `)}`},
-		{"regular expression with a brace", `{name.replace(/}/g, "")}`, "", `{name.replace(/}/g, "")}`},
-		{"division is not a regular expression", `{a / b}{c / d}`, "", `{a / b}{c / d}`},
-		{"comment-only expression gives nothing", `a{/* note */}b`, "", `"a""b"`},
-		{"html comment and doctype are text", "<!doctype html>\n<!-- {not code} <b> -->", "", `"<!doctype html>\n<!-- {not code} <b> -->"`},
-		{"script and style are raw", `<style>a{b:c}</style><script>if (a<b) {}</script>`, "", `<style>"a{b:c}"</style><script>"if (a<b) {}"</script>`},
-		{"a lone < is text", `a < b`, "", `"a < b"`},
-		{"components", `<Card title="x"><ui.Icon name={n} /></Card>`, "", `<Card title="x"><ui.Icon name={n}/></Card>`},
-		{"a component named like a void element", `<Link href="/">home</Link>`, "", `<Link href="/">"home"</Link>`},
-		{"template is trimmed", "\n\n  <p>a</p>  \n", "", `<p>"a"</p>`},
-		{"typescript in expressions", `{(item as Item)!.price / 2}`, "", `{(item as Item)!.price / 2}`},
-		{"comparisons and generics are not markup", `{a < b && c > d ? x : y}{list.map(<T,>(v: T) => v)}{i<n}`, "", `{a < b && c > d ? x : y}{list.map(<T,>(v: T) => v)}{i<n}`},
+	cases := []struct{ source, want string }{
+		{"<p>{a}</p>", "<p>{a}</p>"},
+		{"{#if a}x{:else if b}y{:else}z{/if}", "{#if a}x{:else if b}y{:else}z{/if}"},
+		{"{#each items as item, i (item.id)}<li>{item}</li>{:else}none{/each}", "{#each items as item, i (item.id)}<li>{item}</li>{:else}none{/each}"},
+		{"{#each list as { a, b }, index}{a}{/each}", "{#each list as { a, b }, index}{a}{/each}"},
+		{"{#each (items as Item[]) as item}{item}{/each}", "{#each (items as Item[]) as item}{item}{/each}"},
+		{"{#each { length: 3 }}x{/each}", "{#each { length: 3 }}x{/each}"},
+		{"{#await p}wait{:then v}{v}{/await}", "{#await p}wait{:then v}{v}{/await}"},
+		{"{#key k}<i>{k}</i>{/key}", "{#key k}<i>{k}</i>{/key}"},
+		{"{#snippet row(item, i)}<td>{item}</td>{/snippet}{@render row(x, 1)}", "{#snippet row(item, i)}<td>{item}</td>{/snippet}{@render row(x, 1)}"},
+		{"{@html html}{@const n = a + 1}{@debug}", "{@html html}{@const n = a + 1}{@debug }"},
+		{`<a href={url} title="Hi {name}!" {id} {...rest} class:active={on} style:color|important="red" onclick={go} disabled>x</a>`,
+			`<a href={url} title="Hi {name}!" {id} {...rest} class:active={on} style:color|important="red" onclick={go} disabled>x</a>`},
+		{"<input value={v}><br><img src=a.png />", "<input value={v}></input><br></br><img src=a.png/>"},
+		{"<ul><li>a<li>b</ul>", "<ul><li>a</li><li>b</li></ul>"},
+		{"<p>a<div>b</div>", "<p>a</p><div>b</div>"},
+		{"<div><script>if (a < b) {}</script></div>", "<div><script>if (a < b) {}</script></div>"},
+		{"<!doctype html><html><!-- c --></html>", "<!doctype html><html><!-- c --></html>"},
+		{"<svelte:element this={tag}>x</svelte:element><Card.Body />", "<svelte:element this={tag}>x</svelte:element><Card.Body/>"},
 	}
 	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			f, err := Parse("test.shugo", c.source)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got := dump(f.Body); got != c.want {
-				t.Errorf("template\n got %s\nwant %s", got, c.want)
-			}
-			if got := f.Source[f.Script.Start:f.Script.End]; got != c.script {
-				t.Errorf("script\n got %q\nwant %q", got, c.script)
-			}
-		})
+		f, err := Parse("a.shugo", c.source)
+		if err != nil {
+			t.Errorf("%s: %v", c.source, err)
+			continue
+		}
+		if got := show(f.Body); got != c.want {
+			t.Errorf("%s\n got %s\nwant %s", c.source, got, c.want)
+		}
+	}
+}
+
+func TestScriptsAndStyle(t *testing.T) {
+	source := `<script module>
+  export function getStaticPaths() { return [] }
+</script>
+<script lang="ts">
+  let { title } = $props();
+</script>
+
+<h1>{title}</h1>
+
+<style>
+  h1 { color: red; }
+</style>`
+	f, err := Parse("a.shugo", source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code := func(s *Script) string { return strings.TrimSpace(source[s.Code.Start:s.Code.End]) }
+	if f.Module == nil || code(f.Module) != "export function getStaticPaths() { return [] }" {
+		t.Errorf("module: %+v", f.Module)
+	}
+	if f.Script == nil || code(f.Script) != "let { title } = $props();" {
+		t.Errorf("script: %+v", f.Script)
+	}
+	if f.Style == nil || code(f.Style) != "h1 { color: red; }" {
+		t.Errorf("style: %+v", f.Style)
+	}
+	if got := strings.TrimSpace(show(f.Body)); got != "<h1>{title}</h1>" {
+		t.Errorf("body: %q", got)
 	}
 }
 
 func TestParseErrors(t *testing.T) {
-	cases := []struct{ name, source, want string }{
-		{"unclosed element", "<div>\n  <p>a</p>", `test.shugo:1:1: <div> is never closed`},
-		{"wrong closing tag", "<div>\n  <p>a</span>\n</div>", `test.shugo:2:7: </span> does not close <p> opened at 2:3`},
-		{"stray closing tag", "a</p>", `test.shugo:1:2: </p> closes nothing`},
-		{"unclosed expression", "<p>{a + (b</p>", `test.shugo:1:4: "{" is never closed (unterminated regular expression at 1:12)`},
-		{"unclosed expression at the end", "<p>{a + (b", `test.shugo:1:4: "{" is never closed`},
-		{"unclosed string in expression", `<p>{"a}</p>`, `test.shugo:1:4: "{" is never closed (unterminated string at 1:5)`},
-		{"unclosed script", "---\nconst a = 1\n<p/>", `test.shugo:1:1: the script that starts with "---" has no closing "---" line`},
-		{"unclosed attribute", `<a href="x>t</a>`, `test.shugo:1:9: the value of attribute href is never closed with "`},
-		{"unfinished tag", `<a href="x"`, `test.shugo:1:1: tag <a is not finished with >`},
-		{"bad shorthand", `<a {a.b}>t</a>`, `test.shugo:1:4: expected {name} or {...attributes} among the attributes of <a>`},
-		{"markup in an expression", "<ul>\n  {items.map(item => <li>{item}</li>)}\n</ul>", `test.shugo:2:3: ` + noMarkup},
-		{"markup after a condition", `<p>{user && <b>{user.name}</b>}</p>`, `test.shugo:1:4: ` + noMarkup},
-		{"position counts characters", "<p>hello</p>\n<b>café</i>", `test.shugo:2:8: </i> does not close <b> opened at 2:1`},
+	cases := []struct{ source, want string }{
+		{"---\nconst a = 1\n---\n<p/>", `a.shugo:1:1: the code of a component goes into <script>`},
+		{"<div>", "a.shugo:1:1: <div> is never closed"},
+		{"<div></span>", "a.shugo:1:6: </span> does not close <div> opened at 1:1"},
+		{"</p>", "a.shugo:1:1: </p> closes nothing"},
+		{"{#if a}x", "{#if} is never closed with {/if}"},
+		{"{#if a}<p>x{/if}", "stands inside <p>"},
+		{"{#each a as}x{/each}", `{#each} needs a name for one item after "as"`},
+		{"{:else}", "{:else} stands outside of any block"},
+		{"{#for a}x{/for}", "there is no {#for}"},
+		{"{@foo a}", "there is no {@foo}"},
+		{"<script>a</script><script>b</script>", "a component has one <script>"},
+		{`<p a="1" a="2"></p>`, "the attribute a is written twice"},
+		{"<br></br>", "</br>: <br> never has a closing tag"},
 	}
 	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			_, err := Parse("test.shugo", c.source)
-			if err == nil {
-				t.Fatal("no error")
-			}
-			if err.Error() != c.want {
-				t.Errorf("\n got %s\nwant %s", err, c.want)
-			}
-		})
+		_, err := Parse("a.shugo", c.source)
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s:\n got %v\nwant …%s…", c.source, err, c.want)
+		}
 	}
 }
 
-func TestScannerTokens(t *testing.T) {
-	kinds := map[TokenKind]string{Space: "_", Comment: "c", Word: "w", Number: "n", String: "s", Template: "t", Regexp: "r", Punct: "p"}
-	cases := []struct{ source, want string }{
-		{`a / b / c`, "w_p_w_p_w"},
-		{`x = /a\/b[/]/g.test(y)`, "w_p_rpwpwp"},
-		{`return /re/`, "w_r"},
-		{`(a) / 2`, "pwp_p_n"},
-		{`a! / b`, "wp_p_w"},
-		{`a != /b/`, "w_pp_r"},
-		{`i++ / 2`, "wp_p_n"},
-		{"`a ${ `b ${c}` } d` + 1", "t_p_n"},
-		{`'it\'s' // rest`, "s_c"},
-		{`/* a */ 1.5e3`, "c_n"},
-		{`x => /a/`, "w_pp_r"},
+func TestImplicitClose(t *testing.T) {
+	f, err := Parse("a.shugo", "<div><p>text</div>")
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, c := range cases {
-		s := NewScanner(c.source, 0)
-		var got strings.Builder
-		for {
-			token, err := s.Next()
-			if err != nil {
-				t.Fatalf("%s: %v", c.source, err)
-			}
-			if token.Kind == EOF {
-				break
-			}
-			got.WriteString(kinds[token.Kind])
-		}
-		if got.String() != c.want {
-			t.Errorf("%s\n got %s\nwant %s", c.source, got.String(), c.want)
-		}
+	if got := show(f.Body); got != "<div><p>text</p></div>" {
+		t.Errorf("got %s", got)
+	}
+	if len(f.Warnings) != 1 || !strings.Contains(f.Warnings[0].Message, "<p> is closed by </div>") {
+		t.Errorf("warnings: %v", f.Warnings)
 	}
 }

@@ -1,0 +1,97 @@
+{
+ "id": "27-spread-attrs",
+ "title": "A list that takes extra attributes and classes for itself and for every item",
+ "entry": "LinkList",
+ "datasets": [
+  {
+   "extraClass": "list--compact",
+   "attrs": {
+    "id": "materials",
+    "aria-label": "Materials",
+    "data-kind": "tags"
+   },
+   "items": [
+    {
+     "text": "Clay",
+     "href": "/clay",
+     "attrs": {
+      "data-id": "1",
+      "title": "White clay"
+     }
+    },
+    {
+     "text": "Glaze",
+     "href": "/glaze",
+     "current": true,
+     "attrs": {
+      "aria-describedby": "glaze-note"
+     }
+    },
+    {
+     "text": "Firing"
+    }
+   ]
+  },
+  {
+   "items": [
+    {
+     "text": "Grog & sand",
+     "href": "/mix?a=1&b=2",
+     "attrs": {}
+    },
+    {
+     "text": "Pigments",
+     "attrs": {
+      "title": "\"Iron\" & <cobalt> oxides",
+      "data-note": "<important>",
+      "id": "pigments"
+     }
+    },
+    {
+     "text": "Tools",
+     "href": "",
+     "current": true,
+     "attrs": {
+      "aria-hidden": "false"
+     }
+    }
+   ]
+  },
+  {
+   "extraClass": "",
+   "attrs": {
+    "aria-hidden": "true",
+    "data-empty": ""
+   },
+   "items": []
+  },
+  {
+   "extraClass": "list--striped  list--wide",
+   "attrs": {
+    "title": "Work order",
+    "data-count": "2"
+   },
+   "items": [
+    {
+     "text": "Kneading",
+     "href": "/steps/1",
+     "current": false,
+     "attrs": {
+      "id": "step-1",
+      "data-step": "1"
+     }
+    },
+    {
+     "text": "Shaping",
+     "href": "/steps/2",
+     "current": true,
+     "attrs": {
+      "id": "step-2",
+      "data-step": "2",
+      "aria-label": "Step 2: shaping"
+     }
+    }
+   ]
+  }
+ ]
+}

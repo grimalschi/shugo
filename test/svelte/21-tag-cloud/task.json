@@ -1,0 +1,111 @@
+{
+ "id": "21-tag-cloud",
+ "title": "A tag cloud: sorted by count, font size scaled from the counts, encoded links",
+ "entry": "TagCloud",
+ "datasets": [
+  {
+   "tags": [
+    {
+     "name": "clay",
+     "count": 3
+    },
+    {
+     "name": "ceramics",
+     "count": 12
+    },
+    {
+     "name": "firing",
+     "count": 7
+    },
+    {
+     "name": "glaze",
+     "count": 3
+    },
+    {
+     "name": "pitchers",
+     "count": 0
+    },
+    {
+     "name": "kiln",
+     "count": 1
+    }
+   ]
+  },
+  {
+   "tags": [
+    {
+     "name": "empty",
+     "count": 0
+    },
+    {
+     "name": "nothing",
+     "count": 0
+    }
+   ]
+  },
+  {
+   "tags": [
+    {
+     "name": "tea & coffee",
+     "count": 4
+    },
+    {
+     "name": "C++",
+     "count": 4
+    },
+    {
+     "name": "Éclair",
+     "count": 4
+    },
+    {
+     "name": "watermelon",
+     "count": 4
+    },
+    {
+     "name": "Apple",
+     "count": 4
+    },
+    {
+     "name": "<script>",
+     "count": 4
+    },
+    {
+     "name": "\"quotes\"",
+     "count": 4
+    },
+    {
+     "name": "zero",
+     "count": 0
+    }
+   ]
+  },
+  {
+   "tags": [
+    {
+     "name": "a/b",
+     "count": 100
+    },
+    {
+     "name": "#tag",
+     "count": 1
+    },
+    {
+     "name": "home",
+     "count": 50
+    },
+    {
+     "name": "garden",
+     "count": 2
+    },
+    {
+     "name": "100%",
+     "count": 75
+    },
+    {
+     "name": "cottage",
+     "count": 50
+    }
+   ]
+  }
+ ]
+}

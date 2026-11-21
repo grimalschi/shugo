@@ -1,0 +1,67 @@
+{
+ "id": "04-table-totals",
+ "title": "A table of order lines with line totals and a grand total",
+ "entry": "OrderTable",
+ "datasets": [
+  {
+   "lines": [
+    {
+     "name": "‘North’ Pitcher",
+     "qty": 2,
+     "price": 2400
+    },
+    {
+     "name": "Cup",
+     "qty": 6,
+     "price": 450.5
+    },
+    {
+     "name": "Pie dish",
+     "qty": 1,
+     "price": 1890.9
+    }
+   ]
+  },
+  {
+   "lines": []
+  },
+  {
+   "lines": [
+    {
+     "name": "Salt & pepper <set>",
+     "qty": 3,
+     "price": 0.1
+    },
+    {
+     "name": "\"Linen\" tablecloth",
+     "qty": 0,
+     "price": 2500
+    },
+    {
+     "name": "Spoon",
+     "qty": 12,
+     "price": 99.99
+    },
+    {
+     "name": "Gift wrap",
+     "qty": 1,
+     "price": 0
+    },
+    {
+     "name": "Plate",
+     "qty": 5,
+     "price": 333.33
+    }
+   ]
+  },
+  {
+   "lines": [
+    {
+     "name": "Vase",
+     "qty": 0,
+     "price": 150
+    }
+   ]
+  }
+ ]
+}

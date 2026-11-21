@@ -1,0 +1,81 @@
+{
+ "id": "30-date-groups",
+ "title": "Events grouped by day, the days and the events in each day sorted, headings from a function",
+ "entry": "Agenda",
+ "datasets": [
+  {
+   "events": [
+    {
+     "date": "2026-11-23",
+     "time": "18:30",
+     "title": "‘Glazes’ lecture"
+    },
+    {
+     "date": "2026-11-21",
+     "time": "12:00",
+     "title": "Handbuilding workshop"
+    },
+    {
+     "date": "2026-11-23",
+     "time": "09:00",
+     "title": "Firing",
+     "cancelled": true
+    },
+    {
+     "date": "2026-11-21",
+     "time": "10:00",
+     "title": "Studio opening"
+    },
+    {
+     "date": "2026-11-22",
+     "time": "15:00",
+     "title": "Market"
+    }
+   ]
+  },
+  {
+   "events": []
+  },
+  {
+   "events": [
+    {
+     "date": "2027-01-01",
+     "time": "00:00",
+     "title": "Salute & fireworks"
+    },
+    {
+     "date": "2026-12-31",
+     "time": "23:00",
+     "title": "Farewell to the <old> year"
+    },
+    {
+     "date": "2026-12-31",
+     "time": "20:00",
+     "title": "Dinner",
+     "cancelled": false
+    },
+    {
+     "date": "2026-12-31",
+     "time": "23:00",
+     "title": "Midnight chimes",
+     "cancelled": true
+    },
+    {
+     "date": "2026-02-09",
+     "time": "07:05",
+     "title": "\"Swallow\" train"
+    }
+   ]
+  },
+  {
+   "events": [
+    {
+     "date": "2026-03-08",
+     "time": "11:00",
+     "title": "Holiday market",
+     "cancelled": true
+    }
+   ]
+  }
+ ]
+}

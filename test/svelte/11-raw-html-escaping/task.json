@@ -1,0 +1,58 @@
+{
+ "id": "11-raw-html-escaping",
+ "title": "A post: plain text escaped in text and attributes, a body inserted as HTML",
+ "entry": "Post",
+ "datasets": [
+  {
+   "title": "How We Fire Clay",
+   "cover": "/img/kiln.jpg",
+   "author": {
+    "name": "Anna Peters",
+    "url": "/authors/anna"
+   },
+   "lead": "A short story about a kiln and patience.",
+   "body": "<p>The kiln heats up for <strong>eight hours</strong> and cools for a day.</p><ul><li>morning — loading</li><li>evening — firing</li></ul>",
+   "tags": [
+    "kiln",
+    "handmade"
+   ]
+  },
+  {
+   "title": "\"Morning\" mug <new> & old",
+   "cover": "/img/cup.jpg?size=l&fmt=webp",
+   "author": {
+    "name": "Ben <B.> & Son"
+   },
+   "body": "<p>Price: &lt;$100&gt; &amp; ‘free’ delivery</p><p><a href=\"/faq?x=1&amp;y=2\" title=\"Questions &quot;and&quot; answers\">FAQ</a><br>end</p>",
+   "tags": [
+    "kiln & firing",
+    "#1",
+    "a/b?c=d",
+    "\"quotes\""
+   ]
+  },
+  {
+   "title": "No cover",
+   "cover": "",
+   "author": {
+    "name": "Vera",
+    "url": ""
+   },
+   "lead": "The <b>bold</b> tag does not work here & should not",
+   "body": "<h2>Results</h2><p>It all <em>worked</em>.</p>",
+   "tags": []
+  },
+  {
+   "title": "<script>alert(1)</script>",
+   "author": {
+    "name": "Guest",
+    "url": "/authors?id=7&from=post"
+   },
+   "lead": "",
+   "body": "",
+   "tags": [
+    "0"
+   ]
+  }
+ ]
+}

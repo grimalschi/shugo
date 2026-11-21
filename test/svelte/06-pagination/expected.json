@@ -1,0 +1,18 @@
+[
+ {
+  "body": "<nav class=\"pagination\" aria-label=\"Pages\"><ul><li><a href=\"/blog/page/4\" rel=\"prev\">← Previous</a></li> <li><a href=\"/blog\">1</a></li><li><span class=\"gap\">…</span></li><li><a href=\"/blog/page/4\">4</a></li><li><span aria-current=\"page\">5</span></li><li><a href=\"/blog/page/6\">6</a></li><li><span class=\"gap\">…</span></li><li><a href=\"/blog/page/10\">10</a></li> <li><a href=\"/blog/page/6\" rel=\"next\">Next →</a></li></ul></nav>",
+  "head": ""
+ },
+ {
+  "body": "",
+  "head": ""
+ },
+ {
+  "body": "<nav class=\"pagination\" aria-label=\"Pages\"><ul><li><span class=\"disabled\" aria-disabled=\"true\">← Previous</span></li> <li><span aria-current=\"page\">1</span></li><li><a href=\"/catalog/café/page/2\">2</a></li><li><span class=\"gap\">…</span></li><li><a href=\"/catalog/café/page/4\">4</a></li> <li><a href=\"/catalog/café/page/2\" rel=\"next\">Next →</a></li></ul></nav>",
+  "head": ""
+ },
+ {
+  "body": "<nav class=\"pagination\" aria-label=\"Pages\"><ul><li><a href=\"/news\" rel=\"prev\">← Previous</a></li> <li><a href=\"/news\">1</a></li><li><span aria-current=\"page\">2</span></li> <li><span class=\"disabled\" aria-disabled=\"true\">Next →</span></li></ul></nav>",
+  "head": ""
+ }
+]

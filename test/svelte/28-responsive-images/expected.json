@@ -1,0 +1,18 @@
+[
+ {
+  "body": "<div class=\"gallery\"><figure><img src=\"/photos/kiln.jpg\" srcset=\"/photos/kiln.jpg?w=320 320w, /photos/kiln.jpg?w=640 640w, /photos/kiln.jpg?w=1280 1280w\" sizes=\"(max-width: 600px) 100vw, 50vw\" width=\"1600\" height=\"1067\" alt=\"Firing kiln\" loading=\"eager\" fetchpriority=\"high\"/><figcaption>Our kiln, 1300 °C</figcaption></figure><img src=\"/photos/texture.jpg\" srcset=\"/photos/texture.jpg?w=320 320w, /photos/texture.jpg?w=640 640w\" sizes=\"(max-width: 600px) 100vw, 50vw\" width=\"800\" height=\"800\" alt=\"\" loading=\"lazy\" decoding=\"async\"/><img src=\"/photos/jugs.jpg\" srcset=\"/photos/jugs.jpg?w=320 320w, /photos/jugs.jpg?w=640 640w, /photos/jugs.jpg?w=1280 1280w\" sizes=\"(max-width: 600px) 100vw, 50vw\" width=\"1280\" height=\"853\" alt=\"Pitchers on the shelf\" loading=\"lazy\" decoding=\"async\"/></div>",
+  "head": ""
+ },
+ {
+  "body": "<div class=\"gallery\"><figure><img src=\"/img/workshop.webp\" srcset=\"/img/workshop.webp?w=480 480w, /img/workshop.webp?w=960 960w\" sizes=\"100vw\" width=\"960\" height=\"640\" alt=\"\" loading=\"eager\" fetchpriority=\"high\"/><figcaption>Studio &lt;at night> &amp; \"silence\"</figcaption></figure><img src=\"/img/cup.webp\" width=\"300\" height=\"200\" alt=\"&quot;Morning&quot; cup &amp; saucer\" loading=\"lazy\" decoding=\"async\"/><figure><img src=\"/img/plate.webp\" srcset=\"/img/plate.webp?w=480 480w\" sizes=\"100vw\" width=\"480\" height=\"480\" alt=\"Plate\" loading=\"lazy\" decoding=\"async\"/><figcaption>Plate, Ø 24 cm</figcaption></figure></div>",
+  "head": ""
+ },
+ {
+  "body": "<div class=\"gallery\"><p class=\"gallery-empty\">No photos yet</p></div>",
+  "head": ""
+ },
+ {
+  "body": "<div class=\"gallery\"><figure><img src=\"/img/only.png\" width=\"640\" height=\"427\" alt=\"Only photo\" loading=\"eager\" fetchpriority=\"high\"/><figcaption>One photo</figcaption></figure></div>",
+  "head": ""
+ }
+]

@@ -1,0 +1,55 @@
+{
+ "id": "25-json-ld",
+ "title": "A product card and the same product as Schema.org JSON-LD",
+ "entry": "Product",
+ "datasets": [
+  {
+   "name": "‘North’ Pitcher",
+   "sku": "JUG-001",
+   "description": "A 1.5 L pitcher with ‘northern lights’ glaze.",
+   "image": "https://pottery.example/img/jug.jpg",
+   "brand": "Pottery Shop",
+   "price": 2400,
+   "inStock": true,
+   "ratings": [
+    5,
+    4,
+    4
+   ]
+  },
+  {
+   "name": "\"Sky\" glaze <sample>",
+   "sku": "GL-0",
+   "description": "Glaze sample. Do not confuse with </script><b>‘bold’</b> & \"quotes\".",
+   "price": 0,
+   "inStock": false,
+   "ratings": [
+    5
+   ]
+  },
+  {
+   "name": "Custom vase",
+   "sku": "VASE-?",
+   "description": "Made to your measurements.",
+   "image": "",
+   "brand": "",
+   "inStock": true,
+   "ratings": []
+  },
+  {
+   "name": "Platter",
+   "sku": "DISH-12&B",
+   "description": "A flat platter for pies.",
+   "image": "/img/dish.jpg?w=800&h=600",
+   "brand": "Studio & Co.",
+   "price": 1999.9,
+   "inStock": true,
+   "ratings": [
+    4,
+    5,
+    5,
+    5
+   ]
+  }
+ ]
+}

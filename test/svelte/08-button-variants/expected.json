@@ -1,0 +1,18 @@
+[
+ {
+  "body": "<a class=\"btn btn-primary btn-lg\" href=\"/files/price.pdf\"><i class=\"icon icon-download\" aria-hidden=\"true\"></i> <span class=\"label\">Download price list</span></a>",
+  "head": ""
+ },
+ {
+  "body": "<button class=\"btn btn-danger btn-md is-disabled\" type=\"button\" disabled=\"\"><i class=\"icon icon-trash\" aria-hidden=\"true\"></i> <span class=\"label\">Delete ‘North’ &amp; &lt;everything></span></button>",
+  "head": ""
+ },
+ {
+  "body": "<a class=\"btn btn-ghost btn-sm is-loading\" href=\"/catalog\" aria-busy=\"true\"> <span class=\"label\">Open \"Catalog\"</span></a>",
+  "head": ""
+ },
+ {
+  "body": "<button class=\"btn btn-secondary btn-md is-loading\" type=\"button\" aria-busy=\"true\"><i class=\"icon icon-spinner\" aria-hidden=\"true\"></i> <span class=\"label\">Saving…</span></button>",
+  "head": ""
+ }
+]

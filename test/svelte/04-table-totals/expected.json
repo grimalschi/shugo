@@ -1,0 +1,18 @@
+[
+ {
+  "body": "<table class=\"order\"><thead><tr><th>Item</th><th class=\"num\">Qty</th><th class=\"num\">Price</th><th class=\"num\">Subtotal</th></tr></thead><tbody><tr class=\"odd\"><td>‘North’ Pitcher</td><td class=\"num\">2</td><td class=\"num\">2400.00</td><td class=\"num\">4800.00</td></tr><tr class=\"even\"><td>Cup</td><td class=\"num\">6</td><td class=\"num\">450.50</td><td class=\"num\">2703.00</td></tr><tr class=\"odd\"><td>Pie dish</td><td class=\"num\">1</td><td class=\"num\">1890.90</td><td class=\"num\">1890.90</td></tr></tbody><tfoot><tr><th colspan=\"3\">Total</th><td class=\"num\">9393.90</td></tr></tfoot></table>",
+  "head": ""
+ },
+ {
+  "body": "<table class=\"order\"><thead><tr><th>Item</th><th class=\"num\">Qty</th><th class=\"num\">Price</th><th class=\"num\">Subtotal</th></tr></thead><tbody><tr><td class=\"empty\" colspan=\"4\">Your order is empty</td></tr></tbody></table>",
+  "head": ""
+ },
+ {
+  "body": "<table class=\"order\"><thead><tr><th>Item</th><th class=\"num\">Qty</th><th class=\"num\">Price</th><th class=\"num\">Subtotal</th></tr></thead><tbody><tr class=\"odd\"><td>Salt &amp; pepper &lt;set></td><td class=\"num\">3</td><td class=\"num\">0.10</td><td class=\"num\">0.30</td></tr><tr class=\"even zero\"><td>\"Linen\" tablecloth</td><td class=\"num\">0</td><td class=\"num\">2500.00</td><td class=\"num\">0.00</td></tr><tr class=\"odd\"><td>Spoon</td><td class=\"num\">12</td><td class=\"num\">99.99</td><td class=\"num\">1199.88</td></tr><tr class=\"even\"><td>Gift wrap</td><td class=\"num\">1</td><td class=\"num\">0.00</td><td class=\"num\">0.00</td></tr><tr class=\"odd\"><td>Plate</td><td class=\"num\">5</td><td class=\"num\">333.33</td><td class=\"num\">1666.65</td></tr></tbody><tfoot><tr><th colspan=\"3\">Total</th><td class=\"num\">2866.83</td></tr></tfoot></table>",
+  "head": ""
+ },
+ {
+  "body": "<table class=\"order\"><thead><tr><th>Item</th><th class=\"num\">Qty</th><th class=\"num\">Price</th><th class=\"num\">Subtotal</th></tr></thead><tbody><tr class=\"odd zero\"><td>Vase</td><td class=\"num\">0</td><td class=\"num\">150.00</td><td class=\"num\">0.00</td></tr></tbody><tfoot><tr><th colspan=\"3\">Total</th><td class=\"num\">0.00</td></tr></tfoot></table>",
+  "head": ""
+ }
+]

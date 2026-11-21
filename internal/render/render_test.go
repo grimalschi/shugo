@@ -39,8 +39,8 @@ func markup(text string) program.Op { return op(program.Markup, text) }
 
 // A site of three templates:
 //
-//	0, the page:   <main> {text} <a href={…} {...attrs}> if/else-if, a loop, <Card>fill</Card> </main>
-//	1, the card:   <section> slot "default" with a fallback, slot "footer" </section>
+//	0, the page:   <main> {text} <a href={…} {...attrs}> if/else-if, a loop, <Card>children</Card> </main>
+//	1, the card:   <section> {@render children()} {@render footer?.()} </section>
 //	2, the header: <header> {text} </header>
 var site = &program.Site{Files: []program.File{
 	{Path: "page.shugo", Parts: [][]program.Op{
@@ -54,8 +54,7 @@ var site = &program.Site{Files: []program.File{
 		{markup("<b>"), op(program.Text, ""), markup("</b>")}, // put into the card
 	}},
 	{Path: "card.shugo", Parts: [][]program.Op{{
-		markup("<section>"), op(program.Slot, "default", []program.Op{markup("empty:"), op(program.Text, "")}),
-		op(program.Slot, "footer", nil), markup("</section>"),
+		markup("<section>"), op(program.Render, ""), op(program.Render, ""), markup("</section>"),
 	}}},
 	{Path: "header.shugo", Parts: [][]program.Op{{markup("<header>"), op(program.Text, ""), markup("</header>")}}},
 }}
@@ -66,7 +65,7 @@ func page(m *memory, values ...string) *record.Record {
 	return &record.Record{Blocks: []record.Block{
 		{File: 0, Values: tape(values...), Children: []int{2, 3}},
 		{File: 0, Part: 1, Values: tape("fill")},
-		{File: 1, Values: tape("1", "0"), Slots: []record.Slot{{Name: "default", Blocks: []int{1}}}},
+		{File: 1, Values: tape("f0:children", "-"), Slots: []record.Slot{{Name: "children", Blocks: []int{1}}}},
 		{Use: true, Shared: 7},
 	}}
 }
@@ -79,22 +78,22 @@ func TestPage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `<main>&lt;Tom&gt;<a href="/a?b=&#34;c&#34;" class id="x" hidden>two:second<li>a</li><li>b</li>` +
+	want := `<main>&lt;Tom><a href="/a?b=&quot;c&quot;" class="" id="x" hidden="">two:second<li>a</li><li>b</li>` +
 		`<section><b>fill</b></section><header>Shop &amp; Co</header><i>raw</i></main>`
 	if string(html) != want {
 		t.Errorf("\n got %s\nwant %s", html, want)
 	}
 }
 
-func TestSlotFallbackAndMissingFill(t *testing.T) {
+func TestSnippetsNobodyGave(t *testing.T) {
 	m := &memory{}
 	rec := &record.Record{Blocks: []record.Block{
-		// The card says its default slot is empty and its footer is filled,
-		// and nobody filled the footer: it shows nothing there.
-		{File: 1, Values: tape("0", "nothing", "1")},
+		// The card shows no children, and a footer that nobody gave: it
+		// shows nothing there.
+		{File: 1, Values: tape("-", "f0:footer")},
 	}}
 	html, err := Page(nil, site, rec, m)
-	if err != nil || string(html) != "<section>empty:nothing</section>" {
+	if err != nil || string(html) != "<section></section>" {
 		t.Errorf("%s %v", html, err)
 	}
 }
@@ -143,8 +142,10 @@ func TestRecordsThatDoNotFit(t *testing.T) {
 		"a top out of range":    func(_ *memory, rec *record.Record) { rec.Top = 9 },
 		"a block inside itself": func(_ *memory, rec *record.Record) { rec.Blocks[2].Slots[0].Blocks = []int{2} },
 		"a shared block inside itself": func(m *memory, _ *record.Record) {
-			m.shared[7] = &record.Record{Blocks: []record.Block{{File: 1, Values: tape("1", "0"), Slots: nil}, {Use: true, Shared: 7}}, Top: 1}
+			m.shared[7] = &record.Record{Blocks: []record.Block{{File: 1, Values: tape("-", "-"), Slots: nil}, {Use: true, Shared: 7}}, Top: 1}
 		},
+		"a snippet sign that is not": func(_ *memory, rec *record.Record) { rec.Blocks[2].Values = tape("x0", "-") },
+		"a snippet too far out":      func(_ *memory, rec *record.Record) { rec.Blocks[2].Values = tape("f9:children", "-") },
 	}
 	for name, damage := range cases {
 		m := &memory{}
@@ -192,12 +193,16 @@ func TestAddresses(t *testing.T) {
 	}
 }
 
+// Values are escaped as Svelte escapes them: "&" and "<" between tags, the
+// double quote too inside an attribute.
 func TestEscaping(t *testing.T) {
-	got := string(appendEscaped(nil, []byte(`a<b>&"c"'d' — é`)))
-	if want := `a&lt;b&gt;&amp;&#34;c&#34;&#39;d&#39; — é`; got != want {
-		t.Errorf("\n got %s\nwant %s", got, want)
+	if got, want := string(appendEscaped(nil, []byte(`a<b>&"c"'d' — é`), false)), `a&lt;b>&amp;"c"'d' — é`; got != want {
+		t.Errorf("text:\n got %s\nwant %s", got, want)
 	}
-	if strings.ContainsAny(string(appendEscaped(nil, []byte(`"><script>`))), `"<>`) {
+	if got, want := string(appendEscaped(nil, []byte(`a<b>&"c"'d' — é`), true)), `a&lt;b>&amp;&quot;c&quot;'d' — é`; got != want {
+		t.Errorf("attribute:\n got %s\nwant %s", got, want)
+	}
+	if strings.ContainsAny(string(appendEscaped(nil, []byte(`"><script>`), true)), `"<`) {
 		t.Error("a value can leave its attribute")
 	}
 }

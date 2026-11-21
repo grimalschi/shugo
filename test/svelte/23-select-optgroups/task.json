@@ -1,0 +1,136 @@
+{
+ "id": "23-select-optgroups",
+ "title": "A select with a placeholder, loose options and option groups",
+ "entry": "GroupedSelect",
+ "datasets": [
+  {
+   "id": "product",
+   "name": "product",
+   "value": "jug-2",
+   "placeholder": "Choose a product",
+   "options": [
+    {
+     "value": "gift",
+     "label": "Gift certificate"
+    }
+   ],
+   "groups": [
+    {
+     "label": "Pitchers",
+     "options": [
+      {
+       "value": "jug-1",
+       "label": "1 L pitcher"
+      },
+      {
+       "value": "jug-2",
+       "label": "2 L pitcher"
+      },
+      {
+       "value": "jug-3",
+       "label": "3 L pitcher",
+       "disabled": true
+      }
+     ]
+    },
+    {
+     "label": "Bowls",
+     "options": []
+    },
+    {
+     "label": "Cups",
+     "options": [
+      {
+       "value": "cup",
+       "label": "Cup"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "spice",
+   "name": "order[spice]",
+   "value": "",
+   "placeholder": "— no selection —",
+   "required": true,
+   "options": [],
+   "groups": [
+    {
+     "label": "Salt & <pepper>",
+     "options": [
+      {
+       "value": "a&b",
+       "label": "\"Droplet\" salt shaker"
+      },
+      {
+       "value": "\"q\"",
+       "label": "Pepper shaker <small>",
+       "disabled": false
+      }
+     ]
+    },
+    {
+     "label": "Empty",
+     "options": []
+    }
+   ]
+  },
+  {
+   "id": "size",
+   "name": "size",
+   "value": "old-123",
+   "placeholder": "Size",
+   "required": false,
+   "options": [
+    {
+     "value": "s",
+     "label": "Small"
+    },
+    {
+     "value": "m",
+     "label": "Medium",
+     "disabled": true
+    },
+    {
+     "value": "l",
+     "label": "Large"
+    }
+   ],
+   "groups": []
+  },
+  {
+   "id": "color",
+   "name": "color",
+   "value": "blue",
+   "placeholder": "Color",
+   "options": [
+    {
+     "value": "white",
+     "label": "White"
+    }
+   ],
+   "groups": [
+    {
+     "label": "Out of stock",
+     "options": [
+      {
+       "value": "blue",
+       "label": "Blue",
+       "disabled": true
+      },
+      {
+       "value": "green",
+       "label": "Green",
+       "disabled": true
+      }
+     ]
+    },
+    {
+     "label": "Coming soon",
+     "options": []
+    }
+   ]
+  }
+ ]
+}

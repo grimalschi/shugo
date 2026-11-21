@@ -1,0 +1,37 @@
+{
+ "id": "01-product-card",
+ "title": "Product card",
+ "entry": "ProductCard",
+ "datasets": [
+  {
+   "title": "‘North’ Pitcher",
+   "url": "/products/jug",
+   "price": "$2,400",
+   "oldPrice": "$2,800",
+   "badges": [
+    "bestseller",
+    "new"
+   ],
+   "inStock": true,
+   "rating": 4.5
+  },
+  {
+   "title": "<Morning> cup & saucer",
+   "url": "/products/cup?color=red&size=s",
+   "price": "$900",
+   "badges": [],
+   "inStock": false
+  },
+  {
+   "title": "Vase",
+   "url": "/products/vase",
+   "price": "$1,200",
+   "oldPrice": "",
+   "badges": [
+    "eco"
+   ],
+   "inStock": true,
+   "rating": 0
+  }
+ ]
+}

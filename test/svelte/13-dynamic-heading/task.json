@@ -1,0 +1,98 @@
+{
+ "id": "13-dynamic-heading",
+ "title": "Headings whose tag comes from the data",
+ "entry": "Sections",
+ "datasets": [
+  {
+   "sections": [
+    {
+     "level": 2,
+     "title": "Introduction",
+     "slug": "intro",
+     "text": "What this page is about."
+    },
+    {
+     "level": 3,
+     "title": "Clay",
+     "slug": "clay",
+     "text": "What clay we use and why."
+    },
+    {
+     "level": 4,
+     "title": "Additives",
+     "text": "Grog and sand."
+    },
+    {
+     "level": 3,
+     "title": "Glaze",
+     "slug": "glaze"
+    },
+    {
+     "level": 2,
+     "title": "Firing",
+     "slug": "firing",
+     "text": "Two stages: bisque and glaze firing."
+    }
+   ]
+  },
+  {
+   "sections": [
+    {
+     "level": 1,
+     "title": "Too high",
+     "slug": "top",
+     "text": "Level 1 becomes level 2."
+    },
+    {
+     "level": 0,
+     "title": "Zero",
+     "slug": "zero"
+    },
+    {
+     "level": -3,
+     "title": "Below zero",
+     "slug": ""
+    },
+    {
+     "level": 7,
+     "title": "Deeper <h6> & \"beyond\"",
+     "slug": "deep",
+     "text": "Text with a <b>tag</b> & an ampersand"
+    },
+    {
+     "level": 10,
+     "title": "Very deep",
+     "text": ""
+    },
+    {
+     "level": 5,
+     "title": "Fifth",
+     "slug": "five"
+    },
+    {
+     "level": 6,
+     "title": "Sixth",
+     "slug": "six",
+     "text": "Last level."
+    }
+   ]
+  },
+  {
+   "sections": []
+  },
+  {
+   "sections": [
+    {
+     "level": 4,
+     "title": "Section 1",
+     "slug": "café-1",
+     "text": "An anchor with a non-ASCII character."
+    },
+    {
+     "level": 4,
+     "title": "Section 2"
+    }
+   ]
+  }
+ ]
+}

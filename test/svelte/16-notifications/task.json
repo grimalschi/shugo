@@ -1,0 +1,82 @@
+{
+ "id": "16-notifications",
+ "title": "Notifications of four kinds, each with markup of its own, and a summary of counts",
+ "entry": "Notifications",
+ "datasets": [
+  {
+   "notifications": [
+    {
+     "kind": "info",
+     "text": "The catalog has been updated."
+    },
+    {
+     "kind": "warning",
+     "text": "Two mugs left."
+    },
+    {
+     "kind": "success",
+     "text": "Order No. 17 has been paid.",
+     "link": {
+      "href": "/orders/17",
+      "label": "Open order"
+     }
+    },
+    {
+     "kind": "error",
+     "text": "Could not redeem points."
+    },
+    {
+     "kind": "warning",
+     "text": "Delivery is delayed by one day."
+    }
+   ]
+  },
+  {
+   "notifications": [
+    {
+     "kind": "info",
+     "text": "New version <2.0> & notes"
+    },
+    {
+     "kind": "success",
+     "text": "Saved."
+    },
+    {
+     "kind": "error",
+     "text": "Error <500> & \"timeout\""
+    },
+    {
+     "kind": "error",
+     "text": "Try again later."
+    },
+    {
+     "kind": "success",
+     "text": "Email sent.",
+     "link": {
+      "href": "/mail?box=out&id=3",
+      "label": "Outbox & <drafts>"
+     }
+    }
+   ]
+  },
+  {
+   "notifications": []
+  },
+  {
+   "notifications": [
+    {
+     "kind": "warning",
+     "text": "Your password will expire soon."
+    },
+    {
+     "kind": "warning",
+     "text": "Your email is unverified."
+    },
+    {
+     "kind": "warning",
+     "text": "You have 0 points."
+    }
+   ]
+  }
+ ]
+}

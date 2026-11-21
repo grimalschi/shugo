@@ -1,0 +1,88 @@
+{
+ "id": "26-conditional-wrapper",
+ "title": "Tiles whose markup is wrapped in a link or in a div",
+ "entry": "Tiles",
+ "datasets": [
+  {
+   "tiles": [
+    {
+     "title": "About the studio",
+     "text": "How it all began.",
+     "href": "/about",
+     "image": {
+      "src": "/img/studio.jpg",
+      "alt": "Studio"
+     }
+    },
+    {
+     "title": "Find us on Telegram",
+     "text": "News and kiln firings.",
+     "href": "https://t.me/pottery",
+     "wide": true
+    },
+    {
+     "title": "Coming soon",
+     "text": "A new section is in the works.",
+     "image": {
+      "src": "/img/soon.png",
+      "alt": ""
+     }
+    }
+   ]
+  },
+  {
+   "columns": 2,
+   "tiles": [
+    {
+     "title": "No link",
+     "text": "Empty href",
+     "href": ""
+    },
+    {
+     "title": "Old site",
+     "text": "HTTP link",
+     "href": "http://old.example/?a=1&b=2",
+     "wide": false
+    },
+    {
+     "title": "HTTP guide",
+     "text": "Internal page",
+     "href": "/http-guide"
+    },
+    {
+     "title": "Email",
+     "text": "",
+     "href": "mailto:hi@pottery.example"
+    },
+    {
+     "title": "<New> & \"old\" mugs",
+     "text": "<b>Not bold</b> & plain text",
+     "wide": true,
+     "image": {
+      "src": "/img/cups.jpg?w=400&h=300",
+      "alt": "\"Morning\" & <Evening> mugs"
+     }
+    }
+   ]
+  },
+  {
+   "columns": 4,
+   "tiles": []
+  },
+  {
+   "columns": 1,
+   "tiles": [
+    {
+     "title": "Catalog",
+     "text": "Everything currently available.",
+     "href": "https://pottery.example/catalog?sort=new&page=1",
+     "wide": true,
+     "image": {
+      "src": "https://cdn.pottery.example/catalog.jpg",
+      "alt": ""
+     }
+    }
+   ]
+  }
+ ]
+}

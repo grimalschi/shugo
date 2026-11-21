@@ -1,0 +1,39 @@
+{
+ "id": "08-button-variants",
+ "title": "A button that is a link or a button: variant, size, loading and disabled",
+ "entry": "Button",
+ "datasets": [
+  {
+   "label": "Download price list",
+   "variant": "primary",
+   "size": "lg",
+   "href": "/files/price.pdf",
+   "icon": "download"
+  },
+  {
+   "label": "Delete ‘North’ & <everything>",
+   "variant": "danger",
+   "href": "/orders/7/delete?confirm=1&back=/orders",
+   "icon": "trash",
+   "loading": false,
+   "disabled": true
+  },
+  {
+   "label": "Open \"Catalog\"",
+   "variant": "ghost",
+   "size": "sm",
+   "href": "/catalog",
+   "icon": "",
+   "loading": true,
+   "disabled": false
+  },
+  {
+   "label": "Saving…",
+   "variant": "secondary",
+   "size": "md",
+   "href": "",
+   "icon": "spinner",
+   "loading": true
+  }
+ ]
+}
