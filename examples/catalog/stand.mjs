@@ -1,9 +1,10 @@
-// A stand for point updates. It makes a shop of the given size, builds it,
-// then changes the data in twenty-one ways, one after another, the way any
-// program would: with SQL against the data database. After every change it
-// runs `shugo update` and prints what the update computed, what it changed
-// and how long it took. At the end it builds the same data from scratch and
-// checks that the site updated step by step is the same, file for file.
+// A stand for point updates. It makes a shop of the given size, builds and
+// exports it, then changes the data in twenty-one ways, one after another,
+// the way any program would: with SQL against the data database. After
+// every change it runs `shugo update` and `shugo export`, and prints what
+// the update computed, what it changed, what the export built and how long
+// it all took. At the end it builds the same data from scratch and checks
+// that the site exported step by step is the same, file for file.
 //
 //   node stand.mjs --size 10000 [--runtime bun|node] [--shugo ../../bin/shugo]
 
@@ -109,24 +110,30 @@ function digest(folder) {
 
 rmSync(join(here, "_build"), { recursive: true, force: true });
 const first = run("build");
-console.log(`${size} products: ${first.pages.total} pages, ${first.shared.total} shared blocks, ${first.blocks} blocks, ${first.values.total} distinct values`);
+console.log(`${size} products: ${first.pages.total} pages, ${first.shared.total} shared blocks, ${first.blocks} blocks`);
 console.log(`first build ${Math.round(first.time.total)} ms: compile ${Math.round(first.time.compile)}, list ${Math.round(first.time.list)}, compute ${Math.round(first.time.compute)}, save ${Math.round(first.time.save)}`);
 // The data has no indexes of its own: the first build makes the ones the
 // questions of the pages need, and that time is a part of it.
 const indexes = first.data.indexes ?? [];
-console.log(`indexes made by the first build, ${Math.round(first.time.indexes ?? 0)} ms: ${indexes.join(", ") || "none"}\n`);
+console.log(`indexes made by the first build, ${Math.round(first.time.indexes ?? 0)} ms: ${indexes.join(", ") || "none"}`);
+const whole = run("export");
+console.log(`first export ${Math.round(whole.took)} ms: ${whole.pages} pages built, ${whole.files} files\n`);
 
 const rows = [];
 let failed = 0;
 for (const change of changes) {
   await sql(...change.statements);
   const report = run("update");
+  // The export builds the pages whose HTML the update found changed, and
+  // no others.
+  const exported = run("export");
   const pages = report.pages.added + report.pages.changed + report.pages.removed;
   const shared = report.shared.added + report.shared.changed + report.shared.removed;
   const problems = [];
   if (report.data.whole) problems.push("everything was computed");
   if (change.computed !== undefined && (change.computed[0] !== report.computed.pages || change.computed[1] !== report.computed.shared)) problems.push(`expected ${change.computed.join(" and ")} computed`);
   if ((change.pages !== undefined && change.pages !== pages) || (change.shared !== undefined && change.shared !== shared)) problems.push(`expected ${change.pages ?? "any"} pages, ${change.shared ?? "any"} shared changed`);
+  if (exported.built !== report.render) problems.push(`the export built ${exported.built} pages`);
   if (problems.length > 0) failed++;
   rows.push({
     change: change.name,
@@ -138,13 +145,14 @@ for (const change of changes) {
     "new HTML": report.render,
     "update, ms": Math.round(report.time.total),
     "command, ms": Math.round(report.took),
+    "export built": exported.built,
+    "export, ms": Math.round(exported.took),
     check: problems.join("; ") || "ok",
   });
 }
 console.table(rows);
 
 // The same data built from scratch must give the same site.
-const exported = run("export");
 const scratch = mkdtempSync(join(tmpdir(), "shugo-stand-"));
 cpSync(here, scratch, { recursive: true, filter: (path) => !path.includes("_build") && !path.includes("node_modules") });
 run("build", scratch);
@@ -153,7 +161,7 @@ const [stepByStep, fromScratch] = [digest(join(here, "_build/dist")), digest(joi
 rmSync(scratch, { recursive: true, force: true });
 let different = Math.abs(stepByStep.size - fromScratch.size);
 for (const [path, hash] of fromScratch) if (stepByStep.get(path) !== hash) different++;
-console.log(`\nexport: ${exported.pages} pages. Updated step by step against built from scratch: ${different === 0 ? "the same, file for file" : different + " files differ"}`);
+console.log(`\n${fromScratch.size} files. Exported step by step against built from scratch: ${different === 0 ? "the same, file for file" : different + " files differ"}`);
 if (failed || different) {
   console.error(`FAILED: ${failed} changes did something else than expected, ${different} files differ`);
   process.exit(1);
