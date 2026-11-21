@@ -223,6 +223,9 @@ func (k *keeper) known() ([]byte, error) {
 		k.shapes.told[int(one.id)] = one
 		told.Shapes = append(told.Shapes, [2]any{one.id, spec})
 	}
+	if len(told.Plans) == 0 && len(told.Shapes) == 0 {
+		return nil, nil // the first run: there is nothing to tell
+	}
 	sort.Slice(told.Shapes, func(a, b int) bool { return told.Shapes[a][0].(int64) < told.Shapes[b][0].(int64) })
 	return json.Marshal(told)
 }
