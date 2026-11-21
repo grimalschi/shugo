@@ -27,6 +27,8 @@ type unit struct {
 	provided map[string]int
 	// paths tells that the file exports getStaticPaths.
 	paths bool
+	// warnings are what is written in a way Svelte allows but warns about.
+	warnings []string
 	// own tells that the file itself cannot be computed once for all pages:
 	// it reads the page it is shown on, or gives markup to the layouts of
 	// that page.
@@ -91,8 +93,18 @@ func compileFile(path, source string, id int, r role) (*unit, error) {
 	return &unit{
 		file: f, role: r, module: m, parts: e.parts, styles: styles,
 		outlets: l.outlets, provided: l.provided, paths: moduleScript.paths || instance.paths,
+		warnings: append(warningsOf(f), l.warnings...),
 		own: m.page || e.provides || readsPage(strings.Join(instance.lines, "\n")) || readsPage(strings.Join(moduleScript.lines, "\n")),
 	}, nil
+}
+
+// warningsOf returns the warnings the parser had about a file.
+func warningsOf(f *syntax.File) []string {
+	var out []string
+	for _, w := range f.Warnings {
+		out = append(out, w.Error())
+	}
+	return out
 }
 
 // renders tells whether a template shows a snippet anywhere: a layout must
@@ -117,8 +129,8 @@ func renders(nodes []node) bool {
 				return true
 			}
 		case call:
-			for _, f := range n.fills {
-				if renders(f.body) {
+			for _, g := range n.given {
+				if renders(g.body) {
 					return true
 				}
 			}

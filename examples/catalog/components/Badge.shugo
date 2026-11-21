@@ -1,1 +1,5 @@
-<span class="badge">{Shugo.props.text}</span>
+<script lang="ts">
+  let { text }: { text: string } = $props()
+</script>
+
+<span class="badge">{text}</span>

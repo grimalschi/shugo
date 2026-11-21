@@ -28,18 +28,18 @@ type Record struct {
 	Blocks []Block
 }
 
-// Block is one template being shown: a page, a layout, a component, or
-// markup that a template put into a component.
+// Block is one template being shown: a page, a layout, a component, or a
+// snippet a template gave to a component.
 type Block struct {
 	// Use tells that the block stands for a shared block. Shared names it,
-	// and only Slots says more: what this place put into its slots.
+	// and only Snippets says more: the snippets this place gave it.
 	Use    bool
 	Shared int64
 
 	File, Part int   // the template: a file and a part of it
 	Values     Tape  // the values of its expressions, in the order of the template
-	Children   []int // the components it shows, in the order it reaches them
-	Slots      []Slot
+	Children   []int // the components and snippets it shows, in the order it reaches them
+	Snippets   []Snippet
 }
 
 // Tape is the values of a block one after another: each is its length in
@@ -76,17 +76,18 @@ func (t Tape) Strings() []string {
 	return out
 }
 
-// Slot is what was put into one slot of a component: blocks of the same record.
-type Slot struct {
+// Snippet is a snippet without parameters that the caller of a component
+// gave it, computed where it was written: blocks of the same record.
+type Snippet struct {
 	Name   string
 	Blocks []int
 }
 
-// Slot returns the blocks put into the slot of the given name.
-func (b *Block) Slot(name string) []int {
-	for i := range b.Slots {
-		if b.Slots[i].Name == name {
-			return b.Slots[i].Blocks
+// Snippet returns the blocks of the snippet of the given name.
+func (b *Block) Snippet(name string) []int {
+	for i := range b.Snippets {
+		if b.Snippets[i].Name == name {
+			return b.Snippets[i].Blocks
 		}
 	}
 	return nil
@@ -110,11 +111,11 @@ func (r *Record) Encode() []byte {
 			out = append(out, b.Values...)
 			out = appendList(out, b.Children)
 		}
-		out = binary.AppendUvarint(out, uint64(len(b.Slots)))
-		for _, slot := range b.Slots {
-			out = binary.AppendUvarint(out, uint64(len(slot.Name)))
-			out = append(out, slot.Name...)
-			out = appendList(out, slot.Blocks)
+		out = binary.AppendUvarint(out, uint64(len(b.Snippets)))
+		for _, snippet := range b.Snippets {
+			out = binary.AppendUvarint(out, uint64(len(snippet.Name)))
+			out = append(out, snippet.Name...)
+			out = appendList(out, snippet.Blocks)
 		}
 	}
 	return out
@@ -152,13 +153,13 @@ func Decode(data []byte) (*Record, error) {
 			}
 			b.Children = d.list(count)
 		}
-		if slots := d.number(); slots > 0 && slots <= len(d.data) {
-			b.Slots = make([]Slot, slots)
-			for j := range b.Slots {
-				b.Slots[j].Name = string(d.bytes(d.number()))
-				b.Slots[j].Blocks = d.list(count)
+		if snippets := d.number(); snippets > 0 && snippets <= len(d.data) {
+			b.Snippets = make([]Snippet, snippets)
+			for j := range b.Snippets {
+				b.Snippets[j].Name = string(d.bytes(d.number()))
+				b.Snippets[j].Blocks = d.list(count)
 			}
-		} else if slots != 0 {
+		} else if snippets != 0 {
 			d.failed = true
 		}
 		if d.failed {
@@ -239,9 +240,9 @@ func (r *Record) Check() error {
 				return err
 			}
 		}
-		for _, slot := range r.Blocks[at].Slots {
-			for _, fill := range slot.Blocks {
-				if err := visit(fill); err != nil {
+		for _, snippet := range r.Blocks[at].Snippets {
+			for _, given := range snippet.Blocks {
+				if err := visit(given); err != nil {
 					return err
 				}
 			}

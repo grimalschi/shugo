@@ -349,12 +349,13 @@ func (k *keeper) noted(changes *Changes, name string, known bool) {
 	}
 }
 
-// block reads one block: "b", its file, its part, its children, its slots
-// and its values; or "u", the name of a shared block and what fills its slots.
+// block reads one block: "b", its file, its part, its children, the
+// snippets its caller gave it and its values; or "u", the name of a shared
+// block and the snippets this place gave it.
 func (k *keeper) block(data []byte) (record.Block, error) {
 	fields := bytes.SplitN(data, []byte{2}, 6)
 	var b record.Block
-	var slots []byte
+	var snippets []byte
 	switch {
 	case len(fields) == 3 && string(fields[0]) == "u":
 		name := string(fields[1])
@@ -369,7 +370,7 @@ func (k *keeper) block(data []byte) (record.Block, error) {
 			k.asked[shown.id] = struct{}{}
 			k.next = append(k.next, name)
 		}
-		b.Use, b.Shared, slots = true, shown.id, fields[2]
+		b.Use, b.Shared, snippets = true, shown.id, fields[2]
 	case len(fields) == 6 && string(fields[0]) == "b":
 		var err1, err2, err3 error
 		b.File, err1 = strconv.Atoi(string(fields[1]))
@@ -385,20 +386,20 @@ func (k *keeper) block(data []byte) (record.Block, error) {
 		if err != nil {
 			return b, err
 		}
-		slots, b.Values = fields[4], values
+		snippets, b.Values = fields[4], values
 	default:
 		return b, errDamaged
 	}
-	// Slots are written as name=1,2;other=3.
-	for len(slots) > 0 {
+	// Snippets are written as name=1,2;other=3.
+	for len(snippets) > 0 {
 		var one []byte
-		one, slots, _ = bytes.Cut(slots, []byte{';'})
+		one, snippets, _ = bytes.Cut(snippets, []byte{';'})
 		name, list, found := bytes.Cut(one, []byte{'='})
-		fills, err := numbers(list)
+		blocks, err := numbers(list)
 		if !found || len(name) == 0 || err != nil {
 			return b, errDamaged
 		}
-		b.Slots = append(b.Slots, record.Slot{Name: string(name), Blocks: fills})
+		b.Snippets = append(b.Snippets, record.Snippet{Name: string(name), Blocks: blocks})
 	}
 	return b, nil
 }

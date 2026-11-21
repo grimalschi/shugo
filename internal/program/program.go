@@ -36,11 +36,11 @@ type File struct {
 	// called with the same parameters: it reads nothing of the page it is on.
 	// Such a block is computed and kept once for the whole site.
 	Shared bool `json:"shared,omitempty"`
-	// Slots are the names of what pages give to layouts that the template
-	// shows: "head" for a layout with a <head>.
-	Slots []string `json:"slots,omitempty"`
-	// Parts are the template itself and then every piece of markup it puts
-	// inside the components it calls.
+	// Outlets are the names of what pages give to layouts that the template
+	// shows: "head" for a layout with a <head>, where <svelte:head> goes.
+	Outlets []string `json:"outlets,omitempty"`
+	// Parts are the template itself and then every snippet written in it,
+	// and what stands in its <svelte:head>.
 	Parts [][]Op `json:"parts"`
 }
 

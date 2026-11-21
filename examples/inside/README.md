@@ -16,7 +16,7 @@ The `tap.sh` wrapper captures messages between Go and JavaScript. Shugo runs it 
 | `pages/products/[slug].shugo` | Data-driven page: a query supplies the list of URLs, and each page displays the product and its variants. |
 | `pages/categories/[id].shugo` | Category page with product cards. |
 | `pages/index.shugo` | Home page with cards for all products. |
-| `pages/+layout.shugo` | Layout with a `head` slot and a header. |
+| `pages/+layout.shugo` | Layout with a header. Its `<head>` receives the pages' `<svelte:head>` content. |
 | `components/Header.shugo` | Shared block with no parameters that displays navigation and counts. |
 | `components/ProductCard.shugo` | Shared block keyed by product. |
 | `components/Variant.shugo` | Regular component that receives a variant row. |

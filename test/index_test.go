@@ -90,8 +90,8 @@ func TestIndexesAreMade(t *testing.T) {
 	if !reflect.DeepEqual(made, want) {
 		t.Errorf("the report names %q", made)
 	}
-	expect(t, s.page("/ordered"), `<p>VaseTrayCupJug</p><p>4</p>`)
-	expect(t, s.page("/sorted"), `<p>CupTray</p>`)
+	expect(t, s.page("/ordered"), `<p>Vase,Tray,Cup,Jug</p><p>4</p>`)
+	expect(t, s.page("/sorted"), `<p>Cup,Tray</p>`)
 	expect(t, s.page("/both"), `<p>1</p>`)
 	expect(t, s.page("/counted"), `<p>1</p>`)
 
@@ -131,10 +131,10 @@ CREATE INDEX by_three ON products (price, category, note);
 	if got, want := s.indexes(), []string{"_shugo_products_price_id", "_shugo_products_title_id"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("indexes: %q\n    want: %q", got, want)
 	}
-	expect(t, s.page("/ordered"), `<p>VaseTrayCupJug</p><p>4</p>`)
+	expect(t, s.page("/ordered"), `<p>Vase,Tray,Cup,Jug</p><p>4</p>`)
 	expect(t, s.page("/counted"), `<p>1</p>`)
 	s.changed(`UPDATE products SET position = 9 WHERE id = 'p1'`)
-	expect(t, s.page("/ordered"), `<p>JugVaseTrayCup</p><p>4</p>`)
+	expect(t, s.page("/ordered"), `<p>Jug,Vase,Tray,Cup</p><p>4</p>`)
 	s.sameAsBuilt()
 }
 
@@ -142,10 +142,10 @@ const orderSite = `
 -- shugo.json --
 {"data": "data/shop.db"}
 -- pages/a.shugo --
----
+<script>
 const titles = (query) => query.all().map((row) => row.title)
 console.log("a")
----
+</script>
 <p>{titles(Shugo.query("products").where({ category: "c1" }))}</p><p>{titles(Shugo.query("products").order("price"))} {titles(Shugo.query("products").order("price", "desc"))} {titles(Shugo.query("products").order("price").limit(2))}</p><p>{titles(Shugo.query("tags").where({ kind: "x" }))} {titles(Shugo.query("odd").where({ kind: "x" }))}</p><p>{titles(Shugo.query("products").where({ note: "" }))} {titles(Shugo.query("products").order("slug"))} {titles(Shugo.query("products").order("alias"))}</p>
 -- pages/b.shugo --
 <p>{Shugo.query("products").where({ category: "c1" }).order("title").all().map((row) => row.title)}</p><p>{Shugo.query("products").order("price").order("title", "desc").all().map((row) => row.title)}</p>
@@ -174,13 +174,13 @@ INSERT INTO odd VALUES (2, 'second', 'x'), (1, 'first', 'x');
 // is made for another page, and after a row is removed and put back as it
 // was; and the same as a site built anew.
 func TestRowsComeInTheOrderOfTheirKeys(t *testing.T) {
-	const want = `<p>JugCupTray</p><p>JugCupTrayVase VaseTrayCupJug JugCup</p><p>bignew firstsecond</p><p>JugCupTrayVase CupJugTrayVase JugCupTrayVase</p>`
+	const want = `<p>Jug,Cup,Tray</p><p>Jug,Cup,Tray,Vase Vase,Tray,Cup,Jug Jug,Cup</p><p>big,new first,second</p><p>Jug,Cup,Tray,Vase Cup,Jug,Tray,Vase Jug,Cup,Tray,Vase</p>`
 	s := newSite(t, orderSite)
 	s.sql(orderRows)
 	s.build()
 	s.computed()
 	expect(t, s.page("/a"), want)
-	expect(t, s.page("/b"), `<p>CupJugTray</p><p>TrayJugCupVase</p>`)
+	expect(t, s.page("/b"), `<p>Cup,Jug,Tray</p><p>Tray,Jug,Cup,Vase</p>`)
 	// An order by the address needs no index beside the one the table has:
 	// no two rows are the same in it. An order by the second name does.
 	if got, want := s.indexes(), []string{
@@ -219,12 +219,12 @@ func TestIndexMadeByAnUpdate(t *testing.T) {
 -- shugo.json --
 {"data": "data/shop.db"}
 -- pages/index.shugo --
----
+<script>
 const item = Shugo.query("products").get("p1")
 // The second question is asked only of a dear product.
 const others = item.price > 10 ? Shugo.query("products").where({ category: item.category }).order("position").all() : []
 console.log("index")
----
+</script>
 <p>{item.title}: {others.map((row) => row.title)}</p>
 `)
 	s.sql(readRows)
@@ -241,11 +241,11 @@ console.log("index")
 	if got, want := report.Data.Indexes, []string{"_shugo_products_category_position_id"}; !reflect.DeepEqual(got, want) || report.Data.Whole {
 		t.Errorf("the update made %q, want %q; %+v", got, want, report.Data)
 	}
-	expect(t, s.page("/"), `<p>Jug: JugCupTray</p>`)
+	expect(t, s.page("/"), `<p>Jug: Jug,Cup,Tray</p>`)
 	s.computed()
 	// What the page read after the index was made is followed like the rest.
 	s.changed(`UPDATE products SET title = 'Mug' WHERE id = 'p2'`, "index")
-	expect(t, s.page("/"), `<p>Jug: JugMugTray</p>`)
+	expect(t, s.page("/"), `<p>Jug: Jug,Mug,Tray</p>`)
 	s.sameAsBuilt()
 }
 
@@ -281,20 +281,20 @@ export function rename(): void {
   }
 }
 -- pages/index.shugo --
----
+<script>
 import { rename } from "../lib/outside"
 const before = Shugo.query("products").get("p2").title
 rename()
 const after = Shugo.query("products").where({ category: "c1" }).order("position").all().map((row) => row.title)
 console.log("index")
----
+</script>
 <p>{before}: {after}</p>
 `)
 	s.sql(readRows)
 	if report := s.build(); !reflect.DeepEqual(report.Data.Indexes, []string{"_shugo_products_category_position_id"}) {
 		t.Fatalf("the build made %q", report.Data.Indexes)
 	}
-	expect(t, s.page("/"), `<p>Cup: JugMugTray</p>`)
+	expect(t, s.page("/"), `<p>Cup: Jug,Mug,Tray</p>`)
 	s.computed()
 
 	report := s.update()
@@ -304,6 +304,6 @@ console.log("index")
 	if got := s.computed(); !reflect.DeepEqual(got, []string{"index"}) {
 		t.Errorf("computed %q", got)
 	}
-	expect(t, s.page("/"), `<p>Mug: JugMugTray</p>`)
+	expect(t, s.page("/"), `<p>Mug: Jug,Mug,Tray</p>`)
 	s.sameAsBuilt()
 }

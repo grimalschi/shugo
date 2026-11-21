@@ -69,8 +69,10 @@ func Build(p *project.Project) (*Result, error) {
 	if site.Origin == "" {
 		site.Origin = "http://localhost"
 	}
+	var warnings []string
 	for i, path := range paths {
-		site.Files = append(site.Files, program.File{Path: path, Parts: b.units[i].parts, Slots: b.units[i].outlets, Shared: bundled.shared[path]})
+		site.Files = append(site.Files, program.File{Path: path, Parts: b.units[i].parts, Outlets: b.units[i].outlets, Shared: bundled.shared[path]})
+		warnings = append(warnings, b.units[i].warnings...)
 	}
 
 	output := p.Path(project.Output)
@@ -106,7 +108,7 @@ func Build(p *project.Project) (*Result, error) {
 			return nil, err
 		}
 	}
-	return &Result{Site: site, ID: digest(data, bundled.code), Warnings: bundled.warnings}, nil
+	return &Result{Site: site, ID: digest(data, bundled.code), Warnings: append(warnings, bundled.warnings...)}, nil
 }
 
 // Load reads a project that Build has compiled before.
@@ -316,9 +318,9 @@ func (b *builder) routes() ([]program.Route, error) {
 	return out, nil
 }
 
-// provided checks that every slot a page fills for its layouts is shown by
-// one of them, and the same for every layout and the layouts around it. The
-// nearest layout that has the slot shows it.
+// provided checks that what a page gives to its layouts, <svelte:head>, is
+// shown by one of them, and the same for every layout and the layouts
+// around it. The nearest layout that has the place shows it.
 func (b *builder) provided(page *unit, layouts []int) Errors {
 	var errs Errors
 	check := func(u *unit, around []int) {

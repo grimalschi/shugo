@@ -59,11 +59,11 @@ type renderer struct {
 	dry bool
 }
 
-// frame is a component being shown, as seen from inside its template: what
-// was put into its slots, and who put it there.
+// frame is a component being shown, as seen from inside its template: the
+// snippets its caller gave it, and who the caller is.
 type frame struct {
-	rec   *record.Record // where the blocks put into the slots are
-	block *record.Block  // the block whose Slots name them
+	rec   *record.Record // where the blocks of the snippets are
+	block *record.Block  // the block whose Snippets name them
 	outer *frame         // the component whose template they were written in
 }
 
@@ -91,8 +91,8 @@ func (r *renderer) show(rec *record.Record, at int, from *frame) error {
 	c := cursor{rec: rec, block: b, frame: from}
 	switch {
 	case b.Use:
-		// The shared block is shown from its own record; what fills its slots
-		// stays with the place that uses it.
+		// The shared block is shown from its own record; the snippets this
+		// place gave it stay with the place.
 		shared, err := r.src.Shared(b.Shared)
 		if err != nil {
 			return err
@@ -104,8 +104,8 @@ func (r *renderer) show(rec *record.Record, at int, from *frame) error {
 	case b.Part == 0:
 		c.frame = &frame{rec, b, from}
 	}
-	// Otherwise the block is markup put into a component: it belongs to the
-	// template it was written in, and sees that template's slots.
+	// Otherwise the block is a snippet: it belongs to the template it was
+	// written in, and sees the snippets that template was given.
 
 	ops, ok := r.site.Part(c.block.File, c.block.Part)
 	if !ok {
@@ -364,7 +364,7 @@ func (r *renderer) snippet(value []byte, c *cursor) error {
 		return fmt.Errorf("the snippet %s is shown where no component gave it", name)
 	}
 	// What the caller gave was written in the template of the caller.
-	for _, given := range f.block.Slot(name) {
+	for _, given := range f.block.Snippet(name) {
 		if err := r.show(f.rec, given, f.outer); err != nil {
 			return err
 		}

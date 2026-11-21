@@ -311,10 +311,10 @@ func (e *emitter) component(n call) []program.Op {
 		e.m.add("}),")
 	}
 	e.m.add("}, [")
-	for _, f := range n.fills {
+	for _, g := range n.given {
 		// The number of the part is known before its body is written.
-		e.m.add("[%s, %d, ($$) => {", quote(f.name), len(e.parts))
-		e.part(f.body)
+		e.m.add("[%s, %d, ($$) => {", quote(g.name), len(e.parts))
+		e.part(g.body)
 		e.m.add("}],")
 	}
 	e.m.add("]);")

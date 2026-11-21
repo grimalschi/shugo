@@ -56,11 +56,11 @@ type (
 	// spread is every attribute of an element that has {...attributes}:
 	// which of them are written is known only when the page is computed.
 	spread struct {
-		entries    []entry
-		classes    []directive
-		styles     []directive
-		hash       string
-		preserve   bool // the names keep their case: the element is not HTML
+		entries  []entry
+		classes  []directive
+		styles   []directive
+		hash     string
+		preserve bool // the names keep their case: the element is not HTML
 		// chooses names the variable that gets the value of a <select>,
 		// which is not written as an attribute.
 		chooses string
@@ -88,12 +88,17 @@ type (
 		self     bool // <svelte:self>
 		optional bool // <svelte:component this={…}> shows nothing for a value that is not a component
 		props    []prop
-		fills    []fill  // snippets without parameters: markup the caller gives
-		snippets []snipp // snippets with parameters, given as props
+		// given are the snippets without parameters written inside the tag,
+		// children among them: they are computed here, where they are
+		// written, and the component shows them from the caller's record.
+		given []piece
+		// snippets are the snippets with parameters written inside the tag:
+		// props of the component, computed where it renders them.
+		snippets []snipp
 	}
-	// fill is markup the caller gives to a component: its children, or a
-	// snippet without parameters written inside its tag.
-	fill struct {
+	// piece is named markup computed in the template that writes it: a
+	// snippet without parameters given to a component, or <svelte:head>.
+	piece struct {
 		name string
 		body []node
 	}
@@ -118,7 +123,7 @@ type (
 	}
 	// provide is markup a page or a layout gives to the layouts around it:
 	// <svelte:head>.
-	provide struct{ fill }
+	provide struct{ piece }
 	// outlet is the place in a layout where what was provided is shown.
 	outlet struct{ name string }
 	// mount is a place where the framework adds markup of its own.
@@ -212,9 +217,10 @@ var oldTags = map[string]string{
 }
 
 type lowerer struct {
-	file *syntax.File
-	role role
-	errs Errors
+	file     *syntax.File
+	role     role
+	errs     Errors
+	warnings []string
 	// hash is the class that scopes the <style> of the component to its own
 	// elements; empty when it has none.
 	hash string
@@ -231,6 +237,10 @@ func (l *lowerer) errorf(offset int, format string, arguments ...any) {
 	l.errs = append(l.errs, l.file.Errorf(offset, format, arguments...))
 }
 
+func (l *lowerer) warnf(offset int, format string, arguments ...any) {
+	l.warnings = append(l.warnings, l.file.Errorf(offset, format, arguments...).Error())
+}
+
 // context is what lowering needs to know about where a fragment stands.
 type context struct {
 	parent   string // the element the fragment stands in; "" for others
@@ -240,6 +250,9 @@ type context struct {
 	raw      bool   // inside <script> or <style>: text is written as it is
 	within   string // the variable that holds the value of the <select> around, if any
 	head     bool   // inside <svelte:head>
+	// ancestors are the elements around, the parent first, as far as the
+	// component or the snippet: what cannot stand inside them is checked.
+	ancestors []ancestor
 }
 
 var (
@@ -398,7 +411,7 @@ func (l *lowerer) hoisted(n syntax.Node, ctx context) []node {
 		if _, seen := l.provided["head"]; !seen {
 			l.provided["head"] = n.Start
 		}
-		return []node{provide{fill{"head", l.fragment(n.Children, context{head: true})}}}
+		return []node{provide{piece{"head", l.fragment(n.Children, context{head: true})}}}
 	}
 	return nil
 }
@@ -415,6 +428,11 @@ func (l *lowerer) node(n syntax.Node, ctx context) []node {
 	case *syntax.Tag:
 		switch n.Kind {
 		case syntax.Expression:
+			if len(ctx.ancestors) > 0 && !ctx.ancestors[0].blocked {
+				if rule, ok := disallowedChildren[ctx.ancestors[0].name]; ok && rule.only != nil {
+					l.errorf(n.Start, "text cannot stand right inside <%s>: <%s> only allows <%s>", ctx.ancestors[0].name, ctx.ancestors[0].name, strings.Join(rule.only, ">, <"))
+				}
+			}
 			return []node{output{program.Text, code{n.Code.Text, n.Code.Start}}}
 		case syntax.HTMLTag:
 			return []node{output{program.HTML, code{n.Code.Text, n.Code.Start}}}
@@ -466,9 +484,15 @@ func (l *lowerer) node(n syntax.Node, ctx context) []node {
 }
 
 // inner is the context of a fragment inside a block: the same element and
-// white space, no longer the top of the component.
+// white space, no longer the top of the component, and a block between it
+// and the elements around.
 func (c context) inner() context {
 	c.top = false
+	blocked := make([]ancestor, len(c.ancestors))
+	for i, a := range c.ancestors {
+		blocked[i] = ancestor{a.name, true}
+	}
+	c.ancestors = blocked
 	return c
 }
 
@@ -568,6 +592,9 @@ func (l *lowerer) html5(e *syntax.Element, ctx context) []node {
 	if name == "head" && l.role == layout && !slices.Contains(l.outlets, "head") {
 		l.outlets = append(l.outlets, "head")
 	}
+	if !svg {
+		l.placed(name, e.Start, ctx.ancestors)
+	}
 	hash := ""
 	if l.hash != "" {
 		hash = l.hash
@@ -578,7 +605,8 @@ func (l *lowerer) html5(e *syntax.Element, ctx context) []node {
 	}
 	out := []node{markup{"<" + name}}
 	out = append(out, attrs...)
-	inner := context{parent: name, preserve: ctx.preserve || name == "pre" || name == "textarea", svg: svg && name != "foreignObject", within: ctx.within}
+	inner := context{parent: name, preserve: ctx.preserve || name == "pre" || name == "textarea", svg: svg && name != "foreignObject", within: ctx.within,
+		ancestors: append([]ancestor{{name: name}}, ctx.ancestors...)}
 	if len(attrs) == 1 {
 		if sp, ok := attrs[0].(spread); ok && sp.chooses != "" {
 			inner.within = sp.chooses
@@ -796,31 +824,38 @@ func hasDefault(entries []entry) bool {
 
 // classAttr lowers the class of an element with its directives and the
 // scoping class of the component.
+//
+// A class written without a value is empty, as in Svelte; next to
+// class:name or the class of the styles it is true, and Svelte writes it as
+// "true".
 func (l *lowerer) classAttr(v value, classes []directive, hash string) node {
+	if v.bare && len(classes) == 0 && hash == "" {
+		return markup{` class=""`}
+	}
 	if text, ok := v.static(); ok && len(classes) == 0 {
-		text = strings.TrimSpace(strings.Join(strings.Fields(text), " "))
-		if hash != "" {
-			text = strings.TrimSpace(text + " " + hash)
-		}
-		if text == "" && !v.bare {
+		text = strings.TrimSpace(strings.Join(strings.Fields(text), " ") + " " + hash)
+		if text == "" {
 			return markup{""}
 		}
 		return markup{` class="` + escapeAttr(text) + `"`}
-	}
-	if v.bare {
-		v = value{parts: []valuePart{{text: ""}}}
 	}
 	return attribute{kind: program.Attr, name: "class", value: v, class: true, directives: classes, hash: hash}
 }
 
 // styleAttr lowers the style of an element with its directives.
+//
+// A style written without a value is empty; next to style:name Svelte
+// leaves it out.
 func (l *lowerer) styleAttr(v value, styles []directive) node {
-	if text, ok := v.static(); ok && len(styles) == 0 {
-		text = strings.TrimSpace(strings.Join(strings.Fields(text), " "))
-		return markup{` style="` + escapeAttr(text) + `"`}
-	}
 	if v.bare {
-		v = value{parts: []valuePart{{text: ""}}}
+		if len(styles) == 0 {
+			return markup{` style=""`}
+		}
+		v = value{}
+	}
+	if text, ok := v.static(); ok && len(styles) == 0 {
+		text = strings.Join(strings.Fields(text), " ")
+		return markup{` style="` + escapeAttr(text) + `"`}
 	}
 	return attribute{kind: program.Attr, name: "style", value: v, style: true, directives: styles}
 }
@@ -896,10 +931,15 @@ func (l *lowerer) call(e *syntax.Element, ctx context, target code, self, option
 	// component, everything else is its children.
 	var rest []syntax.Node
 	for _, child := range e.Children {
+		if el, ok := child.(*syntax.Element); ok {
+			if a, found := el.Attr("slot"); found {
+				l.errorf(a.Start, `slot="…" is a part of the slots of Svelte 4: write {#snippet name()}…{/snippet} inside the component's tag and {@render name()} in the component`)
+			}
+		}
 		if s, ok := child.(*syntax.SnippetBlock); ok {
 			body := l.fragment(s.Body, context{svg: ctx.svg})
 			if strings.TrimSpace(s.Params.Text) == "" {
-				out.fills = append(out.fills, fill{s.Name, body})
+				out.given = append(out.given, piece{s.Name, body})
 			} else {
 				out.snippets = append(out.snippets, snipp{s.Name, code{s.Params.Text, s.Params.Start}, body})
 			}
@@ -910,7 +950,7 @@ func (l *lowerer) call(e *syntax.Element, ctx context, target code, self, option
 	if hoisted, regular := l.clean(rest, context{svg: ctx.svg}); len(regular) > 0 || len(hoisted) > 0 {
 		body := l.fragment(rest, context{svg: ctx.svg})
 		if len(regular) > 0 {
-			out.fills = append([]fill{{"children", body}}, out.fills...)
+			out.given = append([]piece{{"children", body}}, out.given...)
 		}
 	}
 	return out

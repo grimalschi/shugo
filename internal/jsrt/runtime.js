@@ -36,26 +36,27 @@ class Record {
   }
 
   // A block is one template being shown: a page, a layout, a component, or
-  // markup put into a component (a part of the template it is written in).
+  // a snippet (a part of the template it is written in).
   block(file, part) {
-    const block = { index: this.blocks.length, file, part, values: [], children: [], slots: null, shared: null };
+    const block = { index: this.blocks.length, file, part, values: [], children: [], snippets: null, shared: null };
     this.blocks.push(block);
     return block;
   }
 
   // A use stands where a shared block is shown, and names it. The shared
-  // block is kept once; what this place put into its slots is kept here.
-  use(shared, slots) {
+  // block is kept once; the snippets this place gave it are kept here.
+  use(shared, snippets) {
     const block = this.block(-1, 0);
     block.shared = shared;
-    block.slots = slots;
+    block.snippets = snippets;
     return block;
   }
 }
 
 // A scope is what a template can see around itself.
 //   page      the page being computed: { params, url }; null inside a shared block
-//   slots     what the caller gave: Map of name → blocks; null for nothing
+//   snippets  the snippets without parameters the caller gave, computed:
+//             Map of name → blocks; null for none
 //   provided  what the page gives to its layouts: Map of name → blocks; null inside a shared block
 //   reads     where the queries to the data database leave their readings
 //   frame     the component being shown: { outer } — the frame of its caller
@@ -77,12 +78,12 @@ class Writer {
 
   // {expression}
   text(value) {
-    this.block.values.push(stringify(value));
+    this.block.values.push(escape(stringify(value)));
   }
 
   // {@html expression}
   html(value) {
-    this.block.values.push(String(value ?? ""));
+    this.block.values.push(escape(String(value ?? "")));
   }
 
   // "text {expression}": an expression inside the value of an attribute.
@@ -165,23 +166,25 @@ class Writer {
     return Array.isArray(chosen) ? chosen.includes(value) : value === chosen;
   }
 
-  // <Component prop={…}>children{#snippet name()}…{/snippet}</Component>
-  call(target, props, fills) {
+  // <Component prop={…}>children{#snippet name()}…{/snippet}</Component>.
+  // The snippets without parameters written inside the tag come as [name,
+  // part, body].
+  call(target, props, given) {
     if (target === null || typeof target !== "object" || typeof target.render !== "function") {
       throw new TypeError(`this tag is not a component: it is ${describe(target)}. A component is what a .shugo file exports: import Card from "./Card.shugo"`);
     }
     // What stands inside the tag is computed here, in the template that
     // wrote it, whether or not the component shows it.
-    let slots = null;
-    if (fills.length > 0) {
-      slots = new Map();
-      for (const [name, part, body] of fills) {
-        const fill = this.record.block(this.block.file, part);
-        body(new Writer(this.run, this.record, fill, this.scope));
-        slots.set(name, [fill.index]);
+    let snippets = null;
+    if (given.length > 0) {
+      snippets = new Map();
+      for (const [name, part, body] of given) {
+        const block = this.record.block(this.block.file, part);
+        body(new Writer(this.run, this.record, block, this.scope));
+        snippets.set(name, [block.index]);
       }
     }
-    this.block.children.push(this.run.show(this.record, target, props, slots, this.scope));
+    this.block.children.push(this.run.show(this.record, target, props, snippets, this.scope));
   }
 
   // {#snippet name(parameters)}: a snippet that is computed where it is rendered.
@@ -196,34 +199,34 @@ class Writer {
       values.push("-");
       return;
     }
-    const given = snippet?.[SNIPPET];
-    if (given === undefined) throw new TypeError(`{@render …} shows a snippet, and this is ${describe(snippet)}`);
-    if (given.kind === "fill") {
+    const info = snippet?.[SNIPPET];
+    if (info === undefined) throw new TypeError(`{@render …} shows a snippet, and this is ${describe(snippet)}`);
+    if (info.kind === "given") {
       // What a caller gave stays with the caller: the Go side shows it
       // from there.
-      if (args.length > 0) throw new TypeError(`the snippet ${given.name} takes no parameters`);
-      values.push(`f${depth(this.scope.frame, given.frame)}:${given.name}`);
+      if (args.length > 0) throw new TypeError(`the snippet ${info.name} takes no parameters`);
+      values.push(`f${depth(this.scope.frame, info.frame)}:${info.name}`);
       return;
     }
-    const block = this.record.block(given.file, given.part);
-    given.body(new Writer(this.run, this.record, block, given.scope), ...args);
+    const block = this.record.block(info.file, info.part);
+    info.body(new Writer(this.run, this.record, block, info.scope), ...args);
     this.block.children.push(block.index);
-    values.push(`c${depth(this.scope.frame, given.scope.frame)}`);
+    values.push(`c${depth(this.scope.frame, info.scope.frame)}`);
   }
 
   // <svelte:head> of a page or a layout: markup for the layouts around it.
   provide(name, part, body) {
-    const fill = this.record.block(this.block.file, part);
-    body(new Writer(this.run, this.record, fill, this.scope));
+    const block = this.record.block(this.block.file, part);
+    body(new Writer(this.run, this.record, block, this.scope));
     const provided = this.scope.provided;
     if (provided === null) throw new Error("<svelte:head> was computed inside a block that is shared by all pages. This should not happen: please report it");
-    if (provided.has(name)) provided.get(name).push(fill.index);
-    else provided.set(name, [fill.index]);
+    if (provided.has(name)) provided.get(name).push(block.index);
+    else provided.set(name, [block.index]);
   }
 
   // The place in a layout where what the pages gave is shown: the end of <head>.
   outlet(name) {
-    this.block.values.push(this.scope.slots !== null && this.scope.slots.has(name) ? `f0:${name}` : "-");
+    this.block.values.push(this.scope.snippets !== null && this.scope.snippets.has(name) ? `f0:${name}` : "-");
   }
 }
 
@@ -239,7 +242,10 @@ function depth(from, to) {
 }
 
 // A snippet is a function, as in Svelte, that can only be shown with
-// {@render}. What it is lies under SNIPPET.
+// {@render}. What it is lies under SNIPPET: { kind: "given", name, frame }
+// for a snippet without parameters that a caller gave a component, computed
+// already and kept in the caller's record; { kind: "live", file, part, body,
+// scope } for one that is computed where it is rendered.
 const SNIPPET = Symbol("snippet");
 
 function snippetOf(info) {
@@ -252,10 +258,10 @@ function snippetOf(info) {
 
 // propsOf gives a component its parameters with the snippets its caller
 // wrote inside its tag.
-function propsOf(props, slots, frame) {
-  if (slots === null) return props;
+function propsOf(props, snippets, frame) {
+  if (snippets === null) return props;
   const out = { ...props };
-  for (const name of slots.keys()) out[name] = snippetOf({ kind: "fill", name, frame });
+  for (const name of snippets.keys()) out[name] = snippetOf({ kind: "given", name, frame });
   return out;
 }
 
@@ -666,21 +672,21 @@ class Run {
   // show computes a component at one place of a record and returns the block
   // that stands for it there. Where the component gives a shared block, that
   // block only gets named: the Go side knows whether it has to be computed.
-  show(record, target, props, slots, scope) {
-    const name = this.site.files[target.file].shared ? sharedName(this.site.files[target.file].path, props, slots) : null;
-    if (name !== null) return record.use(name, slots).index;
+  show(record, target, props, snippets, scope) {
+    const name = this.site.files[target.file].shared ? sharedName(this.site.files[target.file].path, props, snippets) : null;
+    if (name !== null) return record.use(name, snippets).index;
     const block = record.block(target.file, 0);
-    block.slots = slots;
+    block.snippets = snippets;
     const frame = { outer: scope.frame };
-    const inner = { page: scope.page, slots, provided: scope.provided, reads: scope.reads, frame, props: propsOf(props, slots, frame) };
+    const inner = { page: scope.page, snippets, provided: scope.provided, reads: scope.reads, frame, props: propsOf(props, snippets, frame) };
     target.render(new Writer(this, record, block, inner), new Context(inner));
     return block.index;
   }
 
   // block computes a shared block from its name alone: the name holds the
-  // file, the parameters and the names of the slots.
+  // file, the parameters and the names of the snippets the caller gave.
   block(name) {
-    const { path, props, slots } = unnamed(name);
+    const { path, props, snippets } = unnamed(name);
     const target = this.modules.get(this.files.get(path))?.default;
     if (target === undefined) throw new Error(`there is no file ${path} to compute the shared block from`);
     const record = new Record("s", name, 0);
@@ -688,7 +694,7 @@ class Run {
     // Inside a shared block only the names of the snippets the caller gave
     // matter: what they show belongs to the place the block is used at.
     const frame = { outer: null };
-    const inner = { page: null, slots, provided: null, reads: record.reads, frame, props: propsOf(props, slots, frame) };
+    const inner = { page: null, snippets, provided: null, reads: record.reads, frame, props: propsOf(props, snippets, frame) };
     during(record.reads, () => target.render(new Writer(this, record, block, inner), new Context(inner)));
     this.emit(record);
   }
@@ -707,7 +713,7 @@ class Run {
     const props = listed !== undefined && listed.index === index ? listed.entry.props ?? {} : {};
     const record = new Record("p", path, index);
     const params = Object.freeze(parameters(route, path));
-    const scope = { page: { params, path, route, origin: this.site.origin, url: undefined }, slots: null, provided: new Map(), reads: record.reads, frame: null, props: {} };
+    const scope = { page: { params, path, route, origin: this.site.origin, url: undefined }, snippets: null, provided: new Map(), reads: record.reads, frame: null, props: {} };
     during(record.reads, () => this.around(record, route, props, scope));
     this.emit(record);
   }
@@ -720,14 +726,14 @@ class Run {
       // layout inside this one, gave for its <head> goes to the nearest
       // layout that has one.
       const layout = this.modules.get(route.layouts[i]).default;
-      const slots = new Map([["children", [top]]]);
-      for (const name of this.site.files[layout.file].slots ?? []) {
+      const snippets = new Map([["children", [top]]]);
+      for (const name of this.site.files[layout.file].outlets ?? []) {
         if (scope.provided.has(name)) {
-          slots.set(name, scope.provided.get(name));
+          snippets.set(name, scope.provided.get(name));
           scope.provided.delete(name);
         }
       }
-      top = this.show(record, layout, {}, slots, scope);
+      top = this.show(record, layout, {}, snippets, scope);
     }
     record.top = top;
   }
@@ -753,7 +759,7 @@ class Run {
 // name made of its file and those values: components/Card.shugo{"id":"p7"}.
 // null means: not shared. JSON writes every control character as an escape,
 // so a name never holds one of the separators.
-function sharedName(path, props, slots) {
+function sharedName(path, props, snippets) {
   let key = "";
   let count = 0;
   for (const name in props) {
@@ -768,23 +774,24 @@ function sharedName(path, props, slots) {
     key = Object.keys(props).filter((name) => props[name] !== undefined).sort()
       .map((name) => JSON.stringify(name) + ":" + JSON.stringify(props[name])).join(",");
   }
-  if (slots !== null) key += "|" + [...slots.keys()].sort().join(",");
+  if (snippets !== null) key += "|" + [...snippets.keys()].sort().join(",");
   return path + "{" + key + "}";
 }
 
-// unnamed reads a name that sharedName wrote. The names of slots follow the
-// last "|" and are made of letters, digits, "-" and "_"; a "|" inside a
-// parameter is followed by the quote that closes its text at the least.
+// unnamed reads a name that sharedName wrote. The names of the snippets
+// follow the last "|" and are made of letters, digits, "-" and "_"; a "|"
+// inside a parameter is followed by the quote that closes its text at the
+// least.
 function unnamed(name) {
   const start = name.indexOf("{");
   let inside = name.slice(start + 1, -1);
-  let slots = null;
+  let snippets = null;
   const bar = inside.lastIndexOf("|");
   if (bar >= 0 && /^[\w,-]*$/.test(inside.slice(bar + 1))) {
-    slots = new Map(inside.slice(bar + 1).split(",").filter((slot) => slot !== "").map((slot) => [slot, []]));
+    snippets = new Map(inside.slice(bar + 1).split(",").filter((one) => one !== "").map((one) => [one, []]));
     inside = inside.slice(0, bar);
   }
-  return { path: name.slice(0, start), props: JSON.parse("{" + inside + "}"), slots };
+  return { path: name.slice(0, start), props: JSON.parse("{" + inside + "}"), snippets };
 }
 
 // On the wire a record is its header and its blocks, split by \x01; fields
@@ -796,8 +803,8 @@ function encode(record) {
   for (const block of record.blocks) {
     lines.push(
       block.shared !== null
-        ? "u\x02" + block.shared + "\x02" + slotsOf(block.slots)
-        : "b\x02" + block.file + "\x02" + block.part + "\x02" + block.children.join(",") + "\x02" + slotsOf(block.slots) + "\x02" + valuesOf(block.values),
+        ? "u\x02" + block.shared + "\x02" + snippetsOf(block.snippets)
+        : "b\x02" + block.file + "\x02" + block.part + "\x02" + block.children.join(",") + "\x02" + snippetsOf(block.snippets) + "\x02" + valuesOf(block.values),
     );
   }
   return lines.join("\x01");
@@ -808,10 +815,10 @@ function valuesOf(values) {
   return values.length === 0 ? "" : "\x00" + values.join("\x00");
 }
 
-function slotsOf(slots) {
-  if (slots === null) return "";
+function snippetsOf(snippets) {
+  if (snippets === null) return "";
   let out = "";
-  for (const [name, blocks] of slots) out += (out ? ";" : "") + name + "=" + blocks.join(",");
+  for (const [name, blocks] of snippets) out += (out ? ";" : "") + name + "=" + blocks.join(",");
   return out;
 }
 

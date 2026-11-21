@@ -1,14 +1,16 @@
----
-import Header from "../components/Header.shugo"
----
+<script>
+  import Header from "../components/Header.shugo"
+
+  let { children } = $props()
+</script>
+
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <g-slot name="head"><title>Pottery Shop</title></g-slot>
   </head>
   <body>
     <Header />
-    <main><g-slot /></main>
+    <main>{@render children()}</main>
   </body>
 </html>

@@ -20,10 +20,11 @@ const small = `
 -- shugo.json --
 {"redirects": {"/old": "/about"}}
 -- pages/+layout.shugo --
----
+<script>
+let { children } = $props()
 import "../styles/main.css"
----
-<html><head><title>T</title></head><body><g-slot /></body></html>
+</script>
+<html><head><title>T</title></head><body>{@render children()}</body></html>
 -- pages/index.shugo --
 <h1>home</h1>
 -- pages/about.shugo --

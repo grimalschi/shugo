@@ -95,9 +95,9 @@ func TestUpdateCompilesAChangedProject(t *testing.T) {
 import items from "../data/items.json"
 export const getItems = (): string[] => items
 -- pages/index.shugo --
----
+<script>
 import { getItems } from "@/lib/data"
----
+</script>
 <p>{getItems()}</p>
 `)
 	s.store.Close()

@@ -7,6 +7,7 @@ package syntax
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -925,7 +926,15 @@ func (p *parser) eachHead(open int, head Code, b *EachBlock) error {
 		}
 	}
 	if as < 0 {
+		// {#each list} or {#each list, index}: no name for one item.
 		b.List = head
+		if comma := lastTopComma(head.Text); comma >= 0 {
+			b.List = Code{strings.TrimRight(head.Text[:comma], " \t\r\n"), head.Start}
+			b.Index = strings.TrimSpace(head.Text[comma+1:])
+			if !isName(b.Index) {
+				return p.errorf(open, "the index of {#each} is a name: {#each items, i}")
+			}
+		}
 		return nil
 	}
 	b.List = Code{strings.TrimRight(head.Text[:as], " \t\r\n"), head.Start}
@@ -944,20 +953,7 @@ func (p *parser) eachHead(open int, head Code, b *EachBlock) error {
 		}
 	}
 	// The index follows the last comma that stands outside of brackets.
-	comma := -1
-	scan = NewScanner(trimmed, 0)
-	depth = 0
-	for {
-		t, err := scan.Next()
-		if err != nil || t.Kind == EOF {
-			break
-		}
-		text := scan.Text(t)
-		depth += nestingOf(t, text)
-		if depth == 0 && text == "," {
-			comma = t.Start
-		}
-	}
+	comma := lastTopComma(trimmed)
 	pattern := trimmed
 	if comma >= 0 {
 		b.Index = strings.TrimSpace(trimmed[comma+1:])
@@ -972,6 +968,25 @@ func (p *parser) eachHead(open int, head Code, b *EachBlock) error {
 	}
 	b.Item = &Code{item, restStart + strings.Index(rest, item)}
 	return nil
+}
+
+// lastTopComma returns the place of the last comma of code that stands
+// outside of brackets and strings, or -1.
+func lastTopComma(code string) int {
+	comma := -1
+	scan := NewScanner(code, 0)
+	depth := 0
+	for {
+		t, err := scan.Next()
+		if err != nil || t.Kind == EOF {
+			return comma
+		}
+		text := scan.Text(t)
+		depth += nestingOf(t, text)
+		if depth == 0 && text == "," {
+			comma = t.Start
+		}
+	}
 }
 
 // matchingOpen returns the place of the "(" that the ")" at the end of s closes.
@@ -1106,13 +1121,32 @@ func (p *parser) balancedFrom(open, from int) (int, error) {
 	end, err := Balanced(p.src, from)
 	if scan, ok := err.(*ScanError); ok {
 		line, column := p.file.Position(scan.Offset)
-		if scan.Offset != open {
+		rest, _, _ := strings.Cut(p.src[open:], "\n")
+		switch {
+		case tagAfterOperator.MatchString(rest):
+			return 0, p.errorf(open, "%s", noMarkup)
+		case scan.Offset != open:
 			return 0, p.errorf(open, `"{" is never closed (%s at %d:%d)`, scan.Message, line, column)
 		}
 		return 0, p.errorf(open, "%s", scan.Message)
 	}
+	if code := p.src[from:end]; err == nil && tagAfterOperator.MatchString(code) && tagEnd.MatchString(code) {
+		return 0, p.errorf(open, "%s", noMarkup)
+	}
 	return end, err
 }
+
+// Authors who know JSX write markup inside expressions: {items.map(item =>
+// <li>{item}</li>)}. Here an expression is plain JavaScript, and the message
+// says what to write instead. A tag is told from a comparison by what stands
+// before it, and in code that the scanner could read, by the end of a tag.
+var (
+	tagAfterOperator = regexp.MustCompile(`(=>|&&|\|\||[?:(,]|\breturn)\s*<[A-Za-z]`)
+	tagEnd           = regexp.MustCompile(`</[A-Za-z]|/>`)
+)
+
+const noMarkup = `markup cannot stand inside {…}: an expression is plain JavaScript. ` +
+	`Write a list as {#each items as item}…{/each} and a condition as {#if condition}…{/if}`
 
 // blank tells whether code holds nothing but spaces and comments.
 func blank(code string) bool {

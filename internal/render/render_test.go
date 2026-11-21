@@ -65,7 +65,7 @@ func page(m *memory, values ...string) *record.Record {
 	return &record.Record{Blocks: []record.Block{
 		{File: 0, Values: tape(values...), Children: []int{2, 3}},
 		{File: 0, Part: 1, Values: tape("fill")},
-		{File: 1, Values: tape("f0:children", "-"), Slots: []record.Slot{{Name: "children", Blocks: []int{1}}}},
+		{File: 1, Values: tape("f0:children", "-"), Snippets: []record.Snippet{{Name: "children", Blocks: []int{1}}}},
 		{Use: true, Shared: 7},
 	}}
 }
@@ -140,9 +140,9 @@ func TestRecordsThatDoNotFit(t *testing.T) {
 		"a lost shared block":   func(m *memory, _ *record.Record) { delete(m.shared, 7) },
 		"damaged values":        func(_ *memory, rec *record.Record) { rec.Blocks[1].Values = record.Tape{9, 'x'} },
 		"a top out of range":    func(_ *memory, rec *record.Record) { rec.Top = 9 },
-		"a block inside itself": func(_ *memory, rec *record.Record) { rec.Blocks[2].Slots[0].Blocks = []int{2} },
+		"a block inside itself": func(_ *memory, rec *record.Record) { rec.Blocks[2].Snippets[0].Blocks = []int{2} },
 		"a shared block inside itself": func(m *memory, _ *record.Record) {
-			m.shared[7] = &record.Record{Blocks: []record.Block{{File: 1, Values: tape("-", "-"), Slots: nil}, {Use: true, Shared: 7}}, Top: 1}
+			m.shared[7] = &record.Record{Blocks: []record.Block{{File: 1, Values: tape("-", "-")}, {Use: true, Shared: 7}}, Top: 1}
 		},
 		"a snippet sign that is not": func(_ *memory, rec *record.Record) { rec.Blocks[2].Values = tape("x0", "-") },
 		"a snippet too far out":      func(_ *memory, rec *record.Record) { rec.Blocks[2].Values = tape("f9:children", "-") },
