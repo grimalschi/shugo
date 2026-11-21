@@ -119,7 +119,7 @@ class Writer {
   }
 
   // <Component prop={…}>markup</Component>
-  async call(target, props, fills) {
+  call(target, props, fills) {
     if (target === null || typeof target !== "object" || typeof target.render !== "function") {
       throw new TypeError(`this tag is not a component: it is ${describe(target)}. A component is what a .shugo file exports: import Card from "./Card.shugo"`);
     }
@@ -130,11 +130,11 @@ class Writer {
       slots = new Map();
       for (const [name, part, body] of fills) {
         const fill = this.record.block(this.block.file, part);
-        await body(new Writer(this.run, this.record, fill, this.scope));
+        body(new Writer(this.run, this.record, fill, this.scope));
         slots.set(name, [fill.index]);
       }
     }
-    this.block.children.push(await this.run.show(this.record, target, props, slots, this.scope));
+    this.block.children.push(this.run.show(this.record, target, props, slots, this.scope));
   }
 
   // <g-slot name="…">: tells whether the caller put something there.
@@ -145,9 +145,9 @@ class Writer {
   }
 
   // slot="name" at the top of a page: markup for the layouts around it.
-  async provide(name, part, body) {
+  provide(name, part, body) {
     const fill = this.record.block(this.block.file, part);
-    await body(new Writer(this.run, this.record, fill, this.scope));
+    body(new Writer(this.run, this.record, fill, this.scope));
     const provided = this.scope.provided;
     if (provided.has(name)) provided.get(name).push(fill.index);
     else provided.set(name, [fill.index]);
@@ -292,7 +292,7 @@ class Run {
   // route says which pages it has, and what it read from the data to know.
   // Among the routes listed together, a route that names more of an address
   // comes earlier and takes it.
-  async list(wanted) {
+  list(wanted) {
     const routes = wanted.length > 0 ? wanted : this.site.routes.map((_, index) => index);
     for (const [path, page] of this.pages) if (routes.includes(page.index)) this.pages.delete(path);
     let shadowed = 0;
@@ -303,7 +303,7 @@ class Run {
       const reads = new Reads();
       let props = false;
       try {
-        for (const entry of await during(reads, () => entries(route, this.modules.get(route.file), reads))) {
+        for (const entry of during(reads, () => entries(route, this.modules.get(route.file), reads))) {
           const path = address(route, entry.params);
           const taken = this.pages.get(path);
           if (taken !== undefined && taken.index === index) throw new Error(`getStaticPaths of ${route.pattern} returned the address ${path} twice`);
@@ -336,47 +336,42 @@ class Run {
   // A page that fails ends the run. A shared block that fails is told to the
   // Go side and the run goes on: after a change of data a block may be
   // computed that nothing shows any more, and only the Go side knows.
-  async compute(units) {
-    let next = 0;
-    const worker = async () => {
-      while (next < units.length) {
-        const [kind, name, route] = units[next++].split("\x02");
-        if (kind === "s") {
-          try {
-            await this.block(name);
-          } catch (error) {
-            this.send("F", name + "\x02" + failure(placed(error, `the shared block ${name}`)));
-          }
-          continue;
-        }
+  compute(units) {
+    for (const unit of units) {
+      const [kind, name, route] = unit.split("\x02");
+      if (kind === "s") {
         try {
-          await this.page(name, Number(route));
+          this.block(name);
         } catch (error) {
-          next = units.length; // the others stop after the unit they are at
-          throw placed(error, `the page ${name} (${this.site.files[this.site.routes[Number(route)]?.file]?.path})`);
+          this.send("F", name + "\x02" + failure(placed(error, `the shared block ${name}`)));
         }
+        continue;
       }
-    };
-    await Promise.all(Array.from({ length: concurrency }, worker));
+      try {
+        this.page(name, Number(route));
+      } catch (error) {
+        throw placed(error, `the page ${name} (${this.site.files[this.site.routes[Number(route)]?.file]?.path})`);
+      }
+    }
     this.flush();
   }
 
   // show computes a component at one place of a record and returns the block
   // that stands for it there. Where the component gives a shared block, that
   // block only gets named: the Go side knows whether it has to be computed.
-  async show(record, target, props, slots, scope) {
+  show(record, target, props, slots, scope) {
     const name = this.site.files[target.file].shared ? sharedName(this.site.files[target.file].path, props, slots) : null;
     if (name !== null) return record.use(name, slots).index;
     const block = record.block(target.file, 0);
     block.slots = slots;
     const inner = { page: scope.page, slots, provided: scope.provided, reads: scope.reads };
-    await target.render(new Writer(this, record, block, inner), new Context(target, props, inner));
+    target.render(new Writer(this, record, block, inner), new Context(target, props, inner));
     return block.index;
   }
 
   // block computes a shared block from its name alone: the name holds the
   // file, the parameters and the names of the slots.
-  async block(name) {
+  block(name) {
     const { path, props, slots } = unnamed(name);
     const target = this.modules.get(this.files.get(path))?.default;
     if (target === undefined) throw new Error(`there is no file ${path} to compute the shared block from`);
@@ -385,7 +380,7 @@ class Run {
     // Inside a shared block only the names of the slots matter: what fills
     // them belongs to the place the block is used at.
     const inner = { page: null, slots, provided: null, reads: record.reads };
-    await during(record.reads, () => target.render(new Writer(this, record, block, inner), new Context(target, props, inner)));
+    during(record.reads, () => target.render(new Writer(this, record, block, inner), new Context(target, props, inner)));
     this.emit(record);
   }
 
@@ -396,7 +391,7 @@ class Run {
   // The parameters are always read from the address. A page is computed now
   // from a list, now from its address alone, and must come out the same:
   // what getStaticPaths wrote as a number is a text in the address.
-  async page(path, index) {
+  page(path, index) {
     const route = this.site.routes[index];
     if (route === undefined) throw new Error(`the page ${path} was asked for under route ${index}, which this project's compiled code does not have: build the project again`);
     const listed = this.pages.get(path);
@@ -404,13 +399,13 @@ class Run {
     const record = new Record("p", path, index);
     const params = Object.freeze(parameters(route, path));
     const scope = { page: { params, path, route, origin: this.site.origin, url: undefined }, slots: null, provided: new Map(), reads: record.reads };
-    await during(record.reads, () => this.around(record, route, props, scope));
+    during(record.reads, () => this.around(record, route, props, scope));
     this.emit(record);
   }
 
   // around computes a page with its layouts into the record.
-  async around(record, route, props, scope) {
-    let top = await this.show(record, this.modules.get(route.file).default, props, null, scope);
+  around(record, route, props, scope) {
+    let top = this.show(record, this.modules.get(route.file).default, props, null, scope);
     for (let i = route.layouts.length - 1; i >= 0; i--) {
       // A layout shows the page in its default slot. What the page, or a
       // layout inside this one, gave for a slot goes to the nearest layout
@@ -423,7 +418,7 @@ class Run {
           scope.provided.delete(name);
         }
       }
-      top = await this.show(record, layout, {}, slots, scope);
+      top = this.show(record, layout, {}, slots, scope);
     }
     record.top = top;
   }
@@ -603,10 +598,11 @@ function paginator(route) {
 
 // entries returns the pages of a route: one for a page without parameters,
 // and what getStaticPaths says for the others.
-async function entries(route, module, reads) {
+function entries(route, module, reads) {
   if (!route.segments.some((segment) => segment.text === undefined)) return [{ params: {} }];
   if (typeof module.getStaticPaths !== "function") throw new Error(`${route.pattern} has parameters, so its script must export getStaticPaths`);
-  const list = await module.getStaticPaths({ paginate: paginator(route), query: (table) => query(reads, table) });
+  const list = module.getStaticPaths({ paginate: paginator(route), query: (table) => query(reads, table) });
+  if (typeof list?.then === "function") throw new Error(`getStaticPaths of ${route.pattern} waits (it is async or returns a promise): pages are computed without waiting; the data comes from the data database through query`);
   if (!Array.isArray(list)) throw new Error(`getStaticPaths of ${route.pattern} must return a list of { params, props }, got ${describe(list)}`);
   for (const entry of list) {
     if (entry === null || typeof entry !== "object" || entry.params === null || typeof entry.params !== "object") {
@@ -619,9 +615,6 @@ async function entries(route, module, reads) {
 // ---------------------------------------------------------------------------
 // The entry point
 
-// How many units are computed at once. More does not use more processor,
-// only lets them wait for their data together.
-const concurrency = 32;
 
 // placed notes what was being computed when an error came up.
 function placed(error, place) {
@@ -690,10 +683,10 @@ export async function run(modules) {
     for (let request = receive(); request !== null && request.kind !== "Q"; request = receive()) {
       switch (request.kind) {
         case "L":
-          send("D", JSON.stringify(await run.list(request.text === "" ? [] : request.text.split(",").map(Number))));
+          send("D", JSON.stringify(run.list(request.text === "" ? [] : request.text.split(",").map(Number))));
           break;
         case "C":
-          await run.compute(request.text.split("\x03"));
+          run.compute(request.text.split("\x03"));
           send("D", "{}");
           break;
         default:
