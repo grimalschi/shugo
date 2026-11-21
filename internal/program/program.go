@@ -11,8 +11,9 @@ import (
 	"strings"
 )
 
-// Version changes when an older runtime could not read the format any more.
-const Version = 1
+// Version changes when an older runtime could not read the format any more:
+// 2 is the program of Svelte templates, with snippets and <svelte:element>.
+const Version = 2
 
 // Site is a whole compiled project.
 type Site struct {
@@ -79,11 +80,17 @@ const (
 	Mount   Kind = 'm' // write markup the framework adds
 )
 
+// Last is the text of a Render that shows the last block alone.
+const Last = "last"
+
 // Op is one step of showing a template. Every step except Markup, Call and
 // Mount takes the next value the block has computed.
 type Op struct {
 	Kind Kind
 	// Text is the markup of Markup and the name of Attr, URL and Mount.
+	// A Render with the text Last shows only the last block of a snippet
+	// the caller gave: the <title> of a page, which Svelte takes from the
+	// last <title> in <svelte:head>.
 	Text string
 	// Bodies are the branches of If; the body of For and what it shows for
 	// no items; the attributes and the content of Element.
@@ -91,7 +98,8 @@ type Op struct {
 }
 
 // On the wire an operation is a list: its kind, then its text if it has one,
-// then its bodies: ["r","<p>"], ["t"], ["a","href"], ["i",[…],[…]].
+// then its bodies: ["r","<p>"], ["t"], ["a","href"], ["i",[…],[…]],
+// ["n","last"].
 func (o Op) MarshalJSON() ([]byte, error) {
 	parts := []any{string(rune(o.Kind))}
 	if o.hasText() {
@@ -126,7 +134,9 @@ func (o *Op) UnmarshalJSON(data []byte) error {
 	}
 	*o = Op{Kind: Kind(kind[0])}
 	parts = parts[1:]
-	if o.hasText() {
+	// The text of a Render is there or not; a body is never a string.
+	optional := o.Kind == Render && len(parts) > 0 && len(parts[0]) > 0 && parts[0][0] == '"'
+	if o.hasText() || optional {
 		if len(parts) == 0 || json.Unmarshal(parts[0], &o.Text) != nil {
 			return fmt.Errorf("program: operation %q has no text", kind)
 		}
@@ -142,10 +152,14 @@ func (o *Op) UnmarshalJSON(data []byte) error {
 	return o.check()
 }
 
+// hasText tells whether the operation is written with its text: always for
+// the kinds that need one, and for a Render that shows the last block.
 func (o Op) hasText() bool {
 	switch o.Kind {
 	case Markup, Attr, URL, Mount:
 		return true
+	case Render:
+		return o.Text != ""
 	}
 	return false
 }
@@ -166,6 +180,9 @@ func (o Op) check() error {
 	}
 	if len(o.Bodies) != want {
 		return fmt.Errorf("program: operation %q has %d bodies", rune(o.Kind), len(o.Bodies))
+	}
+	if o.Kind == Render && o.Text != "" && o.Text != Last {
+		return fmt.Errorf("program: a render with the text %q", o.Text)
 	}
 	return nil
 }

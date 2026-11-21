@@ -89,7 +89,11 @@ func (e *emitter) nodes(list []node) []program.Op {
 			e.m.add("});")
 		case outlet:
 			e.m.add("$$.outlet(%s);", quote(n.name))
-			ops = append(ops, program.Op{Kind: program.Render})
+			op := program.Op{Kind: program.Render}
+			if n.name == "title" {
+				op.Text = program.Last
+			}
+			ops = append(ops, op)
 		case mount:
 			ops = append(ops, program.Op{Kind: program.Mount, Text: n.name})
 		}

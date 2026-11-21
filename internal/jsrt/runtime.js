@@ -214,7 +214,8 @@ class Writer {
     values.push(`c${depth(this.scope.frame, info.scope.frame)}`);
   }
 
-  // <svelte:head> of a page or a layout: markup for the layouts around it.
+  // <svelte:head> of a page or a layout: markup for the <head> of the page,
+  // under "head", and its <title> under "title".
   provide(name, part, body) {
     const block = this.record.block(this.block.file, part);
     body(new Writer(this.run, this.record, block, this.scope));
@@ -224,9 +225,19 @@ class Writer {
     else provided.set(name, [block.index]);
   }
 
-  // The place in a layout where what the pages gave is shown: the end of <head>.
+  // The end of the <head> a page or a layout writes, where what was given
+  // the head is shown in the order of the document: what this template gave
+  // itself, then what the templates inside it gave. They come to the Go side
+  // as snippets of the template's own block.
   outlet(name) {
-    this.block.values.push(this.scope.snippets !== null && this.scope.snippets.has(name) ? `f0:${name}` : "-");
+    const own = this.scope.provided?.get(name) ?? [];
+    const given = this.scope.snippets?.get(name);
+    if (own.length > 0) {
+      this.scope.provided.delete(name);
+      const block = this.scope.frame.block;
+      (block.snippets ??= new Map()).set(name, [...own, ...(given ?? [])]);
+    }
+    this.block.values.push(own.length > 0 || given !== undefined ? `f0:${name}` : "-");
   }
 }
 
@@ -677,7 +688,7 @@ class Run {
     if (name !== null) return record.use(name, snippets).index;
     const block = record.block(target.file, 0);
     block.snippets = snippets;
-    const frame = { outer: scope.frame };
+    const frame = { outer: scope.frame, block };
     const inner = { page: scope.page, snippets, provided: scope.provided, reads: scope.reads, frame, props: propsOf(props, snippets, frame) };
     target.render(new Writer(this, record, block, inner), new Context(inner));
     return block.index;
@@ -693,7 +704,7 @@ class Run {
     const block = record.block(target.file, 0);
     // Inside a shared block only the names of the snippets the caller gave
     // matter: what they show belongs to the place the block is used at.
-    const frame = { outer: null };
+    const frame = { outer: null, block };
     const inner = { page: null, snippets, provided: null, reads: record.reads, frame, props: propsOf(props, snippets, frame) };
     during(record.reads, () => target.render(new Writer(this, record, block, inner), new Context(inner)));
     this.emit(record);
@@ -723,17 +734,22 @@ class Run {
     let top = this.show(record, this.modules.get(route.file).default, props, null, scope);
     for (let i = route.layouts.length - 1; i >= 0; i--) {
       // A layout shows the page as its children. What the page, or a
-      // layout inside this one, gave for its <head> goes to the nearest
-      // layout that has one.
+      // layout inside this one, gave the head goes to the nearest layout
+      // that writes the <head>.
       const layout = this.modules.get(route.layouts[i]).default;
+      const inner = scope.provided;
       const snippets = new Map([["children", [top]]]);
       for (const name of this.site.files[layout.file].outlets ?? []) {
-        if (scope.provided.has(name)) {
-          snippets.set(name, scope.provided.get(name));
-          scope.provided.delete(name);
+        if (inner.has(name)) {
+          snippets.set(name, inner.get(name));
+          inner.delete(name);
         }
       }
+      scope.provided = new Map();
       top = this.show(record, layout, {}, snippets, scope);
+      // What goes on outwards keeps the order of the document: what this
+      // layout gave comes before what the templates inside it gave.
+      for (const [name, blocks] of inner) scope.provided.set(name, [...(scope.provided.get(name) ?? []), ...blocks]);
     }
     record.top = top;
   }

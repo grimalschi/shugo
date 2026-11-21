@@ -121,10 +121,12 @@ type (
 		attrs    []node
 		children []node
 	}
-	// provide is markup a page or a layout gives to the layouts around it:
-	// <svelte:head>.
+	// provide is markup a page or a layout gives to the <head> of the page:
+	// what stands in <svelte:head> under "head", and its <title> under
+	// "title".
 	provide struct{ piece }
-	// outlet is the place in a layout where what was provided is shown.
+	// outlet is the place in the <head> of a layout or a page where what
+	// was provided is shown.
 	outlet struct{ name string }
 	// mount is a place where the framework adds markup of its own.
 	mount struct{ name string }
@@ -405,12 +407,7 @@ func (l *lowerer) hoisted(n syntax.Node, ctx context) []node {
 			l.errorf(n.Start, "<svelte:head> works in pages and in +layout files for now")
 			return nil
 		}
-		if l.provided == nil {
-			l.provided = map[string]int{}
-		}
-		if _, seen := l.provided["head"]; !seen {
-			l.provided["head"] = n.Start
-		}
+		l.provides("head", n.Start)
 		return []node{provide{piece{"head", l.fragment(n.Children, context{head: true})}}}
 	}
 	return nil
@@ -586,6 +583,16 @@ func (l *lowerer) value(a syntax.Attr) value {
 	return out
 }
 
+// provides notes that the template gives markup to the <head> of the page.
+func (l *lowerer) provides(name string, at int) {
+	if l.provided == nil {
+		l.provided = map[string]int{}
+	}
+	if _, seen := l.provided[name]; !seen {
+		l.provided[name] = at
+	}
+}
+
 // html5 lowers an element of HTML.
 func (l *lowerer) html5(e *syntax.Element, ctx context) []node {
 	name := e.Name
@@ -593,8 +600,16 @@ func (l *lowerer) html5(e *syntax.Element, ctx context) []node {
 	if !svg {
 		name = strings.ToLower(name)
 	}
-	if name == "head" && l.role == layout && !slices.Contains(l.outlets, "head") {
-		l.outlets = append(l.outlets, "head")
+	if name == "title" && ctx.head && !svg {
+		// A page has one title, as in Svelte: of the titles in <svelte:head>
+		// the last in the order of the document, the page's before its
+		// layouts', and it stands after the rest of the head.
+		l.provides("title", e.Start)
+		ctx.head = false
+		return []node{provide{piece{"title", l.html5(e, ctx)}}}
+	}
+	if name == "head" && l.role != component && !slices.Contains(l.outlets, "head") {
+		l.outlets = append(l.outlets, "head", "title")
 	}
 	if !svg {
 		l.placed(name, e.Start, ctx.ancestors)
@@ -640,9 +655,10 @@ func (l *lowerer) html5(e *syntax.Element, ctx context) []node {
 	default:
 		out = append(out, l.fragment(e.Children, inner)...)
 	}
-	// The framework adds its own markup at the end of the head and of the body.
-	if name == "head" && l.role == layout {
-		out = append(out, outlet{"head"})
+	// What pages give the head, then the framework's own markup, end the
+	// head; the framework's own markup ends the body.
+	if name == "head" && l.role != component {
+		out = append(out, outlet{"head"}, outlet{"title"})
 	}
 	if name == "head" || name == "body" {
 		out = append(out, mount{name})

@@ -257,7 +257,11 @@ func (w *walker) ops(ops []program.Op, depth int) error {
 						where = "its blocks are in the record of the page that shows this shared block"
 					}
 				}
-				w.add(depth, "n", fmt.Sprintf("{@render %s()}: snippet supplied by the caller; %s", name, where), value, place)
+				what := fmt.Sprintf("{@render %s()}: snippet supplied by the caller; %s", name, where)
+				if op.Text == program.Last {
+					what += "; only the last block is shown because the page has one <title>"
+				}
+				w.add(depth, "n", what, value, place)
 			}
 		case program.Element:
 			tag, place, err := w.take()

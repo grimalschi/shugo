@@ -257,7 +257,7 @@ func (r *renderer) ops(ops []program.Op, c *cursor) error {
 			if err != nil {
 				return err
 			}
-			if err := r.snippet(value, c); err != nil {
+			if err := r.snippet(value, c, op.Text == program.Last); err != nil {
 				return err
 			}
 
@@ -324,8 +324,8 @@ func (r *renderer) attribute(name string, value []byte, address bool) error {
 // "c" and a number, the next child block, a snippet computed where it was
 // rendered, which belongs to the component that many levels out; "f", a
 // number, ":" and a name, what the caller of the component that many levels
-// out gave under that name.
-func (r *renderer) snippet(value []byte, c *cursor) error {
+// out gave under that name; with last, only the last block of it.
+func (r *renderer) snippet(value []byte, c *cursor, last bool) error {
 	if len(value) == 0 {
 		return errors.New("an empty value stands where a snippet is expected")
 	}
@@ -364,7 +364,11 @@ func (r *renderer) snippet(value []byte, c *cursor) error {
 		return fmt.Errorf("the snippet %s is shown where no component gave it", name)
 	}
 	// What the caller gave was written in the template of the caller.
-	for _, given := range f.block.Snippet(name) {
+	blocks := f.block.Snippet(name)
+	if last && len(blocks) > 0 {
+		blocks = blocks[len(blocks)-1:]
+	}
+	for _, given := range blocks {
 		if err := r.show(f.rec, given, f.outer); err != nil {
 			return err
 		}

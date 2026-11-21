@@ -318,20 +318,22 @@ func (b *builder) routes() ([]program.Route, error) {
 	return out, nil
 }
 
-// provided checks that what a page gives to its layouts, <svelte:head>, is
-// shown by one of them, and the same for every layout and the layouts
-// around it. The nearest layout that has the place shows it.
+// provided checks that what a page gives the head, <svelte:head>, is shown:
+// by the page itself if it writes the <head>, or by one of its layouts; the
+// same for every layout and the layouts around it.
 func (b *builder) provided(page *unit, layouts []int) Errors {
 	var errs Errors
 	check := func(u *unit, around []int) {
-		for name, at := range u.provided {
-			shown := false
-			for _, layout := range around {
-				shown = shown || slices.Contains(b.units[layout].outlets, name)
-			}
-			if !shown {
-				errs = append(errs, u.file.Errorf(at, `<svelte:%s> gives markup to the <%s> of a layout, and no layout around this file has a <%s>`, name, name, name))
-			}
+		at, provides := u.provided["head"]
+		if !provides {
+			return
+		}
+		shown := slices.Contains(u.outlets, "head")
+		for _, layout := range around {
+			shown = shown || slices.Contains(b.units[layout].outlets, "head")
+		}
+		if !shown {
+			errs = append(errs, u.file.Errorf(at, `<svelte:head> gives markup to the <head> of the page, and neither this file nor a layout around it writes a <head>`))
 		}
 	}
 	check(page, layouts)

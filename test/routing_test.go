@@ -12,6 +12,7 @@ const layouts = `
 <script>
 let { children } = $props()
 </script>
+<svelte:head><title>Shop</title><meta name="generator" content="shugo"></svelte:head>
 <html><head><meta charset="utf-8"></head><body>{@render children()}</body></html>
 -- src/pages/index.shugo --
 <svelte:head><title>Home</title></svelte:head>
@@ -43,13 +44,14 @@ let { children } = $props()
 func TestLayouts(t *testing.T) {
 	s := newSite(t, layouts)
 	report := s.build()
-	expect(t, s.page("/"), `<html><head><meta charset="utf-8"/><title>Home</title></head><body><h1>home</h1></body></html>`)
-	expect(t, s.page("/about"), `<html><head><meta charset="utf-8"/></head><body><h1>about</h1></body></html>`)
-	expect(t, s.page("/docs"), `<html><head><meta charset="utf-8"/></head><body><nav>docs</nav><main><p>docs home</p></main></body></html>`)
-	// A folder in parentheses adds a layout and no part of the address; what
-	// the page and the inner layouts give to <svelte:head> goes to the <head>
-	// of the outer one, the page first.
-	expect(t, s.page("/docs/start"), `<html><head><meta charset="utf-8"/><meta name="x" content="y"/><link rel="next" href="/docs"/></head><body><nav>docs</nav><main><aside>guides</aside><p>start</p></main></body></html>`)
+	// What <svelte:head> gives goes to the end of the <head>, in the order
+	// of the document, the outer layouts first; of the titles the page keeps
+	// the last, its own, and it stands after the rest: so Svelte does.
+	expect(t, s.page("/"), `<html><head><meta charset="utf-8"/><meta name="generator" content="shugo"/><title>Home</title></head><body><h1>home</h1></body></html>`)
+	expect(t, s.page("/about"), `<html><head><meta charset="utf-8"/><meta name="generator" content="shugo"/><title>Shop</title></head><body><h1>about</h1></body></html>`)
+	expect(t, s.page("/docs"), `<html><head><meta charset="utf-8"/><meta name="generator" content="shugo"/><title>Shop</title></head><body><nav>docs</nav><main><p>docs home</p></main></body></html>`)
+	// A folder in parentheses adds a layout and no part of the address.
+	expect(t, s.page("/docs/start"), `<html><head><meta charset="utf-8"/><meta name="generator" content="shugo"/><link rel="next" href="/docs"/><meta name="x" content="y"/><title>Shop</title></head><body><nav>docs</nav><main><aside>guides</aside><p>start</p></main></body></html>`)
 	if s.has("/_drafts/secret") || s.has("/blog/_card") || s.has("/docs/(guides)/start") {
 		t.Error("a file that is not a page got an address")
 	}
@@ -218,4 +220,15 @@ const Shown = Countdown
 	}
 	s.build()
 	expect(t, s.page("/"), "<b>1</b><b>0</b> <p><div>block</div></p>")
+}
+
+// A page without layouts that writes its own <head> takes its own
+// <svelte:head> there.
+func TestPageWithItsOwnHead(t *testing.T) {
+	s := newSite(t, `
+-- src/pages/index.shugo --
+<svelte:head><title>One</title><meta name="a" content="b"><title>Two</title></svelte:head>
+<html><head><meta charset="utf-8"></head><body><p>x</p></body></html>`)
+	s.build()
+	expect(t, s.page("/"), `<html><head><meta charset="utf-8"/><meta name="a" content="b"/><title>Two</title></head><body><p>x</p></body></html>`)
 }
