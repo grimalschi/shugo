@@ -166,4 +166,31 @@ The logic of model templates is known on all three syntaxes. Errors are several 
 
 We write the Shugo compiler, so the behavior can be made as models expect. In Astro syntax: slot under false condition is not passed; component can call itself by name; `return` in code between `---` means "show nothing". When Svelte syntax: the space at the edge of the block is saved. In this run, such rules would remove 12 from the 13 errors on Astro and 7 from the 14 on the Svelte.
 
-Stand, tasks, benchmarks and all answers are in the repository of the trust: `research/template-syntax` (`README.md`, `report/index.html`).
+### Paragraph about traps in the pump
+
+Second run, same day: same tasks, models and attempts. The only difference is that in the prompt before the last indications there is one paragraph about the rules of syntax, on which the models were wrong for the first time. For Astro: markup only in the template, `return` in the code between `---` can not, call themselves through `<Astro.self />`, `{…}` inside the attribute string is not calculated, conditional slot is considered transferred, space with line translation disappears. For Svelte: the gap at the edge of the block is gone, each component is imported, `</script>` anywhere the code block closes it. For React, the JSX rules are: spaces, `{count && …}` at zero, and DOM attribute names.
+
+| Model | Astro | React | Svelte |
+| --- | ---: | ---: | ---: |
+| DeepSeek V4.1 Flash | 86 → 89 | 90 → 90 | 82 → 88 |
+| Muse Ember | 86 → 89 | 90 → 90 | 89 → 89 |
+| GLM 5.3 Flash | 85 → 87 | 89 → 87 | 85 → 87 |
+| All three | 257 → 265 | 269 → 267 | 256 → 264 |
+
+The number of incorrect answers was half as high: 14 instead of 28. Each incorrect answer of both runs read:
+
+| Reason | Without paragraph | With paragraph |
+| --- | ---: | ---: |
+| The traps that the paragraph refers to | 23 | 0 |
+| Other syntax traps | 0 | 6 |
+| Errors of the models themselves: logic, JavaScript, broken answer, no code answer | 5 | 8 |
+
+- All these traps are gone: such rules of the model are followed. But the paragraph was written on the errors of the first run on the same tasks, so this is the best case.
+- Half of the new traps caused the paragraph itself: the model bypasses one trap and falls into the next. Ember has placed the suggested `{" "}` next to the element inside the expression, and Astro does not disassemble such without `<>…</>`. DeepSeek, warned about `</script>`, moved the JSON-LD tag from line in code to markup, and Svelte mistook it for a second block of code twice.
+- The other half are the traps that the paragraph is silent about: forgotten layout imports to Astro; fictional `import { Fragment } from "astro/components"`; `onload` and `onerror` handlers, which Svelte himself adds to `<img {...attrs}>`.
+- React lost two answers not because of syntax: GLM twice did not give working code and once made a mistake in logic. Of the 8 errors of the 7 models themselves, GLM has.
+- The run cost $2.98 instead of $2.76: DeepSeek with a paragraph argues a quarter longer.
+
+Conclusion: the paragraph is cheap and works, but it only cures what is named in it, and it itself shifts mistakes. The most reliable behavior that models expect without a clue: a rule that does not exist, can not be forgotten. For Shugo, this means first removing the traps in the compiler that are left to describe for agents in short text and catching clear messages from the compiler.
+
+The stand, tasks, standards and all answers are in the repository of the trust: `research/template-syntax` (`README.md`, `report/index.html`, `report/pitfalls.html`).
