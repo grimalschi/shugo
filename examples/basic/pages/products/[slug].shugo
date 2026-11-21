@@ -1,8 +1,7 @@
 ---
-import { formatPrice, getProducts, type Product } from "../../lib/shop"
+import { formatPrice, products, type Product } from "../../lib/shop"
 
-export async function getStaticPaths() {
-  const products = await getProducts()
+export function getStaticPaths() {
   return products.map((product) => ({ params: { slug: product.slug }, props: { product } }))
 }
 

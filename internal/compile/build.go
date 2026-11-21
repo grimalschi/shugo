@@ -492,6 +492,10 @@ func (b *builder) diagnose(message api.Message) *syntax.Error {
 	if line := at.Line - 1; line < len(u.module.from) && u.module.from[line].kind == 't' && markupInCode.MatchString(u.module.lines[line]) {
 		text += "; markup cannot stand inside {…}: put <g-if> or <g-for> around it instead"
 	}
+	if strings.Contains(text, `"await" can only be used inside an "async" function`) {
+		text = "a page is computed without waiting: its data comes from Shugo.query, which answers at once, so there is nothing to wait for. " +
+			"What takes time and needs doing once, such as making a highlighter, can be awaited at the top of a module in lib/ and used here"
+	}
 	return u.file.Errorf(u.module.locate(u.script, at.Line-1, at.Column), "%s", text)
 }
 

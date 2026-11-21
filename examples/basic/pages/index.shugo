@@ -1,8 +1,6 @@
 ---
 import Card from "../components/Card.shugo"
-import { getProducts } from "../lib/shop"
-
-const products = await getProducts()
+import { products } from "../lib/shop"
 ---
 <title slot="head">Catalog</title>
 <h1>Catalog</h1>

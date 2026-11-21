@@ -77,7 +77,7 @@ export const getStaticPaths = () => [{ params: { path: undefined } }, { params: 
 -- pages/list/[...page].shugo --
 ---
 import { products } from "../../lib/data"
-export async function getStaticPaths({ paginate }) {
+export function getStaticPaths({ paginate }) {
   return paginate(products, { pageSize: 2 })
 }
 const { page } = Shugo.props
@@ -129,6 +129,8 @@ func TestProjectMistakes(t *testing.T) {
 		{"a loop over a number", "-- pages/index.shugo --\n<g-for each={5} as=\"x\">{x}</g-for>", "<g-for each={…}> expects a list, got number 5"},
 		{"a tag that is not a component", "-- pages/index.shugo --\n---\nconst Card = \"div\"\n---\n<Card />", "this tag is not a component"},
 		{"a component that shows itself forever", "-- pages/index.shugo --\n---\nimport Loop from \"../loop.shugo\"\n---\n<Loop />\n-- loop.shugo --\n<Shugo.self />", "shows itself again with the same parameters"},
+		{"a script that waits", "-- pages/index.shugo --\n---\nconst items = await Promise.resolve([1])\n---\n<p>{items.length}</p>", "pages/index.shugo:2:15: a page is computed without waiting"},
+		{"getStaticPaths that waits", "-- pages/[id].shugo --\n---\nexport async function getStaticPaths() { return [{ params: { id: \"a\" } }] }\n---\n<p>x</p>", "getStaticPaths of /[id] waits"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

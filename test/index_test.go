@@ -264,15 +264,17 @@ func TestChangeWhileAnIndexIsMade(t *testing.T) {
 {"data": "data/shop.db"}
 -- lib/outside.ts --
 // Whoever fills the database writes to it while the site is built.
-export async function rename(): Promise<void> {
+import { createRequire } from "node:module"
+const require = createRequire(import.meta.url)
+export function rename(): void {
   const change = "UPDATE products SET title = 'Mug' WHERE id = 'p2' AND title = 'Cup'"
   if (typeof Bun !== "undefined") {
-    const { Database } = await import("bun:sqlite")
+    const { Database } = require("bun:sqlite")
     const db = new Database(process.env.SHUGO_DATA)
     db.exec(change)
     db.close()
   } else {
-    const { DatabaseSync } = await import("node:sqlite")
+    const { DatabaseSync } = require("node:sqlite")
     const db = new DatabaseSync(process.env.SHUGO_DATA)
     db.exec(change)
     db.close()
@@ -282,7 +284,7 @@ export async function rename(): Promise<void> {
 ---
 import { rename } from "../lib/outside"
 const before = Shugo.query("products").get("p2").title
-await rename()
+rename()
 const after = Shugo.query("products").where({ category: "c1" }).order("position").all().map((row) => row.title)
 console.log("index")
 ---

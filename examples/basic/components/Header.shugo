@@ -1,7 +1,6 @@
 ---
-import { getProducts } from "../lib/shop"
+import { products } from "../lib/shop"
 
-const products = await getProducts()
 const links = [
   { href: "/", title: "Home" },
   { href: "/about", title: "About the shop" },

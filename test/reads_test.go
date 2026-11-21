@@ -333,7 +333,7 @@ func TestRowIsAnOrdinaryObject(t *testing.T) {
 ---
 const item = Shugo.query("products").get("p1")
 const priced = item.hasOwnProperty("price")
-const same = await item === item && item.toString === Object.prototype.toString && item.length === undefined
+const same = item.then === undefined && item.toString === Object.prototype.toString && item.length === undefined
 console.log("index")
 ---
 <p title={item}>{priced} {same} {item} {[item, item]}</p>
@@ -364,7 +364,6 @@ let row: { title: string } | undefined
 export const jug = (Shugo: any) => (row ??= Shugo.query("products").get("p1"))
 let asker: any
 export const count = (Shugo: any) => (asker ??= Shugo).query("products").count()
-export const pause = () => new Promise((done) => setTimeout(done, 50))
 `
 
 // A row notes what is read of it for the one who asked for it. Kept in a
@@ -385,32 +384,13 @@ const item = jug(Shugo)
 <p>{item.title}</p>
 -- pages/about.shugo --
 ---
-import { jug, pause } from "../lib/kept"
-await pause()
+import { jug } from "../lib/kept"
 const item = jug(Shugo)
 ---
 <p>{item.title}</p>
 `, []string{
 			"a row of the table products is read when the page, shared block or list of pages it belongs to is already computed",
 			"let every script ask for the rows it uses",
-			"while computing the page /about",
-		}},
-		{"a row read while its page is being computed", keptSite + `
--- pages/index.shugo --
----
-import { jug, pause } from "../lib/kept"
-const item = jug(Shugo)
-await pause()
----
-<p>{item.title}</p>
--- pages/about.shugo --
----
-import { jug } from "../lib/kept"
-const item = jug(Shugo)
----
-<p>{item.title}</p>
-`, []string{
-			"a row of the table products is read by another page, shared block or list of pages than the one it belongs to",
 			"while computing the page /about",
 		}},
 		{"a row that a list of pages keeps for its pages", `
@@ -435,8 +415,7 @@ import { count } from "../lib/kept"
 <p>{count(Shugo)}</p>
 -- pages/about.shugo --
 ---
-import { count, pause } from "../lib/kept"
-await pause()
+import { count } from "../lib/kept"
 ---
 <p>{count(Shugo)}</p>
 `, []string{
@@ -444,20 +423,6 @@ await pause()
 			"do not keep Shugo, or a query made of it, in a variable of a module",
 			"while computing the page /about",
 		}},
-		{"Shugo asked while its page is being computed", keptSite + `
--- pages/index.shugo --
----
-import { count, pause } from "../lib/kept"
-const first = count(Shugo)
-await pause()
----
-<p>{first}</p>
--- pages/about.shugo --
----
-import { count } from "../lib/kept"
----
-<p>{count(Shugo)}</p>
-`, []string{"the table products is asked by another page, shared block or list of pages than the one it belongs to"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
