@@ -30,7 +30,7 @@ import (
 
 // layout names the set of tables below. A store laid out in another way is
 // emptied: it holds nothing that a build cannot make again.
-const layout = "3"
+const layout = "4"
 
 const schema = `
 CREATE TABLE meta   (name TEXT PRIMARY KEY, value BLOB NOT NULL) WITHOUT ROWID;
@@ -41,11 +41,12 @@ CREATE TABLE shows  (shared INTEGER NOT NULL, user TEXT NOT NULL, PRIMARY KEY (s
 CREATE TABLE route  (id INTEGER PRIMARY KEY, props INTEGER NOT NULL, reads BLOB NOT NULL);
 CREATE TABLE shape  (id INTEGER PRIMARY KEY, spec TEXT NOT NULL UNIQUE);
 CREATE TABLE reads  (shape INTEGER NOT NULL, key BLOB NOT NULL, reader TEXT NOT NULL, PRIMARY KEY (shape, key, reader)) WITHOUT ROWID;
+CREATE TABLE plan   (question TEXT PRIMARY KEY) WITHOUT ROWID;
 CREATE INDEX page_route ON page (route);
 `
 
 // tables are the tables of the schema.
-var tables = []string{"meta", "page", "shared", "value", "shows", "route", "shape", "reads"}
+var tables = []string{"meta", "page", "shared", "value", "shows", "route", "shape", "reads", "plan"}
 
 // Store is an open store.
 type Store struct {
@@ -308,6 +309,24 @@ func (r *reader) Readers(shape int64, key []byte, visit func(reader string)) err
 			return err
 		}
 		visit(reader)
+	}
+	return rows.Err()
+}
+
+// Plans calls visit with every question the project's code has asked an
+// index for.
+func (r *reader) Plans(visit func(question string)) error {
+	rows, err := r.tx.Query("SELECT question FROM plan")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var question string
+		if err := rows.Scan(&question); err != nil {
+			return err
+		}
+		visit(question)
 	}
 	return rows.Err()
 }
@@ -604,6 +623,18 @@ func (u *Update) PutRoute(route int, props bool, reads []byte) error {
 // its table.
 
 // NewShape gives a number to a shape the store has not had.
+// PutPlan keeps a question the project's code asked an index for; DropPlan
+// forgets one that can no longer be asked.
+func (u *Update) PutPlan(question string) error {
+	_, err := u.tx.Exec("INSERT OR IGNORE INTO plan (question) VALUES (?)", question)
+	return err
+}
+
+func (u *Update) DropPlan(question string) error {
+	_, err := u.tx.Exec("DELETE FROM plan WHERE question = ?", question)
+	return err
+}
+
 func (u *Update) NewShape(spec string) (int64, error) {
 	result, err := u.tx.Exec("INSERT INTO shape (spec) VALUES (?)", spec)
 	if err != nil {
@@ -702,7 +733,7 @@ func (u *Update) DropValues(hash record.Hash, fewer int) (gone bool, err error) 
 // they were.
 // SweepValues drops the rest once the records are back.
 func (u *Update) ClearRecords() error {
-	_, err := u.tx.Exec("DELETE FROM page; DELETE FROM shared; DELETE FROM shows; DELETE FROM route; DELETE FROM shape; DELETE FROM reads; UPDATE value SET uses = 0")
+	_, err := u.tx.Exec("DELETE FROM page; DELETE FROM shared; DELETE FROM shows; DELETE FROM route; DELETE FROM shape; DELETE FROM reads; DELETE FROM plan; UPDATE value SET uses = 0")
 	return err
 }
 

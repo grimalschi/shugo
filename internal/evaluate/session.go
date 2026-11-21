@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
-	"strings"
 
 	"github.com/grimalschi/shugo/internal/compile"
 	"github.com/grimalschi/shugo/internal/project"
@@ -32,7 +31,10 @@ import (
 //	   \x03; a unit is p \x02       R  records, split by \x03
 //	   address \x02 route, or       F  a shared block failed: name \x02 the failure
 //	   s \x02 name                  S  a shape of readings: number \x02 what it is
-//	Q  nothing more                 E  it failed: { message, stack, place }
+//	K  what is known from earlier   E  it failed: { message, stack, place }
+//	   runs, once at the start:
+//	   { plans, shapes }: see known
+//	Q  nothing more
 //	I  the index asked for is       I  an index is wanted: table \x02 1 for
 //	   there: 1 if it was made         rows in their order, 0 for a count
 //	   just now, else 0                \x02 how many columns rows are found
@@ -102,19 +104,15 @@ func (w *wire) ask(kind byte, body []byte, k *keeper, got func(kind byte, body [
 		case 'I':
 			// The project's code waits for the answer before it asks its
 			// question: with the index, the question finds its rows at once.
-			names := strings.Split(string(body), "\x02")
+			// It asks only about a question it has not been told of: see known.
 			if k.shapes == nil {
 				return nil, errorf("a request for an index of a data database, and the project names none")
 			}
-			if len(names) < 3 || (names[1] != "0" && names[1] != "1") {
-				return nil, errorf("a request for an index that cannot be read: %q", body)
+			p, err := readPlan(string(body))
+			if err != nil {
+				return nil, err
 			}
-			columns := names[3:]
-			equal, err := strconv.Atoi(names[2])
-			if err != nil || equal < 0 || equal > len(columns) {
-				return nil, errorf("a request for an index that cannot be read: %q", body)
-			}
-			made, err := k.index(names[0], columns[:equal], columns[equal:], names[1] == "1")
+			made, err := k.index(p)
 			if err != nil {
 				return nil, err
 			}
@@ -367,17 +365,32 @@ type worker struct {
 	session *session
 }
 
-func (w *worker) ready() error {
+func (w *worker) ready(k *keeper) error {
 	if w.session != nil {
 		return nil
 	}
-	var err error
-	w.session, err = start(w.project, w.log)
-	return err
+	// What is known is made sure of before the project's code starts
+	// reading: an index made after that would not be seen by it.
+	var known []byte
+	if k.shapes != nil {
+		var err error
+		if known, err = k.known(); err != nil {
+			return err
+		}
+	}
+	session, err := start(w.project, w.log)
+	if err != nil {
+		return err
+	}
+	w.session = session
+	if known == nil {
+		return nil
+	}
+	return session.told(session.send('K', known))
 }
 
 func (w *worker) list(routes []int, k *keeper) ([]listed, error) {
-	if err := w.ready(); err != nil {
+	if err := w.ready(k); err != nil {
 		return nil, err
 	}
 	pages, err := w.session.wire.list(routes, k)
@@ -388,7 +401,7 @@ func (w *worker) compute(units []unit, k *keeper) error {
 	if len(units) == 0 {
 		return nil
 	}
-	if err := w.ready(); err != nil {
+	if err := w.ready(k); err != nil {
 		return err
 	}
 	return w.session.told(w.session.wire.compute(units, k))

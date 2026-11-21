@@ -678,8 +678,8 @@ export async function run(modules) {
         declare: (number, spec) => send("S", number + "\x02" + spec),
         // The answer is waited for: the question that needs the index is
         // asked right after it.
-        index(table, equal, order, rows) {
-          send("I", [table, rows ? 1 : 0, equal.length, ...equal, ...order].join("\x02"));
+        index(question) {
+          send("I", question);
           const answer = receive();
           if (answer?.kind !== "I") throw new Error("the shugo command did not answer a request for an index: build the project again");
           return answer.text === "1";
@@ -695,6 +695,10 @@ export async function run(modules) {
         case "C":
           await run.compute(request.text.split("\x03"));
           send("D", "{}");
+          break;
+        case "K":
+          // What the Go side knows from earlier runs: it needs no answer.
+          data?.know(JSON.parse(request.text));
           break;
         default:
           throw new Error(`the shugo command asked for "${request.kind}", which this project's compiled code does not know: build the project again`);

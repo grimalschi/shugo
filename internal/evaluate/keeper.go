@@ -74,8 +74,10 @@ type keeper struct {
 	loose map[int64]struct{}
 
 	// shapes are the shapes of what the project's code reads from its data
-	// database; nil if it has none.
+	// database; nil if it has none. plans are the questions it has asked
+	// indexes for, as the store keeps them, that this run has met.
 	shapes *shapes
+	plans  map[string]bool
 	reads  readings
 
 	shows   edges
@@ -97,7 +99,8 @@ func newKeeper(site *program.Site, u *store.Update, report *Report, limit int) (
 		return nil, err
 	}
 	return &keeper{
-		site: site, update: u, report: report, limit: limit, totals: totals,
+		plans: map[string]bool{},
+		site:  site, update: u, report: report, limit: limit, totals: totals,
 		again:     func(string, bool) bool { return false },
 		seenPages: map[string]struct{}{}, seenShared: map[int64]struct{}{}, failed: map[int64]*ScriptError{},
 		met: map[string]met{}, named: map[int64]string{}, asked: map[int64]struct{}{}, blank: map[int64]struct{}{},
