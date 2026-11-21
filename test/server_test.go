@@ -122,17 +122,13 @@ func TestServer(t *testing.T) {
 
 // A server that is running shows the result of an update at once.
 func TestServerSeesUpdates(t *testing.T) {
-	s := newSite(t, shop)
+	s := newShop(t)
 	s.build()
 	ts := serve(t, s)
 	if _, _, body := get(t, ts, "/products/jug"); !strings.Contains(body, "Clay and wood · 3 products") {
 		t.Fatalf("before: %s", body)
 	}
-	s.change(func(data map[string]any, products []map[string]any) []map[string]any {
-		data["motto"] = "New"
-		products[0]["related"] = []string{"cup"}
-		return products[:2]
-	})
+	s.sql(`UPDATE settings SET motto = 'New'; DELETE FROM products WHERE slug = 'tray'; DELETE FROM related WHERE other = 'tray'`)
 	s.update()
 	if _, _, body := get(t, ts, "/products/jug"); !strings.Contains(body, "New · 2 products") {
 		t.Errorf("after: %s", body)
@@ -181,7 +177,7 @@ func TestExport(t *testing.T) {
 // While updates go on, every page a server gives belongs to one state of
 // the store: the header counts as many products as the page lists.
 func TestPagesStayWholeDuringUpdates(t *testing.T) {
-	s := newSite(t, shop)
+	s := newShop(t)
 	s.build()
 	stop := make(chan struct{})
 	failures := make(chan string, 16)
@@ -208,14 +204,13 @@ func TestPagesStayWholeDuringUpdates(t *testing.T) {
 			}
 		})
 	}
+	s.sql(`DELETE FROM related WHERE other = 'tray'`)
 	for round := range 12 {
-		s.change(func(_ map[string]any, products []map[string]any) []map[string]any {
-			products[0]["related"] = []string{"cup"}
-			if round%2 == 0 {
-				return products[:2]
-			}
-			return append(products[:2], map[string]any{"slug": "tray", "title": "Tray", "price": round, "related": []string{}})
-		})
+		if round%2 == 0 {
+			s.sql(`DELETE FROM products WHERE slug = 'tray'`)
+		} else {
+			s.sql(fmt.Sprintf(`INSERT INTO products VALUES ('tray', 'Tray', %d, '', 3)`, round))
+		}
 		s.update()
 	}
 	close(stop)

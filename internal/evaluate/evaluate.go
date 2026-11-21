@@ -13,7 +13,8 @@
 // the database keeps a journal of the rows that change. An update computes
 // what read a row that has changed, and nothing else: its cost follows the
 // size of the change, not of the site. A project without a data database
-// has nothing to tell what changed, and is computed whole every time.
+// has no data to change: an update computes nothing unless the project
+// itself has changed, and then everything.
 package evaluate
 
 import (
@@ -172,10 +173,16 @@ func Run(p *project.Project, compiled *compile.Result, st *store.Store, options 
 	k.check, report.Checked = options.Check, options.Check
 	w := &worker{project: p, log: options.Log}
 	defer w.stop()
-	if path := p.Data(); path == "" {
-		err = everything(w, k, took)
-	} else {
+	switch path := p.Data(); {
+	case path != "":
 		err = tracked(w, k, path, options.Whole || kept != compiled.ID, took)
+	case options.Whole || options.Check || kept != compiled.ID:
+		if options.Check {
+			// Nothing tells to compute anything: a record that comes out
+			// otherwise reads something past the data.
+			k.reached = map[string]struct{}{}
+		}
+		err = everything(w, k, took)
 	}
 	if err == nil {
 		err = w.end()
