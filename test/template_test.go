@@ -39,6 +39,22 @@ const rest = { id: "x", hidden: true, title: null, "data-n": 5 }
 <img src="a.png" alt='it"s'>`)
 }
 
+// Values reach the page as they are, with the characters that split the
+// messages between the code of the project and Shugo among them.
+func TestControlCharacters(t *testing.T) {
+	got := one(t, `---
+const odd = "a\u0000b\u0001c\u0002d\u0003e\u0004f\u0005g\u0004@"
+---
+<p title={odd}>{odd}</p><g-html value={odd} />`)
+	odd := "a\x00b\x01c\x02d\x03e\x04f\x05g\x04@"
+	expect(t, got, `<p title="`+odd+`">`+odd+`</p>`+odd)
+
+	s := newSite(t, "-- pages/index.shugo --\n---\nconst rest = { \"a\\u0001b\": 1 }\n---\n<p {...rest}>x</p>")
+	if _, err := s.tryBuild(); err == nil || !strings.Contains(err.Error(), `"a\x01b" cannot be the name of an attribute`) {
+		t.Errorf("an attribute named with a control character: %v", err)
+	}
+}
+
 func TestAddresses(t *testing.T) {
 	got := one(t, `---
 const bad = "javascript:alert(1)"

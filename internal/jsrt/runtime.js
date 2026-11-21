@@ -75,7 +75,7 @@ class Writer {
 
   // <g-html value={expression} />
   html(value) {
-    this.block.values.push(value == null || value === false ? "" : clean(String(value)));
+    this.block.values.push(value == null || value === false ? "" : escape(String(value)));
   }
 
   // name={expression}
@@ -92,7 +92,7 @@ class Writer {
     if (typeof attributes !== "object") throw new TypeError(`{...} among attributes expects an object, got ${describe(attributes)}`);
     let count = 0;
     for (const name of Object.keys(attributes)) {
-      values.push(clean(name), attributeOf(name, attributes[name]));
+      values.push(escape(name), attributeOf(name, attributes[name]));
       count++;
     }
     values[at] = count;
@@ -217,25 +217,26 @@ function query(reads, table) {
 // ---------------------------------------------------------------------------
 // Values
 
-// The Go side splits what it receives by these characters, so no value may hold them.
-const separators = /[\x00-\x03]/;
-const everySeparator = /[\x00-\x03]/g;
+// The Go side splits what it receives by the characters 0 to 3. Inside a
+// value they come escaped, as 4 and the character plus 0x40, and so does 4.
+const special = /[\x00-\x04]/;
+const everySpecial = /[\x00-\x04]/g;
 
-function clean(text) {
-  return separators.test(text) ? text.replace(everySeparator, "") : text;
+function escape(text) {
+  return special.test(text) ? text.replace(everySpecial, (c) => "\x04" + String.fromCharCode(0x40 + c.charCodeAt(0))) : text;
 }
 
 // What {value} shows: nothing for null, undefined and false, the items of a
 // list one after another, and otherwise what String() gives.
 function textOf(value) {
-  if (typeof value === "string") return clean(value);
+  if (typeof value === "string") return escape(value);
   if (value == null || value === false) return "";
   if (Array.isArray(value)) {
     let out = "";
     for (const item of value) out += textOf(item);
     return out;
   }
-  return clean(String(value));
+  return escape(String(value));
 }
 
 // Attributes that are either there or not: disabled, hidden.
@@ -254,11 +255,11 @@ const spelled = new Set(["contenteditable", "draggable", "spellcheck"]);
 //   true              the name alone for disabled and the like, "true" otherwise
 //   false             no attribute; "false" for aria-*, data-* and a few like draggable
 function attributeOf(name, value) {
-  if (typeof value === "string") return "=" + clean(value);
+  if (typeof value === "string") return "=" + escape(value);
   if (value == null) return "-";
   if (value === true) return flags.has(name) ? "+" : "=true";
   if (value === false) return spelled.has(name) || name.startsWith("aria-") || name.startsWith("data-") ? "=false" : "-";
-  return "=" + clean(String(value));
+  return "=" + escape(String(value));
 }
 
 function describe(value) {
