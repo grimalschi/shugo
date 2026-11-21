@@ -194,3 +194,46 @@ The number of incorrect answers was half as high: 14 instead of 28. Each incorre
 Conclusion: the paragraph is cheap and works, but it only cures what is named in it, and it itself shifts mistakes. The most reliable behavior that models expect without a clue: a rule that does not exist, can not be forgotten. For Shugo, this means first removing the traps in the compiler that are left to describe for agents in short text and catching clear messages from the compiler.
 
 The stand, tasks, standards and all answers are in the repository of the trust: `research/template-syntax` (`README.md`, `report/index.html`, `report/pitfalls.html`).
+
+### HTML is exactly like Svelte
+
+21 was reviewed on November by 2026 on the question of the author of the project: can the Shugo runtime issue the same HTML that the Svelte server.
+
+Six versions of Svelte 5 have rendered the same set of standards 30 test objectives and 538 model responses to Svelte, on all data sets. Each page was compared with that given by the version of 5.59.1.
+
+| Version | Pages | Byte byte | No hydration marks | Structure and visible text |
+| --- | ---: | ---: | ---: | ---: |
+| 5.0.0, October 2024 | 2 208 | 55 | 1 505 | 2 152 |
+| 5.16.0, December 2024 | 2 212 | 63 | 1 601 | 2 211 |
+| 5.30.0, May 2025 | 2 212 | 70 | 1 787 | 2 211 |
+| 5.38.0, August 2025 | 2 212 | 70 | 1 984 | 2 212 |
+| 5.45.0, November 2025 | 2 212 | 70 | 1 984 | 2 212 |
+
+- What the reader sees has not changed since the version of 5.38. Previously, the meaning also changed: `class` from the array and the object appeared in 5.16, the server selected by `<option>` from `<select value>` notes with 5.38.
+- Bytes are constantly changing. Hydration tags — comments `<!--[-->`, `<!--]-->`, `<!--[-1-->` this 27% byte of the page, and their appearance has changed in two years. Without labels, pages diverge in small things: `disabled` Stylish `disabled=""` the City of London 5.50, `<img>` Stylish `<img/>` between 5.30 and 5.38There is an extra gap in `class` disappeared between 5.16 and 5.30.
+
+How Svelte 5.59 writes values and how it differs from Shugo now:
+
+| In the template | Svelte 5.59 | Shugo |
+| --- | --- | --- |
+| `{false}` | `false` | nothing |
+| `{[1, 2]}` | `1,2` | `12` |
+| `disabled={true}` | `disabled=""` | `disabled` |
+| `class={["a", f && "b", {c: true}]}` | `class="a c"` | `class="a,false,[object Object]"` |
+| `"<&>'` string in attribute | `"&quot;&lt;&amp;>'"` | `"&#34;&lt;&amp;&gt;&#39;"` |
+| `href={"javascript:…"}` | as is | `about:invalid#blocked` |
+| `&nbsp;` and `&copy;` in text | symbols | how written |
+| moving a string between tags | is compressed into a space, at the edges of the element and the block is removed | how it is written |
+| `title="{x}"` | value `x` | text `{x}` |
+| `<!-- comment -->` |  | remains |
+
+What follows:
+
+- The visible result can be repeated in full. The rules by which Svelte writes HTML are unambiguous and small: about 2,100 rows of the server compiler, 181 row of the space rules and about 800 rows of the runtime. The Shugo expressions are already computed in the present JS; if you convert values to text and attributes by Svelte functions taken as is, the match will be by construction.
+- Match is checked, not promised: the real Svelte serves as a benchmark, the Shugo page is compared to its `render()` byte per byte. Examples for comparison are enough: in the Svelte repository, 136 examples of server render and 1,348 examples on runes, plus the tasks and answers of this test.
+- Byte byte - only with one fixed version of Svelte. Update version is a comparison run and correction of discrepancies, judging by the history - several times a year.
+- It is not necessary to repeat the hydration labels: this is the internal format of Svelte, it changes most often, and it is not needed for a static page. The island of the label is given by Svelte itself, which renders it.
+- The one-to-one match also includes Svelte traps: the gap at the edge of `{#if}` will disappear in the same way as in Svelte. The compiler warning about such a gap HTML does not change.
+- Where to deviate from Svelte consciously is decided separately: for example, whether to block `javascript:` addresses, as now.
+
+Checking is in the trust store: `research/svelte-exact` (`README.md`).
