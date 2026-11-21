@@ -12,7 +12,7 @@ Component - the reusable part of the template: cap, product card, footer.
 - Component call is the block boundary: the block is stored and updated separately. Details are in [Blocks and point update](blocks.md).
 - The functions are connected by explicit imports.
 
-## Made in the first version, waiting for approval
+## Implemented, pending approval
 
 ### Connection and challenge
 
@@ -73,8 +73,7 @@ Recording options and reasons for choosing [8](decisions.md#8-slots).
 
 ```
 ---
-import { getMenu } from "@/lib/cms"
-const menu = await getMenu()
+const menu = Shugo.query("menu").order("position").all()
 ---
 <nav><g-for each={menu} as="item"><a href={item.href}>{item.title}</a></g-for></nav>
 ```

@@ -7,7 +7,7 @@ The document describes working with styles: Tailwind and the usual CSS.
 - Styles are collected when the project is compiled. At this stage, you can run Tailwind and other utilities.
 - Tailwind finds classes by viewing project files as text.
 
-## Made in the first version, waiting for approval
+## Implemented, pending approval
 
 The reasons are in [15](decisions.md#15-styles).
 

@@ -6,7 +6,7 @@ The document describes the code that is executed in the visitor's browser.
 
 So far, nothing. Script processing is related to what is done immediately after the base.
 
-## Made in the first version, waiting for approval
+## Implemented, pending approval
 
 ```
 <button id="menu">Menu</button>

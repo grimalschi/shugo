@@ -7,7 +7,7 @@ Shugo is a framework for static website generation. These documents describe in 
 Documents are written together. Each of the three sections:
 
 - **Decisions** is just what the author of the project confirmed.
-- **Made in the first version, waiting for approval** — how it works now. The reasons for each such decision are collected in one place: [First version solutions](decisions.md).
+- **Implemented, pending approval** — how it works now. The reasons for each such decision are collected in one place: [Decisions pending approval](decisions.md).
 - **Open questions** is something that needs to be decided. General list with order of discussion: [Open questions](open-questions.md).
 
 ## Documents

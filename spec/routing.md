@@ -8,7 +8,7 @@ The page addresses are given by the location and file names.
 - Files with `+` at the beginning of the name are service files, modeled on SvelteKit and PocketPages.
 - When one address gives a page with an exact name and a page with a parameter, the exact name wins.
 
-## Made in the first version, waiting for approval
+## Implemented, pending approval
 
 The reasons are in [10](decisions.md#10-routes).
 

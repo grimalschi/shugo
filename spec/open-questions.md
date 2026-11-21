@@ -4,7 +4,8 @@ The list is compiled during the first version. Questions are arranged according 
 
 ## Change the device
 
-1. **Analysis of data changes.** The first version calculates everything and compares the result; the author rejected it. Offer: dependent tree prints, comparison on Go, calculation only changed. Approve the mechanism and three rules for the authors of the site. — [Change tracking](change-tracking.md)
+1. **Final version.** Collected from the fifth option: data in the database SQLite, lines remember what you read, log on triggers, pages without waiting, tapes inside records, server without a copy, export by changes. Approve it and the decisions that are made in it without confirmation. [Change tracking](change-tracking.md#final-version-waiting-for-approval)
+   - **`props` from `getStaticPaths`.** With the data in the database, the page quickly gets its line itself, and `props` is forced to calculate all the route pages after changing the line it read. Do I leave them as in Astro. — [Dynamic pages](dynamic-pages.md#open-questions)
 2. **Import components in code like Astro.** This is a departure from the first wish to keep the components connected in a template. — [6](decisions.md#6-components-and-functions-are-imported-in-data-code-as-in-astro)
 3. **The rule of common blocks.** The component is general if it does not read the page and is called with simple parameters. Is this enough, or an explicit mark is needed. — [3](decisions.md#3-which-blocks-are-shared)
 4. **Key in `<g-for>`.** Not entered: it does not give anything in the new scheme. — [4](decisions.md#4-the-key-in-g-for-is-not-entered)
@@ -12,7 +13,7 @@ The list is compiled during the first version. Questions are arranged according 
 
 ## Next steps
 
-6. **Update without downloading all data.** After analyzing the changes, the main expense is downloading the data with the project code. Signals from sources and several processes of JS. — [Partial data reboot](partial-reload.md)
+6. **Data adapter.** How data from any source gets into the project database: full load with comparison and point changes. Discussed, not done. — [Data adapter and data copy](data-adapter.md)
 7. **Internationalization.** One page for all languages and strings in JSON. — [proposal](i18n.md)
 8. **Pictures.** libvips, address type, other people's pictures. — [proposal](images.md)
 9. **The scripts.** TypeScript and assembly of `<script>`. — [Page scripts](scripts.md)

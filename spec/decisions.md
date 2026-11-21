@@ -24,11 +24,13 @@ The solutions are from the most important to the small.
 
 ## 2. Values are stored by content and shared blocks by name
 
-**What's done.** Each block has a value tape. It is stored under the hash of itself, so the same tapes are in storage once. A page entry is a list of its blocks with links to the feeds. The shared block is stored as a separate entry under a name from the component file and parameters, and the page links to it by that name.
+**Changed by the decision of the author of the project 21 November 2026 year:** value tapes lie inside page records and shared blocks, rather than a separate table under its hash, [Storage](storage.md#decisions). Without a copy of the site in memory, the server reads a page from SQLite for each request, and time determines the number of searches: with tapes inside they are half as large ([](runtime.md#sqlite-read-performance)). Shared blocks are still stored by name.
 
-**Why not.** This is the answer to the question about the header. In the prototype, the page stored the hash of each of its blocks, including the cap. The header has changed its hash has changed the record of each of the 100,000 pages needs to be rewritten. In addition, these caps were in the data of each page, and all pages had to be re-read. Now the page stores the name of the shared block, not its content. The header has changed one recording has been rewritten, the pages have not been touched.
+**What was done.** Each block had a value tape. It was stored under the hash of itself, so the same tapes were lying in storage once. Page entry - a list of its blocks with links to the tapes. The shared block is stored as a separate entry under a name from the component file and parameters, and the page links to it by that name.
 
-**“The Significance of the Entry Hash”** from the prototype meant: the block result was stored under the hash of the data that the block reads. In the first version, this is not: the hash is taken from the result.
+**Why do we have common blocks by name?** This is the answer to the question about the header. In the prototype, the page stored the hash of each of its blocks, including the cap. The header has changed its hash has changed the record of each of the 100,000 pages needs to be rewritten. In addition, these caps were in the data of each page, and all pages had to be re-read. Now the page stores the block number, not its content. The header has changed one recording has been rewritten, the pages have not been touched.
+
+**“The Significance of the Entry Hash”** from the prototype meant: the block result was stored under the hash of the data that the block reads. This is not: the hash is taken from the result.
 
 ## 3. Which blocks are shared
 
@@ -238,7 +240,7 @@ Report `build`, `update` and `export` can be obtained in JSON (`-json`). JS-runt
 
 ## 20. Storage
 
-**What's done.** One SQLite file with four tables: page entries, shared block entries, value feeds, utility data with the project program. The server reads the page entirely from one state. Update — one transaction.
+**What's done.** One file SQLite: records pages and shared blocks with feeds inside, who is what common block shows who read what from the project database, missing pages, service data with the project program - [Storage](storage.md#tables). The server reads the page entirely from one state. Update is one transaction.
 
 The driver is `modernc.org/sqlite`, without cgo. It is hidden behind the `store` package, you can replace it in one place.
 
@@ -246,9 +248,11 @@ The driver is `modernc.org/sqlite`, without cgo. It is hidden behind the `store`
 
 ## 21. Export to files
 
-**What's done.** Page `/about` is written in `about/index.html`, page 404 is written in `404.html`. The file with the former content is not copied, the file of the missing page is deleted.
+**What's done.** The `/about` page is written in `about/index.html`, the 404 page is written in `404.html`. The file with the previous content is not overwritten.
 
-**Why not.** `about/index.html` gives any web server without setting up.
+Export follows the previous one: in the folder, it leaves a list of which storage and which version the pages are written from and which files are copied. The next export from the same repository builds only pages that have changed the record or the record of the shared block they show, deletes missing page files and copies the changed files. Without a list, exports build everything and remove nothing. With a list from another repository or from the version before the full reassembly - builds everything and removes page files that the site does not have, without touching other files and folders whose name starts with a point. See also [Rantime](runtime.md#export).
+
+**Why not.** `about/index.html` gives any web server without setting up. Exports that, after a single price change, collect all 104,202 pages, cost 7 s; on changes, 8 ms. To update nothing noted for export, the version is written along with the record, and the pages that show the changed common block, export finds itself: it builds them anyway. The export folder is considered to be an export folder: a file that has been manually corrected remains until its page changes.
 
 ## 22. Message Language
 
@@ -261,7 +265,7 @@ The driver is `modernc.org/sqlite`, without cgo. It is hidden behind the `store`
 - **The component can call itself**: `<Shugo.self node={child} />`. The ban was a prototype limitation. Infinite call without parameters is caught with an understandable error.
 - **Module path Go** — `shugo`. Before publication, it must be replaced with the present one.
 - **Author of commits** is the name of `itareo` and the owner's mail, specified only in this repository.
-- **Page queue.** Simultaneously calculates the 32 page to wait for the data to go in parallel. The process of JS is one.
+- **Page queue.** Pages are calculated one by one, in a row: there is nothing to wait for ([Data loading](data-loading.md#decisions)). The JS process is one.
 
 ## 24. Verification on agent
 
@@ -274,3 +278,22 @@ The driver is `modernc.org/sqlite`, without cgo. It is hidden behind the `store`
 - Spaces in the memo: addresses when broken down into pages, `page` fields, priority routes where to keep data files that types are not checked. Added.
 
 **What it does not show.** The agent did not need error messages, so they were not checked on the agent. The task was one, the model one.
+
+## 25. Service symbols in values are shielded
+
+**What's done.** JS transmits entries in Go messages in which characters with 0–3 codes serve as separators. The first version silently cut them out of meaning. Now JS shields them inside the value, and with them the 4 symbol, which it shields: the 4 symbol, then the symbol code plus 0x40. Go removes the shielding, and the corrupted shielding stops the upgrade. The attribute name from `{...attributes}` with this symbol is an error, as are other names that cannot be the attribute name.
+
+**Why not.** The value should reach the page as the project code gave it. The characters cut out changed the text imperceptibly.
+
+## 26. Project without database
+
+**What's done.** A project without a database `shugo update` does not calculate anything if the project itself has not changed. If it has changed, the project is compiled anew and everything is calculated. Previously, such an update always calculated everything.
+
+**Why not.** The data of such a project is in its code, and the code changes only with the project. Everything that the page reads from other places is not tracked when working with the base: `shugo build` calculates everything and reads it again.
+
+## 27. Commands
+
+- `shugo dev` updates the site in the same way as `shugo update`: after changing the source code compiles and calculates everything, after changing the database - what the changed lines read, after changing other files - nothing. Previously, any changed file calculated the entire site anew.
+- The team refuses the option it does not use: `shugo export -check` is an error, not an option that was silently missed. `-runtime` is only taken by commands that execute the project code: `build`, `update`, `dev`.
+
+**Why not.** The agent who transmitted the option is waiting for action from it. Silence would hide the error.

@@ -17,9 +17,24 @@ The words of the author of the project, 20 November 2026 year.
 - A copy of the data in SQLite is part of the architecture: [Data adapter and data copy](data-adapter.md).
 - The first option, fingerprints without a database, is no longer considered: options with a database work much faster and better.
 
+## Final version, waiting for approval
+
+21 November 2026 year author of the project asked to remove all that remains from the first version, and prepare a solution as the final. The final version is collected from the fifth version in the branch `final` and merged into `main`. It:
+
+- **Data** is in the base of the SQLite project and is read only through `Shugo.query`. Each line remembers which columns are read, by whomever they are read, while its owner is calculated (the 5 variant). The magazine is triggered, the indexes are built by Shugo - this is decided.
+- **Pages are calculated without waiting**, one by one, is decided by 21 in November: [Data loading](data-loading.md#decisions).
+- **Conversation Go and JS** without repetition. At the beginning of Go, one message says what is known from past launches: types of readings and questions for which there is already an index. JS asks only about the new one, and for price changes there is one request Go and one answer JS with records.
+- **Project without database**: The update does not compute anything until the project itself has changed ([26](decisions.md#26-project-without-database)).
+- **Value tapes inside records** and **server without a copy of the site** solved: [Storage](storage.md#decisions), [Runtime](runtime.md#decisions).
+- **Exports by change.** The page and shared block record stores the version in which the last update was changed; it is written by the update itself along with the record. Export builds only pages with a record newer than its version and pages that show such a shared block ([21](decisions.md#21-export-to-files)).
+
+Measurements on the store in 100,000 products — in [README booth](../examples/catalog/README.md#results): price of one product — update 28 ms and export 8 ms; cap on all pages — update 0.12 s; first assembly — 14.1 s. After 21 changes, the site updated and exported in steps coincides with the build from scratch file to file.
+
+Internal formats and connections on the small store show the stand "Shugo inside": `go run ./cmd/inside examples/inside`, the report - `examples/inside/report/index.html`.
+
 ## Trial implementations
 
-The author of the project asked to make two implementations for comparison, then “the second option with a dependency tree from the first” and “the second with lines that remember what you read, without a tree” (20 November 2026). All done, pass all tests on Bun and Node and stand on a common basis. Which one to take is not decided. The 3 number in the discussion is occupied by [data Adapter](data-adapter.md): it is not a substitute for these options, but what brings data to the database of variants 2 and 4.
+The author of the project asked to make two implementations for comparison, then “the second option with a dependency tree from the first” and “the second with lines that remember what you read, without a tree” (20 November 2026). All done, pass all tests on Bun and Node and stand on a common basis. The final version is collected from the fifth, see above; its approval awaits the author. The 3 number in the discussion is occupied by [data Adapter](data-adapter.md): it is not a substitute for these options, but what brings data to the database of variants 2 and 4.
 
 | | Branch & Folder | Essence |
 | --- | --- | --- |
@@ -221,7 +236,9 @@ Found on the go:
   | 10 000 | 10 420 | 24–49 ms | 0.3 ms |
   | 100 000 | 104 200 | 213–288 ms | 0.3 ms |
 
-## Proposal, pending approval
+## Proposal of the first option
+
+The first option is no longer considered (decided 20 November 2026 year). The proposal remained as a record of what was tried and why not taken.
 
 ### Essence
 
@@ -460,13 +477,8 @@ Order of works:
 
 ## Open questions
 
-- Choose the option: second, fourth or fifth.
+- Approve the final version: the fifth option with everything that is higher.
 - Approve the decision of the fifth option on the order of lines: in the order of the request, then by the key.
-- For the 1 variant: approve the mechanism and three rules for site authors.
-- For the 2 variant: what the query designer should be able to do. How external sources get into the database is in [Data Adapter](data-adapter.md).
-- Approve a copy of your part instead of Seroval.
-- Comparison of prints on Go: he owns the storage and knows what common blocks someone else needs. You can compare in JS, the price is the same.
-- Accuracy through functions: `{finalPrice(item)}` now means "goods as a whole". The compiler can look into the function of the project and find out that it reads `price` and `discount`. Do it right away.
-- Functions declared in the data code: later, you can allow those that read only the data.
-- How to call a full check command and when to run it.
-- What hash function to take for a print: the model is homemade, the code needs a well-known and tested.
+- What should the query designer be able to do. How external sources get into the database is in [Data Adapter](data-adapter.md).
+- Do `props` from `getStaticPaths`: because of them, changing the line read by the route calculates all its pages - [Dynamic pages](dynamic-pages.md#open-questions).
+- Changing the project code calculates the entire site again. You can only calculate what the changed templates show.

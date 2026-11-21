@@ -9,7 +9,7 @@ Layout - general binding of pages: `<html>`, `<head>`, cap, footer and place for
 - The layout works as a component, but it cannot be called.
 - The model can upload its data.
 
-## Made in the first version, waiting for approval
+## Implemented, pending approval
 
 The reasons are in [9](decisions.md#9-layouts).
 

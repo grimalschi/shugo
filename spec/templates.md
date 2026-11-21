@@ -26,26 +26,26 @@ The document describes the `.shugo` file format: what parts the file is made of,
 - An error in expression shows a row and column in the template.
 - `null` and `undefined` are displayed as an empty string, and scalars as is.
 
-## Made in the first version, waiting for approval
+## Implemented, pending approval
 
 ### Code
 
 ```
 ---
 import Card from "../components/Card.shugo"
-import { getProducts, price, type Product } from "@/lib/shop"
+import { price, type Product } from "@/lib/shop"
 
 interface Props { limit?: number }
 const { limit = 10 } = Shugo.props as Props
 
-const products: Product[] = (await getProducts()).slice(0, limit)
+const products: Product[] = Shugo.query("products").order("title").limit(limit).all()
 const total = (items: Product[]) => items.reduce((sum, item) => sum + item.price, 0)
 ---
 <p>Total: {price(total(products))}</p>
 ```
 
 - The code is executed every time the file is shown: once for the page, once for each component call. Common blocks are an exception, see [Components](components.md).
-- `await` is allowed on the top level.
+- `await` no: the page is calculated without waiting, because `Shugo.query` responds immediately ([Data loading](data-loading.md)). What is expected and done once, for example, creating code highlighting, is expected at the top level of the module from `lib/`.
 - Imports and exports remain at the module level and are performed once. `getStaticPaths` does not see the variables of the rest of the code, as in Astro.
 - `return` at the top level and `export default` are build errors.
 - `@/` in import path means project root.

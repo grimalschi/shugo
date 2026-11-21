@@ -4,14 +4,14 @@
 
 - Development mode is needed: reassembly when changing files and updating the page in the browser.
 
-## Made in the first version, waiting for approval
+## Implemented, pending approval
 
 ```
 shugo build  [directory]   compilation and calculation of all pages
-shugo update [directory]   calculation again after data change; only difference is written
+shugo update [directory]   calculate what the data or project changes have touched; only the difference is written
 shugo serve  [directory]   server: pages are collected on request
-shugo export [directory]   site to files for any web server
-shugo dev    [directory]   assembly, server and reassembly with each file change
+shugo export [directory]   site to files for any web server; after the first time - only changed
+shugo dev    [directory]   update, server and update every time you change files
 ```
 
 A folder is a project; without it, the current one is taken.
@@ -19,23 +19,29 @@ A folder is a project; without it, the current one is taken.
 | Parameter | What does |
 | --- | --- |
 | `-json` | `build`, `update` and `export` report in JSON |
-| `-runtime bun` or `node` | than to perform JS; otherwise `"runtime"` from `shugo.json`, otherwise Bun if it is installed, otherwise Node |
+| `-check` | with `update`: calculate everything and name pages that have changed, although no line of the database they read has changed |
+| `-runtime bun` or `node` | than to perform JS in `build`, `update` and `dev`; otherwise `"runtime"` from `shugo.json`, otherwise Bun if it is installed, otherwise Node |
 | `-addr address` | where they listen to `serve` and `dev`; by default `localhost:4321` |
 | `-out folder` | where `export` writes; default `_build/dist` |
 
+The option that the command does not use is an error ([27](decisions.md#27-commands)).
+
 ### When a team
 
-- The project (templates, code, styles) - `shugo build` has changed.
-- Only the data has changed — `shugo update`. It does not compile the project, but runs the already collected JS.
-- If you run `shugo update` after the project itself is changed, it will notice this and compile the project first. To do this, the compiler writes hashes of all files from which the project is assembled. So the site cannot show the result of the old code.
-- `shugo serve` can not be restarted: it sees every update.
+- The data has changed — `shugo update`. It does not compile the project, but runs the already collected JS and calculates only what the changed lines read.
+- If you run `shugo update` after changing the project itself, it will notice this, compile the project and calculate everything. To do this, the compiler writes hashes of all files from which the project is collected. So the site can not show the result of the old code.
+- `shugo build` calculates everything always. It is needed if pages read something past the database.
+- `shugo serve` can not be restarted: it sees each update from the next request.
 
 ### Reports
 
+Shop on 100,000 products, changed the price of one product:
+
 ```
 $ shugo update
-updated in 68 ms: 1052 pages, 1009 shared blocks, 3150 values
-  computed 1052 pages and 1009 shared blocks, 12214 blocks in all
+updated in 28 ms: 104202 pages, 100010 shared blocks
+  computed 1 pages and 1 shared blocks, 13 blocks in all
+  1 rows of the data have changed
   pages: 0 added, 1 changed, 0 removed
     changed: /products/product-5
   shared blocks: 0 added, 1 changed, 0 removed
@@ -49,19 +55,21 @@ In JSON, the same time of each step is in milliseconds:
 
 ```json
 {
-  "build": "…",
+  "build": "7e2a9db7a114efe7bddf2f8b9ea84dbe",
   "rebuilt": false,
-  "pages": { "total": 1052, "added": 0, "changed": 1, "removed": 0, "changedNames": ["/products/product-5"] },
-  "shared": { "total": 1009, "added": 0, "changed": 1, "removed": 0, "changedNames": ["components/ProductCard.shugo{\"id\":\"p5\"}"] },
-  "blocks": 12214,
-  "values": { "total": 3150, "added": 2, "removed": 2 },
+  "data": { "whole": false, "rows": 1, "routes": 0, "position": 5060 },
+  "computed": { "pages": 1, "shared": 1 },
+  "blocks": 13,
+  "pages": { "total": 104202, "added": 0, "changed": 1, "removed": 0, "changedNames": ["/products/product-5"] },
+  "shared": { "total": 100010, "added": 0, "changed": 1, "removed": 0, "changedNames": ["components/ProductCard.shugo{\"id\":\"p5\"}"] },
   "render": 7,
   "renderNames": ["/", "/categories/c5", "/products/product-5", "…"],
   "shadowed": 0,
-  "time": { "open": 4.9, "compute": 61.3, "save": 1.1, "total": 67.6 }
+  "time": { "open": 0.3, "data": 5.1, "list": 0.1, "compute": 20.9, "save": 0.5, "total": 27 }
 }
 ```
 
+- `data` - what the database log said: how many lines changed, how many lists of route pages were read again and to which log line the data was taken into account. `whole` means that the log could not say what had changed, and everything was calculated.
 - `render` — how many pages of HTML have changed: these are the changed pages and pages that show the changed common block. You can reset the cache in front of the site from this list.
 - The names in the report are no more than a thousand of each species.
 - `rebuilt` means that the project has been compiled anew and everything is calculated from scratch.
@@ -93,7 +101,7 @@ Node indicates the location accurately. Bun sometimes points to a nearby string:
 
 ### Development Mode
 
-`shugo dev` monitors all project files except `_build`, `node_modules` and hidden files. This means that changing the data file inside the project also causes a reassembly.
+`shugo dev` monitors all project files except `_build`, `node_modules` and hidden files. After the change, it does what `shugo update` did: the source code has changed compiles the project and calculates everything; the database has changed calculates what the changed lines have read; other files have changed calculates nothing. The pages are reloaded anyway.
 
 ## Open questions
 

@@ -8,7 +8,7 @@ The document describes what folders and files are in the project on Shugo and wh
 - Project settings are the `shugo.json` file at the root.
 - Everything that framework writes is stored in the `_build` folder.
 
-## Made in the first version, waiting for approval
+## Implemented, pending approval
 
 The reasons are in [18](decisions.md#18-project-structure).
 

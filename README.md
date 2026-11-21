@@ -77,6 +77,6 @@ Store on 100,000 products, 104,202 pages and 100,009 common blocks, Bun, 8 cores
 | Export after the price change of one product | 8 ms: built by 7 pages |
 | Export after changing the header | 8.1–8.7 s: all files rewritten |
 | Assembly of the product page by the server from the storage | 58–67 µs |
-| Request to server as a whole, 8 clients in the same process | 17–18 thousand per second |
+| Request to server as a whole, 8 clients in the same process | 16–18 thousand per second |
 
 After 21 changes the data, the site updated and exported in steps, matches the file to the file with the build from scratch. Details are in [README booth](examples/catalog/README.md).
