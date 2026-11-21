@@ -66,11 +66,18 @@ type storeLook struct {
 	Meta   []pair
 	Pages  []pageRow
 	Shared []sharedRow
-	Values []valueRow
 	Shows  []showRow
 	Routes []routeRow
 	Shapes []shapeRow
 	Reads  []readRow
+	// Changed is the version of the store in which the HTML of every page
+	// last changed: an export builds the pages changed after its own.
+	Changed []changedRow
+}
+
+type changedRow struct {
+	Path    string
+	Version int64
 }
 
 type pageRow struct {
@@ -91,13 +98,6 @@ type sharedRow struct {
 	Record   *record.Record
 	Readings []reading
 	RawReads []byte
-}
-
-type valueRow struct {
-	Hash   record.Hash
-	Uses   int
-	Raw    []byte
-	Values []string
 }
 
 type showRow struct {
@@ -288,15 +288,12 @@ func lookAtStore(path string) (storeLook, error) {
 		}
 		s.Shared = append(s.Shared, b)
 	}
-	values, err := all(db, "SELECT hash, uses, data FROM value ORDER BY hash")
+	changed, err := all(db, "SELECT path, version FROM changed ORDER BY path")
 	if err != nil {
 		return s, err
 	}
-	for _, r := range values {
-		v := valueRow{Uses: int(r[1].(int64)), Raw: bytesOf(r[2])}
-		copy(v.Hash[:], r[0].([]byte))
-		v.Values = tape(v.Raw)
-		s.Values = append(s.Values, v)
+	for _, r := range changed {
+		s.Changed = append(s.Changed, changedRow{text(r[0]), r[1].(int64)})
 	}
 	shows, err := all(db, "SELECT shared, user FROM shows ORDER BY shared, user")
 	if err != nil {
@@ -406,14 +403,6 @@ func keyOf(raw []byte) ([]any, error) {
 		}
 	}
 	return out, nil
-}
-
-// tape reads the values of a block: each one follows a byte 0.
-func tape(raw []byte) []string {
-	if len(raw) == 0 {
-		return nil
-	}
-	return strings.Split(string(raw[1:]), "\x00")
 }
 
 // change is a row of the data that is not what it was.

@@ -66,7 +66,11 @@ func annotate(data []byte, site *program.Site) []byteRow {
 			}
 			take(n, fmt.Sprintf("block %d: file %d + 1 is %s", i, file-1, path))
 			number("  template part: %d")
-			take(16, "  values: tape hash, 16 bytes")
+			end := at + number("  value tape: %d bytes")
+			for k := 1; at < min(end, len(data)); k++ {
+				size := number(fmt.Sprintf("    value %d: %%d bytes", k))
+				take(size, "    «"+visible(string(data[at:min(at+size, len(data))]))+"»")
+			}
 			list("nested blocks")
 		}
 		slots := number("  filled slots: %d")
@@ -374,38 +378,10 @@ func frames(path string, names map[byte]string) ([]frame, error) {
 	return out, nil
 }
 
-// visible shows the separators of the conversation as letters.
+// visible shows the separators of the conversation, and the mark of an
+// escaped character, as letters.
 func visible(s string) string {
-	return strings.NewReplacer("\x00", "␀", "\x01", "␁", "\x02", "␂", "\x03", "␃").Replace(s)
-}
-
-// bundled is a record with its values inside, as proposed: the record, then
-// every distinct values of its blocks with their name.
-func bundled(raw []byte, rec *record.Record, values map[record.Hash][]byte) ([]byte, []byteRow) {
-	var out []byte
-	var rows []byteRow
-	add := func(b []byte, meaning string) {
-		rows = append(rows, byteRow{len(out), spaced(b), meaning})
-		out = append(out, b...)
-	}
-	add(binary.AppendUvarint(nil, uint64(len(raw))), fmt.Sprintf("record length: %d bytes", len(raw)))
-	add(raw, "current record: blocks and references to values and shared blocks")
-	var hashes []record.Hash
-	seen := map[record.Hash]bool{}
-	for i := range rec.Blocks {
-		if b := &rec.Blocks[i]; !b.Use && !seen[b.Values] {
-			seen[b.Values] = true
-			hashes = append(hashes, b.Values)
-		}
-	}
-	add(binary.AppendUvarint(nil, uint64(len(hashes))), fmt.Sprintf("value tapes included: %d", len(hashes)))
-	for _, h := range hashes {
-		data := values[h]
-		add(h[:], "value tape hash, which the block uses to locate its tape")
-		add(binary.AppendUvarint(nil, uint64(len(data))), fmt.Sprintf("value tape length: %d bytes", len(data)))
-		add(data, "value tape: "+string(data))
-	}
-	return out, rows
+	return strings.NewReplacer("\x00", "␀", "\x01", "␁", "\x02", "␂", "\x03", "␃", "\x04", "␄").Replace(s)
 }
 
 func pretty(raw string) string {

@@ -23,7 +23,7 @@ type report struct {
 	Story    pageStory
 	Steps    []step
 	Final    *look
-	Proposal proposal
+	Serving  serving
 }
 
 type sourceFile struct {
@@ -73,10 +73,12 @@ type changeView struct {
 type storeDiff struct {
 	PagesAdded, PagesChanged, PagesRemoved    []string
 	SharedAdded, SharedChanged, SharedRemoved []string
-	ValuesAdded, ValuesRemoved                []valueRow
 	ReadsAdded, ReadsRemoved                  []readRow
 	ShowsAdded, ShowsRemoved                  []showRow
 	Version                                   [2]string
+	// Export is the pages whose HTML the update found changed: an export
+	// made before it builds these again, and no others.
+	Export []string
 }
 
 func diff(before, after storeLook) storeDiff {
@@ -115,24 +117,6 @@ func diff(before, after storeLook) storeDiff {
 	}
 	d.PagesAdded, d.PagesChanged, d.PagesRemoved = compare(pages(before), pages(after))
 	d.SharedAdded, d.SharedChanged, d.SharedRemoved = compare(shared(before), shared(after))
-	values := func(s storeLook) map[record.Hash]valueRow {
-		m := map[record.Hash]valueRow{}
-		for _, v := range s.Values {
-			m[v.Hash] = v
-		}
-		return m
-	}
-	was, is := values(before), values(after)
-	for h, v := range is {
-		if _, ok := was[h]; !ok {
-			d.ValuesAdded = append(d.ValuesAdded, v)
-		}
-	}
-	for h, v := range was {
-		if _, ok := is[h]; !ok {
-			d.ValuesRemoved = append(d.ValuesRemoved, v)
-		}
-	}
 	reads := func(s storeLook) map[string]readRow {
 		m := map[string]readRow{}
 		for _, r := range s.Reads {
@@ -169,13 +153,17 @@ func diff(before, after storeLook) storeDiff {
 			d.ShowsRemoved = append(d.ShowsRemoved, r)
 		}
 	}
-	for _, list := range [][]valueRow{d.ValuesAdded, d.ValuesRemoved} {
-		sort.Slice(list, func(a, b int) bool { return bytes.Compare(list[a].Hash[:], list[b].Hash[:]) < 0 })
-	}
 	for _, list := range [][]readRow{d.ReadsAdded, d.ReadsRemoved} {
 		sort.Slice(list, func(a, b int) bool { return list[a].Reader+string(list[a].Raw) < list[b].Reader+string(list[b].Raw) })
 	}
 	d.Version = [2]string{metaValue(before, "version"), metaValue(after, "version")}
+	if was, err := strconv.ParseInt(d.Version[0], 10, 64); err == nil {
+		for _, c := range after.Changed {
+			if c.Version > was {
+				d.Export = append(d.Export, c.Path)
+			}
+		}
+	}
 	return d
 }
 
@@ -293,7 +281,6 @@ type blockView struct {
 	SharedName string
 	File       string
 	Part       int
-	Hash       string
 	Values     []string
 	Children   []int
 	Slots      []string
@@ -318,8 +305,7 @@ func blocks(c *compiled, s storeLook, rec *record.Record, shared bool) []blockVi
 		if b.Use {
 			v.SharedName = s.SharedName(b.Shared)
 		} else {
-			v.File, v.Part, v.Hash = c.Site.Files[b.File].Path, b.Part, fmt.Sprintf("%x", b.Values[:])
-			v.Values = s.Value(v.Hash).Values
+			v.File, v.Part, v.Values = c.Site.Files[b.File].Path, b.Part, b.Values.Strings()
 			walked, err := walk(c.Site, rec, i, v.Values, shared && i == rec.Top)
 			v.Walk = walked
 			if err != nil {
@@ -370,19 +356,14 @@ func sharedOf(s storeLook, rec *record.Record) []int64 {
 	return out
 }
 
-// proposal compares how a page is read now with how it would be read with
-// the values inside the records.
-type proposal struct {
-	Path           string
-	Now, New       []lookup
-	NowBytes       int
-	NewBytes       int
-	Example        string
-	ExampleRecord  []byteRow
-	ExampleBundled []byteRow
-	ExampleSize    [2]int
-	StoreNow       int
-	StoreNew       int
+// serving tells what the server reads to answer for a page: the record of
+// the page and the record of every shared block it shows, each with one
+// lookup by key, all in one read transaction. Nothing else of the site is
+// in its memory.
+type serving struct {
+	Path    string
+	Lookups []lookup
+	Bytes   int
 }
 
 type lookup struct {
@@ -390,64 +371,25 @@ type lookup struct {
 	Bytes int
 }
 
-func propose(c *compiled, l *look, path string) proposal {
-	p := proposal{Path: path}
-	s := l.Store
-	values := map[record.Hash][]byte{}
-	for _, v := range s.Values {
-		values[v.Hash] = v.Raw
-		p.StoreNow += len(v.Raw) + len(v.Hash)
+func serve(l *look, path string) serving {
+	sv := serving{Path: path}
+	add := func(what string, raw []byte) {
+		sv.Lookups = append(sv.Lookups, lookup{what, len(raw)})
+		sv.Bytes += len(raw)
 	}
-	var page *pageRow
-	for i := range s.Pages {
-		p.StoreNow += len(s.Pages[i].Raw)
-		b, _ := bundled(s.Pages[i].Raw, s.Pages[i].Record, values)
-		p.StoreNew += len(b)
-		if s.Pages[i].Path == path {
-			page = &s.Pages[i]
-		}
-	}
-	for _, b := range s.Shared {
-		p.StoreNow += len(b.Raw)
-		raw, _ := bundled(b.Raw, b.Record, values)
-		p.StoreNew += len(raw)
-	}
-	if page == nil {
-		return p
-	}
-	read := func(what string, rec *record.Record, raw []byte) {
-		p.Now = append(p.Now, lookup{what, len(raw)})
-		p.NowBytes += len(raw)
-		seen := map[record.Hash]bool{}
-		for i := range rec.Blocks {
-			if b := &rec.Blocks[i]; !b.Use && !seen[b.Values] {
-				seen[b.Values] = true
-				p.Now = append(p.Now, lookup{fmt.Sprintf("  value tape %x… — %s", b.Values[:4], c.Site.Files[b.File].Path), len(values[b.Values])})
-				p.NowBytes += len(values[b.Values])
+	for i := range l.Store.Pages {
+		if p := &l.Store.Pages[i]; p.Path == path {
+			add("page record "+path, p.Raw)
+			for _, id := range sharedOf(l.Store, p.Record) {
+				b := l.Store.SharedRow(id)
+				add(fmt.Sprintf("shared block %d record: %s", id, b.Name), b.Raw)
 			}
 		}
-		bundle, _ := bundled(raw, rec, values)
-		p.New = append(p.New, lookup{what + " with value tapes", len(bundle)})
-		p.NewBytes += len(bundle)
 	}
-	read("page record "+path, page.Record, page.Raw)
-	for _, id := range sharedOf(s, page.Record) {
-		b := s.SharedRow(id)
-		read(fmt.Sprintf("shared block %d: %s", id, b.Name), b.Record, b.Raw)
-	}
-	for _, b := range s.Shared {
-		if b.Name == `components/ProductCard.shugo{"id":"p1"}` {
-			p.Example = fmt.Sprintf("shared block %d: %s", b.ID, b.Name)
-			p.ExampleRecord = annotate(b.Raw, c.Site)
-			raw, rows := bundled(b.Raw, b.Record, values)
-			p.ExampleBundled, p.ExampleSize = rows, [2]int{len(b.Raw), len(raw)}
-			break
-		}
-	}
-	return p
+	return sv
 }
 
-// What the template asks of the snapshots.
+// What the template asks of the looks at the store.
 
 func (s storeLook) SharedRow(id int64) sharedRow {
 	for _, b := range s.Shared {
@@ -459,15 +401,6 @@ func (s storeLook) SharedRow(id int64) sharedRow {
 }
 
 func (s storeLook) SharedName(id int64) string { return s.SharedRow(id).Name }
-
-func (s storeLook) Value(hash string) valueRow {
-	for _, v := range s.Values {
-		if fmt.Sprintf("%x", v.Hash[:]) == hash {
-			return v
-		}
-	}
-	return valueRow{}
-}
 
 func (s storeLook) Shape(id int64) shapeRow {
 	for _, sh := range s.Shapes {
@@ -573,7 +506,6 @@ func (r *report) render() ([]byte, error) {
 			}
 			return s
 		},
-		"hexOf":   func(h record.Hash) string { return fmt.Sprintf("%x", h[:]) },
 		"visible": visible,
 		"sep":     separators,
 		"counted": counted,
@@ -639,7 +571,7 @@ func separators(s string) template.HTML {
 	var out strings.Builder
 	start := 0
 	for i := 0; i < len(s); i++ {
-		if s[i] <= 3 {
+		if s[i] <= 4 {
 			out.WriteString(template.HTMLEscapeString(s[start:i]))
 			fmt.Fprintf(&out, `<span class="sep">%02x</span>`, s[i])
 			start = i + 1

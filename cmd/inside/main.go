@@ -152,7 +152,7 @@ func walkThrough(project, shugo string) error {
 		r.Steps = append(r.Steps, s)
 	}
 	r.Final = now
-	r.Proposal = propose(r.Compiled, r.Build.Look, "/products/jug")
+	r.Serving = serve(r.Build.Look, "/products/jug")
 
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		return err

@@ -126,7 +126,7 @@
   <li><a href="#store">Store after the build</a></li>
   <li><a href="#story">A page from record to HTML</a></li>
   <li><a href="#steps">Data changes and updates</a></li>
-  <li><a href="#proposal">Proposal: values inside records</a></li>
+  <li><a href="#serving">Page request: what the server reads</a></li>
 </ol></nav>
 
 <h2 id="map">Architecture and terminology</h2>
@@ -142,9 +142,10 @@
  Go ⇄ JS: “list pages”, “compute these” ◄───┘ JS reads data through Shugo.query
         │   JS returns records and reads
         ▼
- _build/store.db — store: page and shared block records, value tapes,
+ _build/store.db — store: page and shared block records with embedded value tapes,
         │          reads (which rows each reader selected), program
-        ▼  shugo serve / shugo export
+        ▼  shugo serve: reads the page record and its shared blocks on each request
+        ▼  shugo export: writes files for pages whose HTML changed since the previous export
  Page HTML: Go reads the template program and inserts values from the tapes
 
  shugo update: journal → changed rows → affected readers → recompute those readers
@@ -153,7 +154,7 @@
   <dt>Template program</dt><dd>A list of operations representing the template markup with placeholders for values. Each file has one, stored in <code>_build/site.json</code> and in the store.</dd>
   <dt>File JS module</dt><dd>A function the compiler generates from the <code>.shugo</code>file. It runs the data code and writes each expression's value in order. The modules are bundled in <code>_build/eval.mjs</code>.</dd>
   <dt>Block</dt><dd>One rendering of a template: a page, layout, component, or markup passed into a slot.</dd>
-  <dt>Value tape</dt><dd>The expression values for a block, in order. Identical tapes share one entry keyed by their content hash.</dd>
+  <dt>Value tape</dt><dd>The expression values for a block, in order, stored with the block in its record.</dd>
   <dt>Record</dt><dd>All the blocks for a page or shared block. Each records its template, value tape, nested blocks, and slots.</dd>
   <dt>Shared block</dt><dd>A component called with plain props. It is computed once for the site and stored by name. Pages reference it by number.</dd>
   <dt>Reader</dt><dd>A page, shared block, or route page list that read project data.</dd>
@@ -247,14 +248,14 @@
 <table><tr><th>Block</th><th>Fields</th></tr>
 {{range $i, $b := .Blocks}}<tr><td>{{$i}}</td><td class="mono">{{range $j, $f := $b}}{{if $j}} │ {{end}}{{sep $f}}{{end}}</td></tr>{{end}}
 </table>
-<p class="note">Block <code>b</code>: file │ part │ nested blocks │ slots │ value tape. Block <code>u</code>: shared block reference by name │ slots. Go resolves the name to an ID, hashes the value tape, and verifies that the tape matches the template program.</p>
+<p class="note">Block <code>b</code>: file │ part │ nested blocks │ slots │ value tape. Block <code>u</code>: shared block reference by name │ slots. Go resolves the name to an ID, unescapes the value tape, and verifies that the tape matches the template program.</p>
 {{end}}{{end}}{{end}}
 
 <h2 id="store">5. Store after the build</h2>
 <p>The store is <code>_build/store.db</code>. The server serves pages from this store.</p>
 <h3>meta</h3>
 <table>{{range .Build.Look.Store.Meta}}<tr><td class="mono">{{.Name}}</td><td class="mono">{{.Value}}</td></tr>{{end}}</table>
-<p class="note"><code>data</code> is the journal name and the last journal row reflected in the store. <code>version</code> increases with every update. <code>totals</code> counts pages, shared blocks, and value tapes.</p>
+<p class="note"><code>data</code> is the journal name and the last journal row reflected in the store. <code>version</code> increases with every update. <code>store</code> is a random identifier for the store. Versions are relative to it. <code>totals</code> counts pages and shared blocks.</p>
 
 <h3>page — page records</h3>
 {{range .Build.Look.Store.Pages}}{{$p := .}}
@@ -263,7 +264,7 @@
 <table><tr><th>Block</th><th>Template or shared block</th><th>Value tape</th><th>Nested blocks</th><th>Slots</th></tr>
 {{range $i, $b := .Record.Blocks}}<tr><td>{{$i}}{{if eq $i $p.Record.Top}} <span class="pill">root</span>{{end}}</td>
 <td>{{if $b.Use}}<a href="#shared-{{$b.Shared}}">shared block {{$b.Shared}}</a> <span class="n">{{$store.SharedName $b.Shared}}</span>{{else}}{{(index $.Compiled.Site.Files $b.File).Path}}, part {{$b.Part}}{{end}}</td>
-<td>{{if not $b.Use}}<a href="#value-{{hexOf $b.Values}}" class="mono">{{short (hexOf $b.Values)}}</a>{{end}}</td>
+<td class="mono">{{if not $b.Use}}{{template "tape" $b.Values.Strings}}{{end}}</td>
 <td>{{range $b.Children}}{{.}} {{end}}</td><td>{{range $b.Slots}}{{.Name}} = {{range .Blocks}}{{.}} {{end}}; {{end}}</td></tr>{{end}}
 </table>
 <p><b>Reads:</b></p>
@@ -277,7 +278,7 @@
 <h4>{{.ID}}: {{.Name}} <span class="n">record {{len .Raw}} bytes</span></h4>
 <p>Rendered by: {{range $store.Users .ID}}{{reader .}}; {{end}}</p>
 <table><tr><th>Block</th><th>Template or shared block</th><th>Value tape</th><th>Nested blocks</th></tr>
-{{range $i, $b := .Record.Blocks}}<tr><td>{{$i}}</td><td>{{if $b.Use}}<a href="#shared-{{$b.Shared}}">shared block {{$b.Shared}}</a>{{else}}{{(index $.Compiled.Site.Files $b.File).Path}}, part {{$b.Part}}{{end}}</td><td>{{if not $b.Use}}<a href="#value-{{hexOf $b.Values}}" class="mono">{{short (hexOf $b.Values)}}</a>{{end}}</td><td>{{range $b.Children}}{{.}} {{end}}</td></tr>{{end}}
+{{range $i, $b := .Record.Blocks}}<tr><td>{{$i}}</td><td>{{if $b.Use}}<a href="#shared-{{$b.Shared}}">shared block {{$b.Shared}}</a>{{else}}{{(index $.Compiled.Site.Files $b.File).Path}}, part {{$b.Part}}{{end}}</td><td class="mono">{{if not $b.Use}}{{template "tape" $b.Values.Strings}}{{end}}</td><td>{{range $b.Children}}{{.}} {{end}}</td></tr>{{end}}
 </table>
 <p><b>Reads:</b></p>
 <ul>{{range .Readings}}{{$sh := $store.Shape .Shape}}<li><a href="#shape-{{.Shape}}">shape {{.Shape}}</a>: rows in <b>{{$sh.Table}}</b>{{if $sh.By}}, where {{join $sh.By ", "}} = <span class="mono">{{key .Key}}</span>{{else}} — all rows{{end}}{{if $sh.Columns}}; relevant columns: {{join $sh.Columns ", "}}{{end}}. Matching rows now: {{range $.Build.Look.RowsOf $sh .Key}}<a href="#row-{{$sh.Table}}-{{.}}" class="mono">{{.}}</a> {{else}}none{{end}}</li>{{end}}</ul>
@@ -289,10 +290,10 @@
 {{range .Build.Look.Store.Routes}}<tr><td>{{.ID}}</td><td>{{.Props}}</td><td>{{range .Readings}}{{$sh := $store.Shape .Shape}}<div><a href="#shape-{{.Shape}}">shape {{.Shape}}</a>: {{$sh.Table}}{{if $sh.By}} where {{join $sh.By ", "}} = {{key .Key}}{{end}}; relevant columns: {{join $sh.Columns ", "}}</div>{{end}}</td></tr>{{end}}
 </table>
 
-<h3>value — value tapes</h3>
-<p class="note">The value tape is keyed by its content hash. <code>uses</code> counts the records that refer to the tape. A tape is removed when its last reference disappears.</p>
-<table><tr><th>Hash</th><th>uses</th><th>Values in order</th></tr>
-{{range .Build.Look.Store.Values}}<tr id="value-{{hexOf .Hash}}"><td class="mono">{{short (hexOf .Hash)}}</td><td>{{.Uses}}</td><td class="mono">{{range $i, $v := .Values}}<span class="n">{{add $i 1}}</span>&nbsp;<span class="val">{{visible $v}}</span> {{end}}</td></tr>{{end}}
+<h3>changed — when a page's HTML last changed</h3>
+<p class="note">The store version when the HTML last changed, either through the page record or through a shared block it renders. Export remembers its last version and rebuilds pages with newer markers. The markers live in their own narrow table, separate from the page records.</p>
+<table><tr><th>Page</th><th>Version</th></tr>
+{{range .Build.Look.Store.Changed}}<tr><td><a href="#{{anchor "page" .Path}}">{{.Path}}</a></td><td>{{.Version}}</td></tr>{{end}}
 </table>
 
 <h3>shape — read shapes</h3>
@@ -314,7 +315,7 @@
 <h2 id="story">6. A page from record to HTML</h2>
 <p>Page <b>{{.Story.Path}}</b>. The server loads the page record and starts at the root block. For each block, it follows the template program, copying markup and taking the next value from the tape for each expression. The tables below show which operations consume which values.</p>
 {{range .Story.Blocks}}
-<div class="card"><h4>Block {{.Index}}: {{if .Use}}reference to <a href="#shared-{{.Shared}}">shared block {{.Shared}}</a> {{.SharedName}}{{else}}{{.File}}, part {{.Part}}, value tape <a href="#value-{{.Hash}}" class="mono">{{short .Hash}}</a>{{end}}</h4>
+<div class="card"><h4>Block {{.Index}}: {{if .Use}}reference to <a href="#shared-{{.Shared}}">shared block {{.Shared}}</a> {{.SharedName}}{{else}}{{.File}}, part {{.Part}}, value tape: {{counted (len .Values) "value" "values"}}{{end}}</h4>
 {{if .Slots}}<p class="note">Slots filled in this block: {{join .Slots "; "}}</p>{{end}}
 {{if .Walk}}<table><tr><th style="width:4em">Op.</th><th>What it does</th><th style="width:4em">Tape index</th><th>value</th></tr>
 {{range .Walk}}<tr><td style="{{pad .Depth}}"><span class="op">{{.Op}}</span></td><td>{{.What}}{{if .Link}} <a href="#{{.Link}}">→</a>{{end}}</td><td>{{if .Slot}}{{.Slot}}{{end}}</td><td class="mono pre">{{if .Slot}}<span class="val">{{visible .Value}}</span>{{else}}{{visible .Value}}{{end}}</td></tr>{{end}}
@@ -326,7 +327,7 @@
 {{range .Story.Shared}}
 <div class="card"><h4>Shared block {{.ID}}: {{.Name}}</h4>
 {{range .Blocks}}{{if not .Use}}
-<p class="note">Block {{.Index}}: {{.File}}, part {{.Part}}, value tape <a href="#value-{{.Hash}}" class="mono">{{short .Hash}}</a></p>
+<p class="note">Block {{.Index}}: {{.File}}, part {{.Part}}, value tape: {{counted (len .Values) "value" "values"}}</p>
 <table><tr><th style="width:4em">Op.</th><th>What it does</th><th style="width:4em">Tape index</th><th>value</th></tr>
 {{range .Walk}}<tr><td style="{{pad .Depth}}"><span class="op">{{.Op}}</span></td><td>{{.What}}{{if .Link}} <a href="#{{.Link}}">→</a>{{end}}</td><td>{{if .Slot}}{{.Slot}}{{end}}</td><td class="mono pre">{{if .Slot}}<span class="val">{{visible .Value}}</span>{{else}}{{visible .Value}}{{end}}</td></tr>{{end}}
 </table>{{else}}<p class="note">Block {{.Index}}: reference to <a href="#shared-{{.Shared}}">shared block {{.Shared}}</a></p>{{end}}{{end}}
@@ -335,7 +336,7 @@
 <h3>Rendered HTML</h3>
 <pre>{{.Story.HTML}}</pre>
 <h3>Page record byte by byte</h3>
-<p class="note">The record is stored in <code>page.record</code>. Numbers use varints, so a small number takes one byte. The record contains the value tape's hash.</p>
+<p class="note">The record is stored in <code>page.record</code>. Numbers use varints, so a small number takes one byte. Each block embeds its value tape, starting with the tape length and then each value's length and bytes.</p>
 <table><tr><th style="width:4em">Offset</th><th style="width:30em">Bytes</th><th>Meaning</th></tr>
 {{range .Story.Bytes}}<tr><td>{{.Offset}}</td><td class="mono">{{.Hex}}</td><td>{{sep .Meaning}}</td></tr>{{end}}
 </table>
@@ -382,7 +383,7 @@
 <table>
 <tr><td>Page records</td><td>{{if .Diff.PagesChanged}}changed: {{join .Diff.PagesChanged ", "}}. {{end}}{{if .Diff.PagesAdded}}added: {{join .Diff.PagesAdded ", "}}. {{end}}{{if .Diff.PagesRemoved}}removed: {{join .Diff.PagesRemoved ", "}}.{{end}}</td></tr>
 <tr><td>Shared block records</td><td>{{if .Diff.SharedChanged}}changed: {{join .Diff.SharedChanged ", "}}. {{end}}{{if .Diff.SharedAdded}}added: {{join .Diff.SharedAdded ", "}}. {{end}}{{if .Diff.SharedRemoved}}removed: {{join .Diff.SharedRemoved ", "}}.{{end}}</td></tr>
-<tr><td>Value tapes</td><td>{{range .Diff.ValuesAdded}}<div class="add mono">+ {{short (hexOf .Hash)}}: {{range .Values}}<span class="val">{{visible .}}</span> {{end}}</div>{{end}}{{range .Diff.ValuesRemoved}}<div class="del mono">− {{short (hexOf .Hash)}}: {{range .Values}}<span class="val">{{visible .}}</span> {{end}}</div>{{end}}</td></tr>
+<tr><td>Pages the export will rebuild</td><td>{{if .Diff.Export}}{{join .Diff.Export ", "}}: their marker in <code>changed</code> is version {{index .Diff.Version 1}}{{else}}none{{end}}</td></tr>
 <tr><td>Reads</td><td>{{range .Diff.ReadsAdded}}<div class="add">+ shape {{.Shape}}, {{key .Key}} — {{reader .Reader}}</div>{{end}}{{range .Diff.ReadsRemoved}}<div class="del">− shape {{.Shape}}, {{key .Key}} — {{reader .Reader}}</div>{{end}}</td></tr>
 <tr><td>Shared block users</td><td>{{range .Diff.ShowsAdded}}<div class="add">+ {{.Shared}} ← {{reader .User}}</div>{{end}}{{range .Diff.ShowsRemoved}}<div class="del">− {{.Shared}} ← {{reader .User}}</div>{{end}}</td></tr>
 </table>
@@ -405,26 +406,14 @@
 </div>
 {{end}}
 
-<h2 id="proposal">8. Proposal: values inside records</h2>
-<p>Currently, a block's record contains the value tape's hash. The tape lives in its own row in <code>value</code>. To render a page, the server separately looks up its record, the records of any shared blocks, and their value tapes. Embedding the tapes in page and shared block records would reduce this to one lookup per record.</p>
-<div class="grid">
-<div><h4>Current: {{len .Proposal.Now}} lookups, {{.Proposal.NowBytes}} bytes</h4>
-<table><tr><th>Reads</th><th>bytes</th></tr>{{range .Proposal.Now}}<tr><td class="mono">{{.What}}</td><td>{{.Bytes}}</td></tr>{{end}}</table></div>
-<div><h4>Proposed: {{len .Proposal.New}} lookups, {{.Proposal.NewBytes}} bytes</h4>
-<table><tr><th>Reads</th><th>bytes</th></tr>{{range .Proposal.New}}<tr><td class="mono">{{.What}}</td><td>{{.Bytes}}</td></tr>{{end}}</table></div>
-</div>
-<p>This site currently needs {{.Proposal.StoreNow}} bytes for records and value tapes, or {{.Proposal.StoreNew}} bytes with tapes embedded in records. Every record that uses a tape stores its own copy. This adds 17% to a store with 100,000 products.</p>
-<h3>{{.Proposal.Example}}: current record, {{index .Proposal.ExampleSize 0}} bytes</h3>
-<table><tr><th style="width:4em">Offset</th><th style="width:30em">Bytes</th><th>Meaning</th></tr>
-{{range .Proposal.ExampleRecord}}<tr><td>{{.Offset}}</td><td class="mono">{{.Hex}}</td><td>{{sep .Meaning}}</td></tr>{{end}}
-</table>
-<h3>Same record with embedded value tapes, {{index .Proposal.ExampleSize 1}} bytes</h3>
-<table><tr><th style="width:4em">Offset</th><th style="width:30em">Bytes</th><th>Meaning</th></tr>
-{{range .Proposal.ExampleBundled}}<tr><td>{{.Offset}}</td><td class="mono">{{.Hex}}</td><td>{{sep .Meaning}}</td></tr>{{end}}
-</table>
-<p class="note">This is a proposed layout. A block could reference a value tape by its number in the record and omit the hash.</p>
+<h2 id="serving">8. Page request: what the server reads</h2>
+<p>The server reads the site from the store. For a request to <b>{{.Serving.Path}}</b> it uses one transaction to look up the page record and each shared block the page renders. Value tapes live inside the records, so each record needs one lookup. The transaction reads a single version of the store. An update that finishes during the transaction becomes visible to the next request.</p>
+<table><tr><th>Key lookup</th><th style="width:6em">bytes</th></tr>{{range .Serving.Lookups}}<tr><td class="mono">{{.What}}</td><td>{{.Bytes}}</td></tr>{{end}}
+<tr><td><b>{{counted (len .Serving.Lookups) "lookup" "lookups"}}</b></td><td><b>{{.Serving.Bytes}}</b></td></tr></table>
+<p class="note">The server keeps the template program in memory and parses it once per project build. Data updates leave it unchanged.</p>
 
 </div>
+{{define "tape"}}{{range $i, $v := .}}<span class="n">{{add $i 1}}</span>&nbsp;<span class="val">{{visible $v}}</span> {{end}}{{end}}
 {{define "rounds"}}{{range $i, $r := .}}
 <div class="card round">
 <h4>{{if $r.Told}}At startup{{else}}Round {{$r.Number}}{{end}}. Go: {{$r.Ask}}</h4>
