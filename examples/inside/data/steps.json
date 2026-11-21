@@ -1,0 +1,38 @@
+[
+  {
+    "title": "The price of the North Pitcher changed",
+    "why": "The product page and product card display the price. The card appears on the home and category pages.",
+    "sql": [
+      "UPDATE products SET price = 2600 WHERE id = 'p1'"
+    ]
+  },
+  {
+    "title": "The note on the Morning Pitcher changed",
+    "why": "No code reads the note column, so nothing is recomputed.",
+    "sql": [
+      "UPDATE products SET note = 'verified' WHERE id = 'p2'"
+    ]
+  },
+  {
+    "title": "The large North Pitcher is back in stock",
+    "why": "The variant component on the product page reads the stock level. Its template switches branches, from Out of stock to 4 in stock.",
+    "sql": [
+      "UPDATE variants SET stock = 4 WHERE sku = 'p1-l'"
+    ]
+  },
+  {
+    "title": "The Pitchers category was renamed",
+    "why": "The header, a block shared by every page, and the category page both read the category name.",
+    "sql": [
+      "UPDATE categories SET title = 'Pitchers and cups' WHERE id = 'c1'"
+    ]
+  },
+  {
+    "title": "A new product was added",
+    "why": "The new row matches queries for products in the route's page list, the home page, the category page, and the header count.",
+    "sql": [
+      "INSERT INTO products VALUES ('p4', 'cup', 'Smoke Cup', 900, 'c1', '')",
+      "INSERT INTO variants VALUES ('p4-s', 'p4', 'one size', 7, 1)"
+    ]
+  }
+]

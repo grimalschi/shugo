@@ -1,0 +1,7 @@
+---
+import ProductCard from "../components/ProductCard.shugo"
+
+const products = Shugo.query("products").select("id").order("title").all()
+---
+<h1>All products</h1>
+<g-for each={products} as="product"><ProductCard id={product.id} /></g-for>
