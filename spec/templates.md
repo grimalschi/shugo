@@ -142,3 +142,28 @@ See also [Components](components.md).
 - The HTML tag whose name is calculated: `const Tag = "h2"`. Now the capital-letter tag is always a component.
 - Warning when an object is displayed in the text: it is almost always a mistake.
 - Remove spaces between tags, as Astro 7 does.
+- Template syntax: own tags `g-*`, Astro syntax or Svelte. Below is the test to choose from.
+
+## Test: How models write templates without documentation
+
+Conducted by 21 on November 2026 year at the request of the author of the project. This is a study, not a solution.
+
+Three models through OpenRouter — DeepSeek V4.1 Flash, Muse Ember, GLM 5.3 Flash — wrote 30 templates on Astro, React and Svelte, each three times. They did not have documentation and search: only a task, a type of parameters and one example of HTML. Tasks are conditions, cycles, classes and styles from data, attributes, raw HTML, slots, recursion, sorting and grouping. The answer is rendered by the real engine — Astro 7.4, React 19.3, Svelte 5.59 — on the example and on 2–3 datasets that the model has not seen. The reference solutions on the three syntaxes give the same pages on all sets.
+
+| Model | Astro | React | Svelte |
+| --- | ---: | ---: | ---: |
+| DeepSeek V4.1 Flash | 86/90 | 90/90 | 82/90 |
+| Muse Ember | 86/90 | 90/90 | 89/90 |
+| GLM 5.3 Flash | 85/90 | 89/90 | 85/90 |
+| All three | 257/270 | 269/270 | 256/270 |
+
+The logic of model templates is known on all three syntaxes. Errors are several traps where the behavior of the framework diverges from what the model expects:
+
+- **Astro, 9 answers from 13 infidels:** slot, transmitted under a false condition (`{note && <p slot="footer">…</p>}`), Astro considers transferred: `Astro.slots.has()` returns `true`, spare content is not shown. So all models are wrong in all attempts; the usual assembly of `astro build` behaves the same way.
+- **Astro, the rest of 4:** habits from React and Svelte are markup in code between `---`, a component calling itself by name instead of `Astro.self`, `return` in code between `---`, `{…}` inside the attribute string.
+- **Svelte, 7 responses from 14 infidels:** space at the edge of the `{#if}` block Svelte removes, and the reader sees "$2,800$2,400". Another 2 response did not import the component, 1 wrote `</script>` in comments inside `<script>`.
+- **React:** is the only error in logic, the same attempt of the same model was also mistaken on Svelte.
+
+We write the Shugo compiler, so the behavior can be made as models expect. In Astro syntax: slot under false condition is not passed; component can call itself by name; `return` in code between `---` means "show nothing". When Svelte syntax: the space at the edge of the block is saved. In this run, such rules would remove 12 from the 13 errors on Astro and 7 from the 14 on the Svelte.
+
+Stand, tasks, benchmarks and all answers are in the repository of the trust: `research/template-syntax` (`README.md`, `report/index.html`).
