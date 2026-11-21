@@ -325,15 +325,15 @@ type wireRecord struct {
 var (
 	fromGo = map[byte]string{
 		'L': "list pages by route",
-		'C': "compute these pages and shared blocks: p or s ␂ URL or name ␂ route",
+		'C': "compute these pages and shared blocks: p or s \x02 URL or name \x02 route",
 		'Q': "no more work; exit",
 		'I': "index response: 1 means built, 0 means a suitable index already existed",
 	}
 	fromJS = map[byte]string{
-		'P': "pages by route: route ␂ URL",
-		'G': "reads by the route's getStaticPaths: route ␂ supplies props ␂ reads",
-		'S': "new read shape: ID in this exchange ␂ table, lookup columns, relevant columns",
-		'I': "build an index: table ␂ for rows (1) or counts (0) ␂ number of lookup columns ␂ columns",
+		'P': "pages by route: route \x02 URL",
+		'G': "reads by the route's getStaticPaths: route \x02 supplies props \x02 reads",
+		'S': "new read shape: ID in this exchange \x02 table, lookup columns, relevant columns",
+		'I': "build an index: table \x02 for rows (1) or counts (0) \x02 number of lookup columns \x02 columns",
 		'R': "records and reads for pages and shared blocks",
 		'D': "request completed",
 		'E': "project code failed",
@@ -356,17 +356,13 @@ func frames(path string, names map[byte]string) ([]frame, error) {
 			break
 		}
 		body := data[5 : 4+size]
-		f := frame{Kind: string(data[4]), Size: size, Body: visible(string(body)), Meaning: names[data[4]]}
+		f := frame{Kind: string(data[4]), Size: size, Body: string(body), Meaning: names[data[4]]}
 		if data[4] == 'R' {
 			for _, one := range strings.Split(string(body), "\x03") {
 				parts := strings.Split(one, "\x01")
-				r := wireRecord{Fields: strings.Split(parts[0], "\x02"), Raw: visible(one)}
+				r := wireRecord{Fields: strings.Split(parts[0], "\x02"), Raw: one}
 				for _, block := range parts[1:] {
-					fields := strings.Split(block, "\x02")
-					for i := range fields {
-						fields[i] = visible(fields[i])
-					}
-					r.Blocks = append(r.Blocks, fields)
+					r.Blocks = append(r.Blocks, strings.Split(block, "\x02"))
 				}
 				f.Records = append(f.Records, r)
 			}
@@ -406,7 +402,7 @@ func bundled(raw []byte, rec *record.Record, values map[record.Hash][]byte) ([]b
 		data := values[h]
 		add(h[:], "value tape hash, which the block uses to locate its tape")
 		add(binary.AppendUvarint(nil, uint64(len(data))), fmt.Sprintf("value tape length: %d bytes", len(data)))
-		add(data, "value tape: "+visible(string(data)))
+		add(data, "value tape: "+string(data))
 	}
 	return out, rows
 }

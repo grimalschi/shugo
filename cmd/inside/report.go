@@ -573,6 +573,7 @@ func (r *report) render() ([]byte, error) {
 		},
 		"hexOf":   func(h record.Hash) string { return fmt.Sprintf("%x", h[:]) },
 		"visible": visible,
+		"sep":     separators,
 		"key": func(key []any) string {
 			parts := make([]string, len(key))
 			for i, v := range key {
@@ -627,6 +628,22 @@ func (r *report) render() ([]byte, error) {
 	var out bytes.Buffer
 	err = t.Execute(&out, r)
 	return out.Bytes(), err
+}
+
+// separators shows the separators of the conversation as small marks with
+// their codes, which every font can draw.
+func separators(s string) template.HTML {
+	var out strings.Builder
+	start := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] <= 3 {
+			out.WriteString(template.HTMLEscapeString(s[start:i]))
+			fmt.Fprintf(&out, `<span class="sep">%02x</span>`, s[i])
+			start = i + 1
+		}
+	}
+	out.WriteString(template.HTMLEscapeString(s[start:]))
+	return template.HTML(out.String())
 }
 
 // shown writes a value of the data as the report shows it.

@@ -17,9 +17,9 @@
     --c-head: var(--muted, #f0f0f3);
     --c-dim: var(--muted-foreground, #5f6068);
     --c-link: var(--brand, #0b57d0);
-    --c-add: var(--diff-added, rgba(40, 167, 69, 0.16));
-    --c-del: var(--diff-removed, rgba(220, 53, 69, 0.16));
     /* These work on either background. */
+    --c-add: rgba(46, 160, 67, 0.17);
+    --c-del: rgba(220, 53, 69, 0.16);
     --c-op: #d97706;
     --c-val: rgba(245, 158, 11, 0.26);
     --c-pill: rgba(99, 102, 241, 0.18);
@@ -34,19 +34,17 @@
       --c-head: var(--muted, #25272d);
       --c-dim: var(--muted-foreground, #9a9ba3);
       --c-link: var(--brand, #7aa7ff);
-      --c-add: var(--diff-added, rgba(46, 160, 67, 0.28));
-      --c-del: var(--diff-removed, rgba(248, 81, 73, 0.28));
     }
   }
   :root[data-theme="light"] {
     color-scheme: light;
     --c-bg: #ffffff; --c-fg: #1d1d1f; --c-card: #ffffff; --c-border: #e2e2e6; --c-head: #f0f0f3;
-    --c-dim: #5f6068; --c-link: #0b57d0; --c-add: rgba(40, 167, 69, 0.16); --c-del: rgba(220, 53, 69, 0.16);
+    --c-dim: #5f6068; --c-link: #0b57d0;
   }
   :root[data-theme="dark"] {
     color-scheme: dark;
     --c-bg: #141518; --c-fg: #e4e4e7; --c-card: #1c1d21; --c-border: #30323a; --c-head: #25272d;
-    --c-dim: #9a9ba3; --c-link: #7aa7ff; --c-add: rgba(46, 160, 67, 0.28); --c-del: rgba(248, 81, 73, 0.28);
+    --c-dim: #9a9ba3; --c-link: #7aa7ff;
   }
 
   body { font: 15px/1.55 var(--font-sans, system-ui, -apple-system, "Segoe UI", sans-serif); margin: 0; color: var(--c-fg); background: var(--c-bg); }
@@ -58,7 +56,12 @@
   pre, code, .mono { font: 12.5px/1.45 var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
   pre { background: var(--c-card); border: 1px solid var(--c-border); border-radius: 6px; padding: 10px 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; margin: 6px 0 14px; }
   table { border-collapse: collapse; width: 100%; margin: 6px 0 16px; background: var(--c-card); }
-  th, td { border: 1px solid var(--c-border); padding: 4px 8px; text-align: left; vertical-align: top; word-break: break-word; }
+  th, td { border: 1px solid var(--c-border); padding: 4px 8px; text-align: left; vertical-align: top; overflow-wrap: break-word; }
+  td.mono, td .mono { overflow-wrap: anywhere; }
+  td.v { overflow-wrap: normal; }   /* a value of the data breaks between words only */
+  .scroll { overflow-x: auto; }
+  tr.readers td { font-size: 13px; background: var(--c-head); padding-left: 18px; }
+  td.pre { white-space: pre-wrap; }                      /* markup keeps its lines */
   th { background: var(--c-head); font-weight: 600; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
@@ -78,6 +81,7 @@
   a { color: var(--c-link); text-decoration: none; } a:hover { text-decoration: underline; }
   .terms dt { font-weight: 700; margin-top: 8px; }
   .terms dd { margin-left: 18px; }
+  .sep { display: inline-block; font: 10px/1 var(--font-mono, ui-monospace, monospace); padding: 1px 3px; margin: 0 1px; border-radius: 3px; background: var(--c-pill); color: var(--c-dim); vertical-align: 1px; }
   .themes { float: right; margin-top: 12px; display: flex; gap: 0; border: 1px solid var(--c-border); border-radius: 8px; overflow: hidden; }
   .themes button { font: inherit; font-size: 13px; padding: 3px 10px; border: 0; background: var(--c-card); color: var(--c-fg); cursor: pointer; }
   .themes button + button { border-left: 1px solid var(--c-border); }
@@ -180,7 +184,7 @@
   {{range .Parts}}
   <p class="note">Part {{.Number}}{{if eq .Number 0}} — the template itself{{else}} — markup inside a tag passed to a component or layout slot{{end}}.</p>
   <table><tr><th style="width:5em">Operation</th><th style="width:12em">Meaning</th><th>Text</th><th style="width:9em">Uses a tape value</th></tr>
-  {{range .Ops}}<tr><td style="{{pad .Depth}}"><span class="op">{{.Code}}</span></td><td>{{.Name}}</td><td class="mono">{{visible .Text}}</td><td>{{if .Slots}}one value{{end}}</td></tr>{{end}}
+  {{range .Ops}}<tr><td style="{{pad .Depth}}"><span class="op">{{.Code}}</span></td><td>{{.Name}}</td><td class="mono pre">{{visible .Text}}</td><td>{{if .Slots}}one value{{end}}</td></tr>{{end}}
   </table>
   {{end}}
 </div>
@@ -198,11 +202,12 @@
 {{$store := .Build.Look.Store}}
 {{range .Build.Look.Data.Tables}}{{$t := .}}
 <h3>{{.Name}} <span class="n">key: {{.Key}}</span></h3>
-<table><tr>{{range .Columns}}<th>{{.}}</th>{{end}}<th>Readers of this row</th></tr>
-{{range .Rows}}<tr id="row-{{$t.Name}}-{{number .Key}}">{{range .Values}}<td class="mono">{{shown .}}</td>{{end}}<td>
-  {{range $store.ReadersOf $t .}}<div><a href="#shape-{{.Shape.ID}}">shape {{.Shape.ID}}</a>: {{if .Shape.By}}rows where {{join .Shape.By ", "}} = {{key .Key}}{{else}}all rows in the table{{end}}{{if .Shape.Columns}}; relevant columns: {{join .Shape.Columns ", "}}{{end}} → {{range .Readers}}{{reader .}}; {{end}}</div>{{end}}
+<div class="scroll"><table><tr>{{range .Columns}}<th>{{.}}</th>{{end}}</tr>
+{{range .Rows}}<tr id="row-{{$t.Name}}-{{number .Key}}">{{range .Values}}<td class="mono v">{{shown .}}</td>{{end}}</tr>
+<tr class="readers"><td colspan="{{len $t.Columns}}"><span class="n">Readers of this row:</span>
+  {{range $store.ReadersOf $t .}}<div><a href="#shape-{{.Shape.ID}}">shape {{.Shape.ID}}</a>: {{if .Shape.By}}rows where {{join .Shape.By ", "}} = {{key .Key}}{{else}}all rows in the table{{end}}{{if .Shape.Columns}}; relevant columns: {{join .Shape.Columns ", "}}{{end}} → {{range .Readers}}{{reader .}}; {{end}}</div>{{else}}none{{end}}
 </td></tr>{{end}}
-</table>
+</table></div>
 {{end}}
 <h3>What Shugo added to the database</h3>
 <p>Triggers on each table journal row inserts, changes, and deletes, along with the prior values. A write that changes nothing produces no journal entry.</p>
@@ -214,17 +219,17 @@
 <p class="note">Journal after the first build: {{len .Build.Look.Data.Journal}} rows. Seed data was loaded before the triggers existed. The first build computes everything.</p>
 
 <h2 id="talk">4. First build: the Go and JS exchange</h2>
-<p>Go starts <code>_build/eval.mjs</code> and exchanges messages over two separate channels. Each message contains a length, a code, and a body. The body uses these separators: <code>␀</code> precedes each value on the tape, <code>␁</code> separates blocks in a record, <code>␂</code> separates fields, and <code>␃</code> separates records. The messages come from <code>examples/inside/tap.sh</code>, which records each side in order. The sequence across both sides is unavailable. While computing, JS can request an index (<code>I</code>) and wait for Go to reply.</p>
+<p>Go starts <code>_build/eval.mjs</code> and exchanges messages over two separate channels. Each message contains a length, a code, and a body. The labels show the separator bytes within the body: <span class="sep">00</span> precedes each value on the tape, <span class="sep">01</span> separates blocks in a record, <span class="sep">02</span> separates fields, and <span class="sep">03</span> separates records. The messages come from <code>examples/inside/tap.sh</code>, which records each side in order. The sequence across both sides is unavailable. While computing, JS can request an index (<code>I</code>) and wait for Go to reply.</p>
 <div class="grid">
-<div><h4>Go → JS, in order</h4><table><tr><th>Code</th><th>Meaning</th><th>Body</th></tr>{{range .Build.Requests}}<tr><td class="mono">{{.Kind}}</td><td>{{.Meaning}}</td><td class="mono">{{.Body}}</td></tr>{{end}}</table></div>
-<div><h4>JS → Go, in order</h4><table><tr><th>Code</th><th>Meaning</th><th>bytes</th></tr>{{range .Build.Answers}}<tr><td class="mono">{{.Kind}}</td><td>{{.Meaning}}</td><td>{{.Size}}</td></tr>{{end}}</table></div>
+<div><h4>Go → JS, in order</h4><table><tr><th>Code</th><th>Meaning</th><th>Body</th></tr>{{range .Build.Requests}}<tr><td class="mono">{{.Kind}}</td><td>{{sep .Meaning}}</td><td class="mono">{{sep .Body}}</td></tr>{{end}}</table></div>
+<div><h4>JS → Go, in order</h4><table><tr><th>Code</th><th>Meaning</th><th>Body</th></tr>{{range .Build.Answers}}<tr><td class="mono">{{.Kind}}</td><td>{{sep .Meaning}}</td><td class="mono">{{if eq .Kind "R"}}Records: {{len .Records}}, {{.Size}} bytes — full body below{{else}}{{sep .Body}}{{end}}</td></tr>{{end}}</table></div>
 </div>
 <details><summary>All JS → Go messages</summary>
-{{range .Build.Answers}}<p><b>{{.Kind}}</b> — {{.Meaning}}, {{.Size}} bytes</p><pre>{{.Body}}</pre>{{end}}
+{{range .Build.Answers}}<p><b>{{.Kind}}</b> — {{sep .Meaning}}, {{.Size}} bytes</p><pre>{{sep .Body}}</pre>{{end}}
 </details>
 {{range .Build.Answers}}{{range .Records}}{{if eq (index .Fields 1) "/products/jug"}}
 <h3>Record for /products/jug as sent by JS</h3>
-<pre>{{.Raw}}</pre>
+<pre>{{sep .Raw}}</pre>
 <table>
 <tr><th>Header field</th><th>value</th><th>Meaning</th></tr>
 <tr><td>1</td><td class="mono">{{index .Fields 0}}</td><td>p means page and s means shared block</td></tr>
@@ -234,7 +239,7 @@
 <tr><td>5</td><td class="mono">{{index .Fields 4}}</td><td>Reads in sequence: a shape ID from this exchange's S messages, then its lookup values</td></tr>
 </table>
 <table><tr><th>Block</th><th>Fields</th></tr>
-{{range $i, $b := .Blocks}}<tr><td>{{$i}}</td><td class="mono">{{join $b " │ "}}</td></tr>{{end}}
+{{range $i, $b := .Blocks}}<tr><td>{{$i}}</td><td class="mono">{{range $j, $f := $b}}{{if $j}} │ {{end}}{{sep $f}}{{end}}</td></tr>{{end}}
 </table>
 <p class="note">Block <code>b</code>: file │ part │ nested blocks │ slots │ value tape. Block <code>u</code>: shared block reference by name │ slots. Go resolves the name to an ID, hashes the value tape, and verifies that the tape matches the template program.</p>
 {{end}}{{end}}{{end}}
@@ -306,7 +311,7 @@
 <div class="card"><h4>Block {{.Index}}: {{if .Use}}reference to <a href="#shared-{{.Shared}}">shared block {{.Shared}}</a> {{.SharedName}}{{else}}{{.File}}, part {{.Part}}, value tape <a href="#value-{{.Hash}}" class="mono">{{short .Hash}}</a>{{end}}</h4>
 {{if .Slots}}<p class="note">Slots filled in this block: {{join .Slots "; "}}</p>{{end}}
 {{if .Walk}}<table><tr><th style="width:4em">Op.</th><th>What it does</th><th style="width:4em">Tape index</th><th>value</th></tr>
-{{range .Walk}}<tr><td style="{{pad .Depth}}"><span class="op">{{.Op}}</span></td><td>{{.What}}{{if .Link}} <a href="#{{.Link}}">→</a>{{end}}</td><td>{{if .Slot}}{{.Slot}}{{end}}</td><td class="mono">{{if .Slot}}<span class="val">{{visible .Value}}</span>{{else}}{{visible .Value}}{{end}}</td></tr>{{end}}
+{{range .Walk}}<tr><td style="{{pad .Depth}}"><span class="op">{{.Op}}</span></td><td>{{.What}}{{if .Link}} <a href="#{{.Link}}">→</a>{{end}}</td><td>{{if .Slot}}{{.Slot}}{{end}}</td><td class="mono pre">{{if .Slot}}<span class="val">{{visible .Value}}</span>{{else}}{{visible .Value}}{{end}}</td></tr>{{end}}
 </table>{{end}}
 {{if .Error}}<p class="del">{{.Error}}</p>{{end}}
 </div>
@@ -317,7 +322,7 @@
 {{range .Blocks}}{{if not .Use}}
 <p class="note">Block {{.Index}}: {{.File}}, part {{.Part}}, value tape <a href="#value-{{.Hash}}" class="mono">{{short .Hash}}</a></p>
 <table><tr><th style="width:4em">Op.</th><th>What it does</th><th style="width:4em">Tape index</th><th>value</th></tr>
-{{range .Walk}}<tr><td style="{{pad .Depth}}"><span class="op">{{.Op}}</span></td><td>{{.What}}{{if .Link}} <a href="#{{.Link}}">→</a>{{end}}</td><td>{{if .Slot}}{{.Slot}}{{end}}</td><td class="mono">{{if .Slot}}<span class="val">{{visible .Value}}</span>{{else}}{{visible .Value}}{{end}}</td></tr>{{end}}
+{{range .Walk}}<tr><td style="{{pad .Depth}}"><span class="op">{{.Op}}</span></td><td>{{.What}}{{if .Link}} <a href="#{{.Link}}">→</a>{{end}}</td><td>{{if .Slot}}{{.Slot}}{{end}}</td><td class="mono pre">{{if .Slot}}<span class="val">{{visible .Value}}</span>{{else}}{{visible .Value}}{{end}}</td></tr>{{end}}
 </table>{{else}}<p class="note">Block {{.Index}}: reference to <a href="#shared-{{.Shared}}">shared block {{.Shared}}</a></p>{{end}}{{end}}
 </div>
 {{end}}
@@ -326,7 +331,7 @@
 <h3>Page record byte by byte</h3>
 <p class="note">The record is stored in <code>page.record</code>. Numbers use varints, so a small number takes one byte. The record contains the value tape's hash.</p>
 <table><tr><th style="width:4em">Offset</th><th style="width:30em">Bytes</th><th>Meaning</th></tr>
-{{range .Story.Bytes}}<tr><td>{{.Offset}}</td><td class="mono">{{.Hex}}</td><td>{{.Meaning}}</td></tr>{{end}}
+{{range .Story.Bytes}}<tr><td>{{.Offset}}</td><td class="mono">{{.Hex}}</td><td>{{sep .Meaning}}</td></tr>{{end}}
 </table>
 
 <h2 id="steps">7. Data changes and updates</h2>
@@ -350,7 +355,7 @@
 <tr><td>Changed columns</td><td><b>{{join .Changed ", "}}</b></td></tr>
 </table>
 <p><b>Affected readers:</b></p>
-<table><tr><th>Read shape</th><th>Lookup values</th><th>Reason</th><th>Readers to recompute</th></tr>
+<table><tr><th style="width:30%">Read shape</th><th style="width:14%">Lookup values</th><th>Reason</th><th style="width:26%">Readers to recompute</th></tr>
 {{range .Hits}}<tr class="add"><td><a href="#shape-{{.Shape.ID}}">shape {{.Shape.ID}}</a>: {{.Shape.Table}}{{if .Shape.By}} by {{join .Shape.By ", "}}{{else}}, all rows{{end}}{{if .Shape.Columns}}; relevant columns: {{join .Shape.Columns ", "}}{{end}}</td><td class="mono">{{key .Key}}</td><td>{{.Why}}</td><td>{{range .Readers}}{{reader .}}; {{end}}</td></tr>{{end}}
 {{range .Misses}}<tr class="skip"><td><a href="#shape-{{.Shape.ID}}">shape {{.Shape.ID}}</a>: {{.Shape.Table}}{{if .Shape.By}} by {{join .Shape.By ", "}}{{else}}, all rows{{end}}{{if .Shape.Columns}}; relevant columns: {{join .Shape.Columns ", "}}{{end}}</td><td></td><td>unaffected: {{.Why}}</td><td></td></tr>{{end}}
 </table>
@@ -385,8 +390,8 @@
 
 <details><summary>Go and JS exchange for this update</summary>
 {{if .Requests}}<table><tr><th>Direction</th><th>Code</th><th>Meaning</th><th>Body</th></tr>
-{{range .Requests}}<tr><td>Go → JS</td><td class="mono">{{.Kind}}</td><td>{{.Meaning}}</td><td class="mono">{{.Body}}</td></tr>{{end}}
-{{range .Answers}}<tr><td>JS → Go</td><td class="mono">{{.Kind}}</td><td>{{.Meaning}}</td><td class="mono">{{.Body}}</td></tr>{{end}}
+{{range .Requests}}<tr><td>Go → JS</td><td class="mono">{{.Kind}}</td><td>{{sep .Meaning}}</td><td class="mono">{{sep .Body}}</td></tr>{{end}}
+{{range .Answers}}<tr><td>JS → Go</td><td class="mono">{{.Kind}}</td><td>{{sep .Meaning}}</td><td class="mono">{{sep .Body}}</td></tr>{{end}}
 </table>{{else}}<p>JS had no work to do.</p>{{end}}
 </details>
 </div>
@@ -403,11 +408,11 @@
 <p>This site currently needs {{.Proposal.StoreNow}} bytes for records and value tapes, or {{.Proposal.StoreNew}} bytes with tapes embedded in records. Every record that uses a tape stores its own copy. This adds 17% to a store with 100,000 products.</p>
 <h3>{{.Proposal.Example}}: current record, {{index .Proposal.ExampleSize 0}} bytes</h3>
 <table><tr><th style="width:4em">Offset</th><th style="width:30em">Bytes</th><th>Meaning</th></tr>
-{{range .Proposal.ExampleRecord}}<tr><td>{{.Offset}}</td><td class="mono">{{.Hex}}</td><td>{{.Meaning}}</td></tr>{{end}}
+{{range .Proposal.ExampleRecord}}<tr><td>{{.Offset}}</td><td class="mono">{{.Hex}}</td><td>{{sep .Meaning}}</td></tr>{{end}}
 </table>
 <h3>Same record with embedded value tapes, {{index .Proposal.ExampleSize 1}} bytes</h3>
 <table><tr><th style="width:4em">Offset</th><th style="width:30em">Bytes</th><th>Meaning</th></tr>
-{{range .Proposal.ExampleBundled}}<tr><td>{{.Offset}}</td><td class="mono">{{.Hex}}</td><td>{{.Meaning}}</td></tr>{{end}}
+{{range .Proposal.ExampleBundled}}<tr><td>{{.Offset}}</td><td class="mono">{{.Hex}}</td><td>{{sep .Meaning}}</td></tr>{{end}}
 </table>
 <p class="note">This is a proposed layout. A block could reference a value tape by its number in the record and omit the hash.</p>
 
