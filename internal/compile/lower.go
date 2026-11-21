@@ -96,6 +96,10 @@ type (
 		// props of the component, computed where it renders them.
 		snippets []snipp
 	}
+	island struct {
+		target code
+		props  []prop
+	}
 	// piece is named markup computed in the template that writes it: a
 	// snippet without parameters given to a component, or <svelte:head>.
 	piece struct {
@@ -221,6 +225,7 @@ var oldTags = map[string]string{
 type lowerer struct {
 	file     *syntax.File
 	role     role
+	islands  map[string]string
 	errs     Errors
 	warnings []string
 	// hash is the class that scopes the <style> of the component to its own
@@ -522,11 +527,15 @@ func (l *lowerer) element(e *syntax.Element, ctx context) []node {
 		l.warnf(e.Start, "<svelte:self> is deprecated in Svelte 5: a component imports itself, import %s from \"./%s.shugo\"", name, name)
 		return []node{l.call(e, ctx, code{"$$self", e.Start}, true, false)}
 	case "svelte:component":
-		l.warnf(e.Start, "<svelte:component> is deprecated in Svelte 5: a component in a variable is shown by its tag, {@const Shown = cond ? A : B}<Shown />")
 		this, ok := l.this(e)
 		if !ok {
 			return nil
 		}
+		if name := strings.TrimSpace(this.text); l.islands[name] != "" {
+			l.errorf(e.Start, "a Svelte island must be rendered by its imported tag <%s />", name)
+			return nil
+		}
+		l.warnf(e.Start, "<svelte:component> is deprecated in Svelte 5: a component in a variable is shown by its tag, {@const Shown = cond ? A : B}<Shown />")
 		return []node{l.call(e, ctx, this, false, true)}
 	case "svelte:boundary":
 		return l.fragment(e.Children, ctx.inner())
@@ -539,9 +548,35 @@ func (l *lowerer) element(e *syntax.Element, ctx context) []node {
 		return nil
 	}
 	if isComponent(e.Name) {
+		if _, island := l.islands[e.Name]; island {
+			return []node{l.island(e, ctx)}
+		}
 		return []node{l.call(e, ctx, code{e.Name, e.Start + 1}, false, false)}
 	}
 	return l.html5(e, ctx)
+}
+
+func (l *lowerer) island(e *syntax.Element, ctx context) node {
+	if ctx.head || ctx.svg || ctx.raw || slices.Contains([]string{"select", "option", "optgroup", "textarea", "template"}, ctx.parent) {
+		l.errorf(e.Start, "the Svelte island <%s> needs a place for its wrapper in the HTML body", e.Name)
+	}
+	l.placed("div", e.Start, ctx.ancestors)
+	if hoisted, children := l.clean(e.Children, ctx); len(hoisted)+len(children) > 0 {
+		l.errorf(e.Start, "the Svelte island <%s> takes JSON props; its tag cannot pass children or snippets", e.Name)
+	}
+	out := island{target: code{e.Name, e.Start + 1}}
+	for _, a := range e.Attrs {
+		switch a.Kind {
+		case syntax.Spread:
+			c, _ := a.Expr()
+			out.props = append(out.props, prop{spread: &code{c.Text, c.Start}})
+		case syntax.Plain, syntax.Shorthand:
+			out.props = append(out.props, prop{name: a.Name, value: l.value(a)})
+		default:
+			l.errorf(a.Start, "pass a JSON prop to the Svelte island <%s>; directives belong inside its .svelte file", e.Name)
+		}
+	}
+	return out
 }
 
 // this returns the expression of this={…}.

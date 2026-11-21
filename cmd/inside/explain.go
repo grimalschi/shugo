@@ -156,7 +156,7 @@ func (w *walker) ops(ops []program.Op, depth int) error {
 		switch op.Kind {
 		case program.Markup:
 			w.add(depth, "r", "unchanged markup", op.Text, 0)
-		case program.Text, program.HTML:
+		case program.Text, program.HTML, program.Island:
 			value, place, err := w.take()
 			if err != nil {
 				return err
@@ -164,6 +164,9 @@ func (w *walker) ops(ops []program.Op, depth int) error {
 			what := "text: escaped"
 			if op.Kind == program.HTML {
 				what = "rendered HTML: inserted as-is"
+			}
+			if op.Kind == program.Island {
+				what = "Svelte island: server-rendered markup and hydration data"
 			}
 			w.add(depth, string(rune(op.Kind)), what, value, place)
 		case program.Attr, program.URL:
@@ -319,7 +322,7 @@ func firstByte(s string) byte {
 var opNames = map[string]string{
 	"r": "markup", "t": "text", "h": "rendered HTML", "a": "attribute", "u": "URL",
 	"s": "spread attributes", "i": "conditional", "f": "loop", "c": "component", "n": "{@render}",
-	"e": "<svelte:element>", "m": "insertion point",
+	"e": "<svelte:element>", "m": "insertion point", "d": "Svelte island",
 }
 
 // opLine is one operation of a program as the report lists it.
@@ -338,7 +341,7 @@ func listOps(ops []program.Op, depth int) []opLine {
 		code := string(rune(op.Kind))
 		line := opLine{Depth: depth, Code: code, Name: opNames[code], Text: op.Text}
 		switch op.Kind {
-		case program.Text, program.HTML, program.Attr, program.URL, program.If, program.For, program.Render, program.Element:
+		case program.Text, program.HTML, program.Island, program.Attr, program.URL, program.If, program.For, program.Render, program.Element:
 			line.Takes = 1
 		}
 		out = append(out, line)

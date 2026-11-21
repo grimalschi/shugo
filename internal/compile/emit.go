@@ -69,6 +69,11 @@ func (e *emitter) nodes(list []node) []program.Op {
 			ops = append(ops, e.loop(n))
 		case call:
 			ops = append(ops, e.component(n)...)
+		case island:
+			e.call("$$.island((", n.target, "), {")
+			e.props(n.props)
+			e.m.add("});")
+			ops = append(ops, program.Op{Kind: program.Island})
 		case snipp:
 			e.snippet(n)
 		case render:
@@ -298,15 +303,7 @@ func (e *emitter) component(n call) []program.Op {
 	} else {
 		e.call("$$.call((", n.target, "), {")
 	}
-	for _, p := range n.props {
-		if p.spread != nil {
-			e.call("...(", *p.spread, "),")
-			continue
-		}
-		e.m.add("%s: ", quote(p.name))
-		e.value(p.value)
-		e.m.add(",")
-	}
+	e.props(n.props)
 	for _, s := range n.snippets {
 		e.m.add("%s: $$.snippet(%d, ($$, ", quote(s.name), len(e.parts))
 		e.m.code(s.params)
@@ -328,6 +325,18 @@ func (e *emitter) component(n call) []program.Op {
 	}
 	e.m.add("} else {\n$$.branch(0);\n}")
 	return []program.Op{{Kind: program.If, Bodies: [][]program.Op{{call}}}}
+}
+
+func (e *emitter) props(props []prop) {
+	for _, p := range props {
+		if p.spread != nil {
+			e.call("...(", *p.spread, "),")
+			continue
+		}
+		e.m.add("%s: ", quote(p.name))
+		e.value(p.value)
+		e.m.add(",")
+	}
 }
 
 // dynamic writes <svelte:element>: the tag is a value, and so is whether it

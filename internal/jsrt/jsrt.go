@@ -17,3 +17,9 @@ var Source string
 //
 //go:embed query.js
 var Query string
+
+//go:embed catalog.js
+var Catalog string
+
+//go:embed island-worker.mjs
+var IslandWorker string

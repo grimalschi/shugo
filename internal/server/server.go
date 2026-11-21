@@ -1,8 +1,10 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -21,7 +23,8 @@ type Server struct {
 	// compile.AssetsURL.
 	Public, Assets string
 	// Live, when set, tells open pages to reload after every update.
-	Live *Live
+	Live    *Live
+	Islands *Islands
 	// Failed is called with every error that a visitor sees as a status 500.
 	Failed func(error)
 }
@@ -47,6 +50,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case s.Live != nil && address == livePath:
 		s.Live.serve(w, r)
 		return
+	case s.Islands != nil && address == catalogPath:
+		s.searchCatalog(w, r)
+		return
 	case len(address) > 1 && strings.HasSuffix(address, "/"):
 		// A page has one address, the one without a slash at the end.
 		target := strings.TrimRight(address, "/")
@@ -62,13 +68,26 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	buffer := buffers.Get().(*[]byte)
 	defer buffers.Put(buffer)
-	page, err := s.Pages.Render((*buffer)[:0], address)
+	var replace replaceIsland
+	filtered := false
+	if s.Islands != nil && r.URL.RawQuery != "" {
+		replace = s.Islands.forRequest(r.Context(), r.URL, &filtered)
+	}
+	page, err := s.Pages.render((*buffer)[:0], address, replace)
+	if errors.Is(err, errSearchTooLong) {
+		http.Error(w, errSearchTooLong.Error(), http.StatusRequestURITooLong)
+		return
+	}
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
 	if page.Found && address != notFound {
 		*buffer = page.HTML
+		if filtered {
+			w.Header().Set("X-Robots-Tag", "noindex")
+			w.Header().Set("Link", fmt.Sprintf("<%s>; rel=\"canonical\"", (&url.URL{Path: address}).EscapedPath()))
+		}
 		s.html(w, r, http.StatusOK, page.HTML)
 		return
 	}

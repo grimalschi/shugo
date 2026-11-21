@@ -33,6 +33,8 @@ type Config struct {
 	// Data is the SQLite database the pages read through Shugo.query:
 	// "data/site.db". An update computes only what a change in it reaches.
 	Data string `json:"data"`
+	// CatalogIslands enables the experimental catalog projection and API.
+	CatalogIslands bool `json:"catalogIslands"`
 }
 
 // Project is a folder with a site in it.

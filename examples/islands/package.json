@@ -1,0 +1,6 @@
+{
+  "private": true,
+  "devDependencies": {
+    "svelte": "5.59.1"
+  }
+}

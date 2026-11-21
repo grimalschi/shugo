@@ -1,0 +1,85 @@
+<script>
+  import { catalog } from "shugo:catalog"
+  import ProductCard from "../components/ProductCard.shugo"
+  import { pageHref, pageNumbers, sorts } from "../lib/catalog.js"
+
+  const action = "/catalog"
+  const result = catalog()
+  const filters = result.filters
+</script>
+
+<svelte:head><title>Ceramics catalog — Measure</title></svelte:head>
+
+<h1>Ceramics catalog</h1>
+<div class="catalog">
+  <form class="filters" method="get" {action}>
+    <label class="field">Search
+      <input type="search" name="q" maxlength="120" placeholder="For example, cup" value={filters.q}>
+    </label>
+
+    <fieldset>
+      <legend>Categories</legend>
+      <div class="options category-options">
+        {#each result.facets.category as option}
+          <label><input type="checkbox" name="category" value={option.value} checked={filters.category.includes(option.value)}><span>{option.label}</span><small aria-label={option.count + " products"}>{option.count}</small></label>
+        {/each}
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Sizes</legend>
+      <div class="options">
+        {#each result.facets.size as option}
+          <label><input type="checkbox" name="size" value={option.value} checked={filters.size.includes(option.value)}><span>{option.label}</span><small aria-label={option.count + " products"}>{option.count}</small></label>
+        {/each}
+      </div>
+    </fieldset>
+
+    <label class="stock-option"><input type="checkbox" name="stock" value="1" checked={filters.stock}> In stock only <small aria-label={result.facets.stock + " products"}>{result.facets.stock}</small></label>
+
+    <div class="price-range">
+      <label class="field">Minimum price<input type="number" name="price_from" min="0" step="1" placeholder="$" value={filters.priceFrom}></label>
+      <label class="field">Maximum price<input type="number" name="price_to" min="0" step="1" placeholder="$" value={filters.priceTo}></label>
+    </div>
+
+    <label class="field">Sort by
+      <select name="sort">
+        {#each sorts as sort}<option value={sort.value} selected={sort.value === filters.sort}>{sort.label}</option>{/each}
+      </select>
+    </label>
+
+    <div class="filter-actions">
+      <button type="submit">Show results</button>
+      <a href={action}>Reset</a>
+    </div>
+  </form>
+
+  <section class="results" data-catalog-results aria-labelledby="results-heading">
+    <div class="results-header">
+      <h2 id="results-heading" tabindex="-1"><span role="status" aria-atomic="true">Products: {result.total}</span></h2>
+      <p class="pending" aria-live="polite"></p>
+    </div>
+
+    <div aria-busy={false}>
+      {#if result.total}
+        <ul class="products">
+          {#each result.hits as item}<li><ProductCard {item} /></li>{/each}
+        </ul>
+      {:else}
+        <p class="empty">No products match these filters.</p>
+      {/if}
+    </div>
+
+    {#if result.pages > 1}
+      <nav class="pagination" aria-label="Catalog pages">
+        {#if result.page > 1}<a href={pageHref(action, result.filters, result.page - 1)}>Previous</a>{/if}
+        {#each pageNumbers(result.page, result.pages) as number}
+          {#if number === null}<span aria-hidden="true">…</span>
+          {:else if number === result.page}<span aria-current="page">{number}</span>
+          {:else}<a href={pageHref(action, result.filters, number)}>{number}</a>{/if}
+        {/each}
+        {#if result.page < result.pages}<a href={pageHref(action, result.filters, result.page + 1)}>Next</a>{/if}
+      </nav>
+    {/if}
+  </section>
+</div>

@@ -1,6 +1,7 @@
 package compile
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/evanw/esbuild/pkg/api"
@@ -20,7 +21,8 @@ type script struct {
 	smap  *sourcemap.Map // where every line came from in the .shugo file
 	top   []span         // imports and exports, as ranges of lines
 	// paths tells that the script exports getStaticPaths.
-	paths bool
+	paths   bool
+	islands map[string]string // explicit default imports of .svelte files
 	// at is the <script> in the file, and module tells that it is
 	// <script module>.
 	at     *syntax.Script
@@ -133,11 +135,52 @@ func (s *script) split(f *syntax.File, code string) error {
 			if err := s.exported(f, code[token.End:], from); err != nil {
 				return err
 			}
+		} else if err := s.islandImport(f, code[token.End:end], from); err != nil {
+			return err
 		}
 		s.top = append(s.top, span{from, to})
 		*scan = *syntax.NewScanner(code, end)
 		after = ""
 	}
+}
+
+// islandImport finds the local binding of an explicit Svelte island import.
+// esbuild has normalized the quotation and removed type-only imports.
+func (s *script) islandImport(f *syntax.File, clause string, line int) error {
+	if !strings.Contains(clause, ".svelte") {
+		return nil
+	}
+	scan := syntax.NewScanner(clause, 0)
+	var tokens []syntax.Token
+	for {
+		token, err := next(scan)
+		if err != nil {
+			return internalError(f, "cannot read an island import: %v", err)
+		}
+		if token.Kind == syntax.EOF || scan.Text(token) == ";" {
+			break
+		}
+		tokens = append(tokens, token)
+	}
+	if len(tokens) == 0 {
+		return nil
+	}
+	path, _ := strconv.Unquote(scan.Text(tokens[len(tokens)-1]))
+	if !strings.HasSuffix(path, ".svelte") {
+		return nil
+	}
+	at := s.at.Start
+	if _, l, column, found := s.smap.Find(line, 0); found {
+		at = offsetAt(f.Source, l, column)
+	}
+	if len(tokens) != 3 || tokens[0].Kind != syntax.Word || scan.Text(tokens[1]) != "from" {
+		return f.Errorf(at, `import an island as a default component, for example import Gallery from "./Gallery.svelte"`)
+	}
+	if s.islands == nil {
+		s.islands = map[string]string{}
+	}
+	s.islands[scan.Text(tokens[0])] = path
+	return nil
 }
 
 // exported checks an export that stands on the given line. The file itself

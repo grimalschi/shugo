@@ -283,7 +283,7 @@ type session struct {
 }
 
 // start runs the JavaScript of the project.
-func start(p *project.Project, log io.Writer) (*session, error) {
+func start(p *project.Project, log io.Writer, catalog []byte) (*session, error) {
 	answers, answersIn, err := os.Pipe()
 	if err != nil {
 		return nil, err
@@ -300,7 +300,7 @@ func start(p *project.Project, log io.Writer) (*session, error) {
 	// Requests and answers go through pipes of their own, so that whatever
 	// the project prints or reads cannot get mixed into them.
 	command.ExtraFiles = []*os.File{answersIn, asksOut}
-	command.Env = append(os.Environ(), "SHUGO_OUT=3", "SHUGO_IN=4", "SHUGO_DATA="+p.Data())
+	command.Env = append(os.Environ(), "SHUGO_OUT=3", "SHUGO_IN=4", "SHUGO_DATA="+p.Data(), "SHUGO_CATALOG="+string(catalog))
 	err = command.Start()
 	answersIn.Close()
 	asksOut.Close()
@@ -360,6 +360,7 @@ func (s *session) stop() {
 // worker is the JavaScript of the project, started when it is first asked
 // for something: an update that finds nothing to compute never starts it.
 type worker struct {
+	catalog []byte
 	project *project.Project
 	log     io.Writer
 	session *session
@@ -378,7 +379,7 @@ func (w *worker) ready(k *keeper) error {
 			return err
 		}
 	}
-	session, err := start(w.project, w.log)
+	session, err := start(w.project, w.log, w.catalog)
 	if err != nil {
 		return err
 	}

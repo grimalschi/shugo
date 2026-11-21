@@ -1,0 +1,11 @@
+<script>
+  import Counter from "../components/Counter.svelte"
+</script>
+
+<svelte:head><title>Two islands — Measure</title></svelte:head>
+
+<h1>Two islands on one page</h1>
+<div class="counter-grid">
+  <Counter title="Left island" start={0} />
+  <Counter title="Right island" start={10} />
+</div>

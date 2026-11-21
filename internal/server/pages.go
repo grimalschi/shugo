@@ -120,6 +120,10 @@ type Page struct {
 
 // Render appends the HTML of the page at path to dst.
 func (p *Pages) Render(dst []byte, path string) (Page, error) {
+	return p.render(dst, path, nil)
+}
+
+func (p *Pages) render(dst []byte, path string, replace replaceIsland) (Page, error) {
 	page := Page{HTML: dst}
 	err := p.store.View(func(v *store.View) error {
 		site, err := p.program(v)
@@ -131,7 +135,11 @@ func (p *Pages) Render(dst []byte, path string) (Page, error) {
 		if err != nil || !found {
 			return err
 		}
-		html, err := build(dst, site, data, &source{view: v})
+		var update func(*render.Island) error
+		if replace != nil {
+			update = func(island *render.Island) error { return replace(v, site, island) }
+		}
+		html, err := buildWithIslands(dst, site, data, &source{view: v}, update)
 		if err != nil {
 			return fmt.Errorf("page %s: %w", path, err)
 		}
@@ -143,9 +151,13 @@ func (p *Pages) Render(dst []byte, path string) (Page, error) {
 
 // build builds the HTML of a page from its record.
 func build(dst []byte, site *program.Site, data []byte, src *source) ([]byte, error) {
+	return buildWithIslands(dst, site, data, src, nil)
+}
+
+func buildWithIslands(dst []byte, site *program.Site, data []byte, src *source, replace func(*render.Island) error) ([]byte, error) {
 	rec, err := record.Decode(data)
 	if err != nil {
 		return dst, err
 	}
-	return render.Page(dst, site, rec, src)
+	return render.PageWithIslands(dst, site, rec, src, replace)
 }

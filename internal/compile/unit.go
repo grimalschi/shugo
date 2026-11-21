@@ -29,6 +29,7 @@ type unit struct {
 	paths bool
 	// warnings are what is written in a way Svelte allows but warns about.
 	warnings []string
+	islands  map[string]string // bindings of Svelte components imported by the template
 	// own tells that the file itself cannot be computed once for all pages:
 	// it reads the page it is shown on, or gives markup to the layouts of
 	// that page.
@@ -55,7 +56,16 @@ func compileFile(path, source string, id int, r role) (*unit, error) {
 	}
 	moduleScript, instance := scripts[0], scripts[1]
 
-	l := &lowerer{file: f, role: r}
+	var islands map[string]string
+	if len(moduleScript.islands)+len(instance.islands) > 0 {
+		islands = map[string]string{}
+		for _, s := range scripts {
+			for name, path := range s.islands {
+				islands[name] = path
+			}
+		}
+	}
+	l := &lowerer{file: f, role: r, islands: islands}
 	var styles []string
 	if f.Style != nil {
 		css := source[f.Style.Code.Start:f.Style.Code.End]
@@ -92,6 +102,7 @@ func compileFile(path, source string, id int, r role) (*unit, error) {
 
 	return &unit{
 		file: f, role: r, module: m, parts: e.parts, styles: styles,
+		islands: islands,
 		outlets: l.outlets, provided: l.provided, paths: moduleScript.paths || instance.paths,
 		warnings: append(warningsOf(f), l.warnings...),
 		own:      m.page || e.provides || readsPage(strings.Join(instance.lines, "\n")) || readsPage(strings.Join(moduleScript.lines, "\n")),

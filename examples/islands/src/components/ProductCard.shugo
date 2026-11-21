@@ -1,0 +1,17 @@
+<script>
+  import { money } from "../lib/catalog.js"
+  let { item } = $props()
+</script>
+
+<article class="product-card" data-product-id={item.id}>
+  <p class="product-category">{item.categoryTitle}</p>
+  <h3>{item.title}</h3>
+  <p class="product-price">
+    <strong>{money(item.price)}</strong>
+    {#if item.originalPrice !== item.price}<del>{money(item.originalPrice)}</del>{/if}
+  </p>
+  <p class:available={item.available} class="product-stock">
+    {item.available ? "In stock" : "Out of stock"}
+  </p>
+  {#if item.sizes.length}<p class="product-sizes">{item.sizes.join(" · ")}</p>{/if}
+</article>

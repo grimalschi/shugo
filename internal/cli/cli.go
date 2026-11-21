@@ -53,7 +53,7 @@ const Store = "store.db"
 var options = map[string][]string{
 	"build":  {"json", "runtime"},
 	"update": {"json", "check", "runtime"},
-	"serve":  {"addr"},
+	"serve":  {"addr", "runtime"},
 	"export": {"json", "out"},
 	"dev":    {"addr", "runtime"},
 }
@@ -248,6 +248,9 @@ func summary(verb string, r *evaluate.Report) string {
 	if r.Rebuilt {
 		out.WriteString("\n  the project was compiled anew, so everything was computed from scratch")
 	}
+	if r.CatalogRecomputed {
+		out.WriteString("\n  the first catalog result changed, so the pages were recomputed")
+	}
 	line := func(what string, c evaluate.Changes) {
 		if c.Added+c.Changed+c.Removed == 0 {
 			return
@@ -289,6 +292,10 @@ func (c *command) serve() error {
 
 // listen answers requests until the process is stopped.
 func (c *command) listen(s *server.Server) error {
+	if c.project.Config.CatalogIslands {
+		s.Islands = server.NewIslands(c.project.Path(project.Output), c.project.Runtime(), c.stderr)
+		defer s.Islands.Close()
+	}
 	s.Public = c.project.Path(project.Public)
 	s.Assets = c.project.Path(project.Output, compile.Assets)
 	s.Failed = func(err error) { fmt.Fprintln(c.stderr, "error:", err) }

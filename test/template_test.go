@@ -1,6 +1,10 @@
 package test
 
 import (
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -310,7 +314,8 @@ html { font-family: sans-serif }
 		t.Errorf("the cards are not scoped: %s", page)
 	}
 	link := page[strings.Index(page, `href="/_assets/`)+len(`href="/_assets/`):]
-	sheet := s.read("_build/assets/" + link[:strings.Index(link, `"`)])
+	sheetFile := link[:strings.Index(link, `"`)]
+	sheet := s.read("_build/assets/" + sheetFile)
 	for _, want := range []string{"font-family:sans-serif", `.logo{background:url("/_assets/logo.`, ".card." + card + "{color:green}", "body.svelte-"} {
 		if !strings.Contains(sheet, want) {
 			t.Errorf("the style sheet has no %q: %s", want, sheet)
@@ -321,8 +326,28 @@ html { font-family: sans-serif }
 	}
 	// What a style sheet points at is copied next to it.
 	name := sheet[strings.Index(sheet, "/_assets/logo.")+len("/_assets/"):]
-	if got := s.read("_build/assets/" + name[:strings.Index(name, `"`)]); !strings.Contains(got, "<svg") {
+	logoFile := name[:strings.Index(name, `"`)]
+	if got := s.read("_build/assets/" + logoFile); !strings.Contains(got, "<svg") {
 		t.Errorf("the picture of the style sheet: %q", got)
+	}
+
+	out := filepath.Join(s.root, "dist")
+	if done := s.export(out); done.Files != 3 {
+		t.Fatalf("expected page, stylesheet and SVG in export: %+v", done)
+	}
+	s.write(`-- src/styles/logo.svg --
+<svg xmlns="http://www.w3.org/2000/svg" width="20"/>`)
+	s.build()
+	if done := s.export(out); done.Files != 3 || done.Written != 3 || done.Removed != 2 {
+		t.Fatalf("expected a new stylesheet and SVG and page: %+v", done)
+	}
+	for _, name := range []string{sheetFile, logoFile} {
+		if _, err := os.Stat(filepath.Join(s.root, "_build", "assets", name)); err != nil {
+			t.Errorf("previous asset unavailable to the server: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(out, "_assets", name)); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("previous asset retained by export: %s, %v", name, err)
+		}
 	}
 }
 

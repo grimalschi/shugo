@@ -7,6 +7,7 @@
 package render
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -30,7 +31,23 @@ const (
 
 // Page appends the HTML of a page to dst.
 func Page(dst []byte, site *program.Site, rec *record.Record, src Source) ([]byte, error) {
-	r := renderer{site: site, src: src, out: dst, start: len(dst)}
+	return PageWithIslands(dst, site, rec, src, nil)
+}
+
+// Island holds the SSR output and inputs for hydrating one component.
+type Island struct {
+	ID     string          `json:"id"`
+	URL    string          `json:"url"`
+	CSS    string          `json:"css"`
+	Props  json.RawMessage `json:"props"`
+	Body   string          `json:"body"`
+	Search bool            `json:"search"`
+}
+
+// PageWithIslands lets the Go server replace the precomputed SSR output of
+// selected islands. Export and ordinary requests use the stored output.
+func PageWithIslands(dst []byte, site *program.Site, rec *record.Record, src Source, replace func(*Island) error) ([]byte, error) {
+	r := renderer{site: site, src: src, out: dst, start: len(dst), replace: replace}
 	if err := r.show(rec, rec.Top, nil); err != nil {
 		return dst, err
 	}
@@ -57,6 +74,10 @@ type renderer struct {
 	depth int
 	// dry tells to read the values of one block without showing anything.
 	dry bool
+	// replace is set only for requests that can change an island's input.
+	replace func(*Island) error
+	scripts map[string]bool
+	styles  map[string]bool
 }
 
 // frame is a component being shown, as seen from inside its template: the
@@ -179,6 +200,15 @@ func (r *renderer) ops(ops []program.Op, c *cursor) error {
 			}
 			r.out = append(r.out, value...)
 
+		case program.Island:
+			value, err := c.next()
+			if err != nil {
+				return err
+			}
+			if err := r.island(value); err != nil {
+				return err
+			}
+
 		case program.Attr, program.URL:
 			value, err := c.next()
 			if err != nil {
@@ -292,6 +322,60 @@ func (r *renderer) ops(ops []program.Op, c *cursor) error {
 		default:
 			return fmt.Errorf("unknown operation %q", rune(op.Kind))
 		}
+	}
+	return nil
+}
+
+func (r *renderer) island(value []byte) error {
+	var island Island
+	if err := json.Unmarshal(value, &island); err != nil {
+		return fmt.Errorf("invalid island record: %w", err)
+	}
+	if island.ID == "" || !safeAddress([]byte(island.URL)) || !strings.HasPrefix(island.URL, "/_assets/") ||
+		(island.CSS != "" && (!safeAddress([]byte(island.CSS)) || !strings.HasPrefix(island.CSS, "/_assets/"))) ||
+		len(island.Props) == 0 || island.Props[0] != '{' {
+		return errors.New("invalid island entry or props")
+	}
+	if r.dry {
+		return nil
+	}
+	if r.replace != nil && island.Search {
+		if err := r.replace(&island); err != nil {
+			return err
+		}
+	}
+	// Marshal escapes HTML metacharacters in the JSON, including </script>.
+	payload, err := json.Marshal(island.Props)
+	if err != nil {
+		return err
+	}
+	if len(r.out)-r.start+len(island.Body)+len(payload) > maxOutput {
+		return errors.New("the page is too large")
+	}
+	if island.CSS != "" && !r.styles[island.CSS] {
+		if r.styles == nil {
+			r.styles = make(map[string]bool)
+		}
+		r.styles[island.CSS] = true
+		r.out = append(r.out, `<link rel="stylesheet" href="`...)
+		r.out = appendEscaped(r.out, []byte(island.CSS), true)
+		r.out = append(r.out, `">`...)
+	}
+	r.out = append(r.out, `<div data-shugo-island="`...)
+	r.out = appendEscaped(r.out, []byte(island.URL), true)
+	r.out = append(r.out, `"><div data-shugo-target>`...)
+	r.out = append(r.out, island.Body...)
+	r.out = append(r.out, `</div><script type="application/json" data-shugo-props>`...)
+	r.out = append(r.out, payload...)
+	r.out = append(r.out, `</script></div>`...)
+	if !r.scripts[island.URL] {
+		if r.scripts == nil {
+			r.scripts = make(map[string]bool)
+		}
+		r.scripts[island.URL] = true
+		r.out = append(r.out, `<script type="module" src="`...)
+		r.out = appendEscaped(r.out, []byte(island.URL), true)
+		r.out = append(r.out, `"></script>`...)
 	}
 	return nil
 }

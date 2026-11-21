@@ -13,6 +13,7 @@
 import { readFileSync, readSync, writeSync } from "node:fs";
 
 import { during, open, Query, Reads } from "shugo:query";
+import { catalog } from "shugo:catalog";
 
 // The data database of the project, once it is open; null if it has none.
 let data = null;
@@ -84,6 +85,24 @@ class Writer {
   // {@html expression}
   html(value) {
     this.block.values.push(escape(String(value ?? "")));
+  }
+
+  island(target, { shugoSearch = false, ...props }) {
+    if (shugoSearch) props.initial = catalog();
+    // Normalize before SSR so the browser hydrates with the same values.
+    const serial = JSON.stringify(props, (_, value) => {
+      if (typeof value === "function" || typeof value === "symbol") {
+        throw new TypeError("Svelte island props must be JSON data");
+      }
+      return value;
+    });
+    const normalized = JSON.parse(serial);
+    const { body, head } = target.render(normalized);
+    if (head) throw new Error("Put the island’s head elements in its Shugo page");
+    this.block.values.push(escape(JSON.stringify({
+      id: target.id, url: target.url, css: target.css, search: Boolean(shugoSearch),
+      props: JSON.parse(serial), body,
+    })));
   }
 
   // "text {expression}": an expression inside the value of an attribute.
@@ -170,6 +189,9 @@ class Writer {
   // The snippets without parameters written inside the tag come as [name,
   // part, body].
   call(target, props, given) {
+    if (typeof target?.id === "string" && typeof target.url === "string" && typeof target.render === "function") {
+      throw new TypeError("a Svelte island must be rendered by its imported tag");
+    }
     if (target === null || typeof target !== "object" || typeof target.render !== "function") {
       throw new TypeError(`this tag is not a component: it is ${describe(target)}. A component is what a .shugo file exports: import Card from "./Card.shugo"`);
     }

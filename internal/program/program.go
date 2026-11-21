@@ -11,9 +11,10 @@ import (
 	"strings"
 )
 
-// Version changes when an older runtime could not read the format any more:
-// 2 is the program of Svelte templates, with snippets and <svelte:element>.
-const Version = 2
+// Version 3 adds Svelte islands and the public asset manifest.
+const Version = 3
+
+const versionStaticSvelte = 2
 
 // Site is a whole compiled project.
 type Site struct {
@@ -28,6 +29,11 @@ type Site struct {
 	Origin string `json:"origin,omitempty"`
 	// Redirects sends one path to another.
 	Redirects map[string]string `json:"redirects,omitempty"`
+	// Assets lists this generation's public compiler outputs. A nil list
+	// marks an older program, whose assets folder had only one generation.
+	Assets []string `json:"assets"`
+	// IslandWorker names the private JavaScript bundle for request-time SSR.
+	IslandWorker string `json:"islandWorker,omitempty"`
 }
 
 // File is one compiled template.
@@ -78,6 +84,7 @@ const (
 	Render  Kind = 'n' // show a snippet: given by a caller, or a block of its own
 	Element Kind = 'e' // write an element whose tag is a value: <svelte:element>
 	Mount   Kind = 'm' // write markup the framework adds
+	Island  Kind = 'd' // write an island's server markup and hydration payload
 )
 
 // Last is the text of a Render that shows the last block alone.
@@ -168,7 +175,7 @@ func (o Op) hasText() bool {
 func (o Op) check() error {
 	want := 0
 	switch o.Kind {
-	case Markup, Text, HTML, Attr, URL, Spread, Call, Render, Mount:
+	case Markup, Text, HTML, Attr, URL, Spread, Call, Render, Mount, Island:
 	case For:
 		want = min(max(1, len(o.Bodies)), 2)
 	case Element:
@@ -201,8 +208,8 @@ func Decode(data []byte) (*Site, error) {
 	if err := json.Unmarshal(data, site); err != nil {
 		return nil, err
 	}
-	if site.Version != Version {
-		return nil, fmt.Errorf("program: the project was compiled for format %d, this runtime reads format %d", site.Version, Version)
+	if site.Version != Version && site.Version != versionStaticSvelte {
+		return nil, fmt.Errorf("program: the project was compiled for format %d, this runtime reads formats %d and %d", site.Version, versionStaticSvelte, Version)
 	}
 	return site, nil
 }

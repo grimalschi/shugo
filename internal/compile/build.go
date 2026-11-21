@@ -1,6 +1,7 @@
 package compile
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -61,11 +62,15 @@ func Build(p *project.Project) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	bundled, err := b.bundle(routes)
+	islands, err := b.buildIslands()
 	if err != nil {
 		return nil, err
 	}
-	site := &program.Site{Origin: p.Config.Site, Redirects: p.Config.Redirects, Routes: routes}
+	bundled, err := b.bundle(routes, islands)
+	if err != nil {
+		return nil, err
+	}
+	site := &program.Site{Origin: p.Config.Site, Redirects: p.Config.Redirects, Routes: routes, Assets: []string{}}
 	if site.Origin == "" {
 		site.Origin = "http://localhost"
 	}
@@ -77,23 +82,37 @@ func Build(p *project.Project) (*Result, error) {
 
 	output := p.Path(project.Output)
 	assets := filepath.Join(output, Assets)
-	if err := os.RemoveAll(assets); err != nil {
-		return nil, err
-	}
 	if err := os.MkdirAll(assets, 0o755); err != nil {
 		return nil, err
 	}
-	sheet, err := b.styles(bundled.styles)
+	sheet, files, err := b.styles(bundled.styles)
 	if err != nil {
 		return nil, err
 	}
-	if sheet != nil {
-		name := "styles." + digest(sheet)[:10] + ".css"
-		if err := os.WriteFile(filepath.Join(assets, name), sheet, 0o644); err != nil {
+	site.Assets = append(site.Assets, files...)
+	if islands != nil {
+		for _, file := range islands.assets {
+			if err := writeHashedFile(file.Path, file.Contents); err != nil {
+				return nil, err
+			}
+			site.Assets = append(site.Assets, filepath.Base(file.Path))
+		}
+		if err := writeHashedFile(filepath.Join(output, islands.filename), islands.worker); err != nil {
 			return nil, err
 		}
+		site.IslandWorker = islands.filename
+		bundled.files = append(bundled.files, islands.files...)
+		warnings = append(warnings, islands.warnings...)
+	}
+	if sheet != nil {
+		name := "styles." + digest(sheet)[:10] + ".css"
+		if err := writeHashedFile(filepath.Join(assets, name), sheet); err != nil {
+			return nil, err
+		}
+		site.Assets = append(site.Assets, name)
 		site.Mounts = map[string]string{"head": `<link rel="stylesheet" href="` + AssetsURL + name + `">`}
 	}
+	slices.Sort(site.Assets)
 
 	data, err := site.Encode()
 	if err != nil {
@@ -109,6 +128,30 @@ func Build(p *project.Project) (*Result, error) {
 		}
 	}
 	return &Result{Site: site, ID: digest(data, bundled.code), Warnings: append(warnings, bundled.warnings...)}, nil
+}
+
+// A running server can still render a previously built store. Publish new
+// hashed files without truncating the assets and SSR worker it refers to.
+func writeHashedFile(path string, contents []byte) error {
+	if current, err := os.ReadFile(path); err == nil && bytes.Equal(current, contents) {
+		return nil
+	}
+	f, err := os.CreateTemp(filepath.Dir(path), ".shugo-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	defer f.Close()
+	if err := f.Chmod(0o644); err != nil {
+		return err
+	}
+	if _, err := f.Write(contents); err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), path)
 }
 
 // Load reads a project that Build has compiled before.
@@ -354,7 +397,7 @@ type bundled struct {
 
 // bundle links the modules of all files, the code they import and the
 // library of the framework into one file.
-func (b *builder) bundle(routes []program.Route) (*bundled, error) {
+func (b *builder) bundle(routes []program.Route, islands *islandOutput) (*bundled, error) {
 	root := b.project.Root
 	// The entry names the module of every file: a page is computed from its
 	// route, and a shared block from its name alone, so any file may be what
@@ -385,6 +428,9 @@ func (b *builder) bundle(routes []program.Route) (*bundled, error) {
 
 	plugin := api.Plugin{Name: "shugo", Setup: func(build api.PluginBuild) {
 		build.OnResolve(api.OnResolveOptions{Filter: `^shugo:`}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
+			if args.Path == "shugo:island-worker" && islands != nil {
+				return api.OnResolveResult{Path: "./" + islands.filename, External: true}, nil
+			}
 			return api.OnResolveResult{Path: args.Path, Namespace: "shugo"}, nil
 		})
 		build.OnLoad(api.OnLoadOptions{Filter: `.*`, Namespace: "shugo"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
@@ -394,8 +440,18 @@ func (b *builder) bundle(routes []program.Route) (*bundled, error) {
 				contents = entry.String()
 			case "shugo:query":
 				contents = jsrt.Query
+			case "shugo:catalog":
+				contents = jsrt.Catalog
 			}
 			return api.OnLoadResult{Contents: &contents, Loader: api.LoaderJS, ResolveDir: root}, nil
+		})
+		build.OnLoad(api.OnLoadOptions{Filter: `\.svelte$`}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
+			rel := b.relative(args.Path)
+			if islands == nil || islands.names[rel].path == "" {
+				return api.OnLoadResult{}, fmt.Errorf("import the .svelte file as a default component directly in a .shugo file")
+			}
+			contents := `import { islands } from "shugo:island-worker"; export default islands.get(` + quote(rel) + `);`
+			return api.OnLoadResult{Contents: &contents, Loader: api.LoaderJS, ResolveDir: filepath.Dir(args.Path)}, nil
 		})
 		build.OnLoad(api.OnLoadOptions{Filter: `\.shugo$`}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
 			rel := b.relative(args.Path)

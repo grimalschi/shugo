@@ -22,6 +22,7 @@ func TestSiteRoundTrip(t *testing.T) {
 				{Kind: For, Bodies: [][]Op{{{Kind: Text}}, {{Kind: Markup, Text: "none"}}}},
 				{Kind: Element, Bodies: [][]Op{{{Kind: Attr, Text: "id"}}, {{Kind: Text}}}},
 				{Kind: Mount, Text: "head"},
+				{Kind: Island},
 			},
 			{},
 		}}},
@@ -49,6 +50,13 @@ func TestSiteRoundTrip(t *testing.T) {
 	}
 	if got := back.Files[0].Parts[0][8]; got.Kind != Render || got.Text != Last {
 		t.Errorf("the render of the last block came back as %v", got)
+	}
+}
+
+func TestDecodeStaticSvelteProgram(t *testing.T) {
+	site, err := Decode([]byte(`{"version":2,"files":[{"path":"index.shugo","parts":[[["r","<p>Static</p>"]]]}]}`))
+	if err != nil || site.Assets != nil {
+		t.Fatalf("read static Svelte program from older store: %v", err)
 	}
 }
 

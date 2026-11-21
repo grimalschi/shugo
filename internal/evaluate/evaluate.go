@@ -65,6 +65,9 @@ type Report struct {
 	// show something that Shugo does not see them read.
 	Checked bool     `json:"checked,omitempty"`
 	Unseen  []string `json:"unseen,omitempty"`
+	// CatalogRecomputed reports that the new default search result required
+	// reevaluating pages whose build may have embedded that result.
+	CatalogRecomputed bool `json:"catalogRecomputed,omitempty"`
 	// Time is how long every step took, in milliseconds.
 	Time map[string]float64 `json:"time"`
 }
@@ -163,6 +166,18 @@ func Run(p *project.Project, compiled *compile.Result, st *store.Store, options 
 	k.check, report.Checked = options.Check, options.Check
 	w := &worker{project: p, log: options.Log}
 	defer w.stop()
+	if p.Config.CatalogIslands && p.Data() == "" {
+		return nil, errors.New("catalogIslands needs a data database in shugo.json")
+	}
+	if !p.Config.CatalogIslands && (options.Whole || kept != compiled.ID) {
+		if name, err := u.Catalog(); err != nil {
+			return nil, err
+		} else if name != "" {
+			if err := u.SetCatalog("", nil); err != nil {
+				return nil, err
+			}
+		}
+	}
 	switch path := p.Data(); {
 	case path != "":
 		err = tracked(w, k, path, options.Whole || kept != compiled.ID, took)
@@ -295,6 +310,23 @@ func tracked(w *worker, k *keeper, path string, whole bool, took func(string)) e
 		if now, err = source.Position(); err != nil {
 			return err
 		}
+	}
+	if w.project.Config.CatalogIslands {
+		took("data")
+		changed, err := w.prepareCatalog(k.update, whole || now != at)
+		if err != nil {
+			return err
+		}
+		took("catalog")
+		// The experimental projection has no per-reader dependency edges.
+		// If its default page changes, recompute the records that may embed it.
+		if changed && !whole {
+			k.report.CatalogRecomputed = true
+			whole = true
+			k.report.Data.Rows = len(changes)
+		}
+	}
+	if whole {
 		k.report.Data.Whole = true
 		took("data")
 		err = everything(w, k, took)
