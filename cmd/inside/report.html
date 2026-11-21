@@ -427,7 +427,7 @@
 </div>
 {{define "rounds"}}{{range $i, $r := .}}
 <div class="card round">
-<h4>{{if $r.Told}}At startup{{else}}Round {{$i}}{{end}}. Go: {{$r.Ask}}</h4>
+<h4>{{if $r.Told}}At startup{{else}}Round {{$r.Number}}{{end}}. Go: {{$r.Ask}}</h4>
 {{if $r.Told}}<p class="note">JS remembers these indexes and does not send a response or request them again.</p>{{end}}
 {{if $r.Units}}<p class="note">{{join $r.Units "; "}}</p>{{end}}
 {{if $r.Pages}}<p><b>JS listed {{counted (len $r.Pages) "page" "pages"}}:</b> {{join $r.Pages ", "}}</p>{{end}}

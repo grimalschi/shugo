@@ -432,6 +432,7 @@ type round struct {
 	Shapes  []string // kinds of readings met for the first time in this run
 	Failed  string
 	Told    bool // Go only told something: no answer is waited for
+	Number  int  // of the requests that are answered, from 1
 }
 
 type routeNote struct {
@@ -485,7 +486,7 @@ func rounds(requests, answers []frame) []round {
 	}
 	shapes := map[int]spec{}
 	var out []round
-	next := 0
+	next, asked := 0, 0
 	for _, f := range requests {
 		var r round
 		switch f.Kind {
@@ -535,6 +536,8 @@ func rounds(requests, answers []frame) []round {
 		default:
 			continue
 		}
+		asked++
+		r.Number = asked
 		named := map[string]bool{}
 		for done := false; !done && next < len(answers); next++ {
 			m := answers[next]
