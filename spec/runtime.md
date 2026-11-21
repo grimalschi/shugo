@@ -69,6 +69,28 @@ The copy of the records itself is 37 MB: 104,202 page records and 100,009 shared
 
 The author of the project chose the first way: there is no copy, the server reads the necessary from SQLite for each request, and requests to the storage are optimized. Not done.
 
+#### SQLite read performance
+
+Measured on the store's copy of 100,000 products: 20,000 random pages in a row, one reading transaction per page, time per page. Two SQLite drivers: current on pure Go and on C via cgo.
+
+| How to read | Go Driver | C Driver |
+| --- | ---: | ---: |
+| Request for each record and each value - as it is now | 142–150 µs | 120 µs |
+| The same file is displayed in memory (`mmap`) | 107–112 µs | 92–95 µs |
+| Packs: all common blocks, then all values | 120–126 µs | 95–103 µs |
+| One SQL request for the entire page | 124–142 µs | 92–121 µs |
+| **Values within records**, write request, `mmap` | **61–65 µs** | **53–55 µs** |
+| Same without `mmap` | 74–76 µs | 66–69 µs |
+| For comparison: a copy in memory | 9 µs | — |
+
+A page from a store is about 26 searches by key: its record, about 10 shared blocks and about 15 value sets. Time determines the number of searches, not the number of SQL requests: to collect them in bundles or in one query does not help. If values are stored inside the page record and the shared block records, the searches remain around 11, and the page is read twice as fast.
+
+Multiple requests at once, each on its own connection, values inside records, `mmap`: 34–35 thousand pages per second on the driver on Go and 41 thousand on the driver on C, without HTTP. With a copy in memory of the entire server along with HTTP gave 33–39 thousand.
+
+Price is place. Values cease to be stored once under their hash: records with values inside take 62.6 MB against 53.3 MB records and individual values now. The storage is simpler: there is no table of values and records, how many records use each of them.
+
+Suggested: values inside records, file is displayed in memory, driver on Go. This changes [2](decisions.md#2-values-are-stored-by-content-and-shared-blocks-by-name) and waits for approval. Not done.
+
 ### What Rantime Doesn't Trust
 
 Values came from the stage that executed the project code. Therefore:
