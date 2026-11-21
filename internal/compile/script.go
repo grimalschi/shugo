@@ -21,8 +21,10 @@ type script struct {
 	top   []span         // imports and exports, as ranges of lines
 	// paths tells that the script exports getStaticPaths.
 	paths bool
-	// at is the <script> in the file.
-	at *syntax.Script
+	// at is the <script> in the file, and module tells that it is
+	// <script module>.
+	at     *syntax.Script
+	module bool
 }
 
 // span is lines[from:to].
@@ -61,7 +63,7 @@ func compileScript(f *syntax.File, at *syntax.Script, module bool) (*script, err
 	if err != nil {
 		return nil, err
 	}
-	s := &script{smap: smap, at: at}
+	s := &script{smap: smap, at: at, module: module}
 	code := strings.TrimSuffix(strings.TrimSpace(string(result.Code)), moduleMark)
 	if err := s.split(f, strings.TrimSpace(code)); err != nil {
 		return nil, err
@@ -127,17 +129,35 @@ func (s *script) split(f *syntax.File, code string) error {
 		if (token.Start > 0 && code[token.Start-1] != '\n') || (end < len(code) && code[end] != '\n') {
 			return internalError(f, "an %s shares a line with other code in the transformed script", text)
 		}
-		if text == "export" && strings.HasPrefix(code[token.End:], " default") {
-			at := s.at.Start
-			if _, line, column, found := s.smap.Find(from, 0); found {
-				at = offsetAt(f.Source, line, column)
+		if text == "export" {
+			if err := s.exported(f, code[token.End:], from); err != nil {
+				return err
 			}
-			return f.Errorf(at, `the script cannot have "export default": the file itself is what it exports`)
 		}
 		s.top = append(s.top, span{from, to})
 		*scan = *syntax.NewScanner(code, end)
 		after = ""
 	}
+}
+
+// exported checks an export that stands on the given line. The file itself
+// is what a .shugo module exports, and only <script module> runs once for
+// the module: the other <script> runs every time the component is shown,
+// and what it declares belongs to that showing.
+func (s *script) exported(f *syntax.File, rest string, line int) error {
+	at := s.at.Start
+	if _, l, column, found := s.smap.Find(line, 0); found {
+		at = offsetAt(f.Source, l, column)
+	}
+	switch {
+	case strings.HasPrefix(rest, " default"):
+		return f.Errorf(at, `the script cannot have "export default": the file itself is what it exports`)
+	case s.module:
+		return nil
+	case strings.HasPrefix(rest, " let ") || strings.HasPrefix(rest, " var "):
+		return f.Errorf(at, `"export let" declares a prop in Svelte 4: a component of Svelte 5 takes its props with let { name } = $props()`)
+	}
+	return f.Errorf(at, `an export goes into <script module>, which runs once; this <script> runs every time the component is shown: <script module> export function getStaticPaths() { … } </script>`)
 }
 
 // statement reads on from an "import" or "export" and returns the offset

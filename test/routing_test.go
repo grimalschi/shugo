@@ -70,27 +70,31 @@ export const products: Product[] = JSON.parse(readFileSync("data.json", "utf8"))
 -- src/pages/index.shugo --
 <h1>shop</h1>
 -- src/pages/products/[slug].shugo --
-<script>
+<script module>
 import { products, type Product } from "../../lib/data"
 export function getStaticPaths() {
   return products.map((product) => ({ params: { slug: product.slug }, props: { product } }))
 }
+</script>
+<script>
 const { product } = $props() as { product: Product }
 </script>
 <h1>{product.title}</h1><p>{Shugo.params.slug} {Shugo.url.pathname} {Shugo.url.href}</p>
 -- src/pages/products/new.shugo --
 <h1>the newest</h1>
 -- src/pages/files/[...path].shugo --
-<script>
+<script module>
 export const getStaticPaths = () => [{ params: { path: undefined } }, { params: { path: "a" } }, { params: { path: "a/b c" } }]
 </script>
 <p>[{Shugo.params.path}]</p>
 -- src/pages/list/[...page].shugo --
-<script>
+<script module>
 import { products } from "../../lib/data"
 export function getStaticPaths({ paginate }) {
   return paginate(products, { pageSize: 2 })
 }
+</script>
+<script>
 const { page } = $props()
 </script>
 <p>{page.currentPage}/{page.lastPage}: {page.data.map((p) => p.slug).join(",")} prev={page.url.prev} next={page.url.next}</p>

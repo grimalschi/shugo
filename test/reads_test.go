@@ -119,14 +119,18 @@ console.log("joined")
 </script>
 <p>{item.title} in {item.categories.title}</p>
 -- src/pages/listed/[slug].shugo --
-<script>
+<script module>
 export const getStaticPaths = ({ query }) => query("products").all().map(({ slug }) => ({ params: { slug } }))
+</script>
+<script>
 console.log("listed " + Shugo.params.slug)
 </script>
 <p>{Shugo.params.slug}</p>
 -- src/pages/handed/[slug].shugo --
-<script>
+<script module>
 export const getStaticPaths = ({ query }) => query("products").where({ category: "c2" }).all().map((row) => ({ params: { slug: row.slug }, props: { row } }))
+</script>
+<script>
 console.log("handed " + Shugo.params.slug)
 </script>
 <p>{$props().row.title}</p>
@@ -404,7 +408,7 @@ let first: { title: string } | undefined
 export const keep = (row: { title: string }) => (first ??= row)
 export const kept = () => first
 -- src/pages/[slug].shugo --
-<script>
+<script module>
 import { keep, kept } from "../lib/kept"
 export const getStaticPaths = ({ query }) => query("products").all().map((row) => (keep(row), { params: { slug: row.slug } }))
 </script>
@@ -524,8 +528,10 @@ func TestParametersComeFromTheAddress(t *testing.T) {
 -- shugo.json --
 {"data": "data/shop.db"}
 -- src/pages/price/[price].shugo --
-<script>
+<script module>
 export const getStaticPaths = ({ query }) => query("products").select("price").all().map(({ price }) => ({ params: { price, more: "no" } }))
+</script>
+<script>
 const item = Shugo.query("products").where({ price: Number(Shugo.params.price) }).first()
 console.log("price " + Shugo.params.price)
 </script>

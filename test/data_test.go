@@ -51,9 +51,11 @@ console.log("index")
 </script>
 <ul>{#each top as p}<li><Card id={p.id} /></li>{/each}</ul>
 -- src/pages/products/[slug].shugo --
+<script module>
+export const getStaticPaths = ({ query }) => query("products").select("slug").all().map(({ slug }) => ({ params: { slug } }))
+</script>
 <script>
 import Card from "../../components/Card.shugo"
-export const getStaticPaths = ({ query }) => query("products").select("slug").all().map(({ slug }) => ({ params: { slug } }))
 const item = Shugo.query("products").select("title", "price")
   .where({ slug: Shugo.params.slug }).join("categories", "category", { select: ["title"], as: "group" }).first()
 const reviews = Shugo.query("reviews").select("text").where({ product: item.id, approved: true }).all()
@@ -64,10 +66,12 @@ console.log("page " + item.id)
 <ul>{#each reviews as r}<li>{r.text}</li>{/each}</ul>
 <nav>{#each related as r}<Card id={r.other} />{/each}</nav>
 -- src/pages/categories/[id]/[...page].shugo --
-<script>
-import Card from "../../../components/Card.shugo"
+<script module>
 export const getStaticPaths = ({ query, paginate }) =>
   query("categories").select("id").all().flatMap(({ id }) => paginate(query("products").where({ category: id }).count(), { pageSize: 2, params: { id } }))
+</script>
+<script>
+import Card from "../../../components/Card.shugo"
 const category = Shugo.query("categories").get(Shugo.params.id)
 const page = Shugo.paginate(Shugo.query("products").select("id").where({ category: category.id }).order("position"), { pageSize: 2 })
 console.log("list " + Shugo.url.pathname)
@@ -416,8 +420,10 @@ func TestDataFromGetStaticPaths(t *testing.T) {
 -- shugo.json --
 {"data": "data/shop.db"}
 -- src/pages/items/[id].shugo --
-<script>
+<script module>
 export const getStaticPaths = ({ query }) => query("products").select("title").all().map((item) => ({ params: { id: item.id }, props: { item } }))
+</script>
+<script>
 const { item } = $props()
 console.log("item " + item.id)
 </script>
@@ -561,8 +567,10 @@ func TestDataPageBehindAnother(t *testing.T) {
 -- src/pages/products/special.shugo --
 <h1>Special</h1>
 -- src/pages/products/[slug].shugo --
-<script>
+<script module>
 export const getStaticPaths = ({ query }) => query("products").select("slug").all().map(({ slug }) => ({ params: { slug } }))
+</script>
+<script>
 const item = Shugo.query("products").select("title").where({ slug: Shugo.params.slug }).first()
 console.log("page " + item.id)
 </script>
@@ -596,17 +604,21 @@ console.log("card " + $props().id)
 </script>
 <b>{item.title}</b>
 -- src/pages/x/[slug].shugo --
+<script module>
+export const getStaticPaths = ({ query }) => query("products").select("slug").where({ category: "c1" }).all().map(({ slug }) => ({ params: { slug } }))
+</script>
 <script>
 import Card from "../../components/Card.shugo"
-export const getStaticPaths = ({ query }) => query("products").select("slug").where({ category: "c1" }).all().map(({ slug }) => ({ params: { slug } }))
 const item = Shugo.query("products").select("price").where({ slug: Shugo.params.slug }).first()
 console.log("exact " + item.id)
 </script>
 <p>exact {item.price} <Card id={item.id} /></p>
 -- src/pages/[...all].shugo --
+<script module>
+export const getStaticPaths = ({ query }) => query("products").select("slug").all().map(({ slug }) => ({ params: { all: "x/" + slug } }))
+</script>
 <script>
 import Card from "../components/Card.shugo"
-export const getStaticPaths = ({ query }) => query("products").select("slug").all().map(({ slug }) => ({ params: { all: "x/" + slug } }))
 const item = Shugo.query("products").select("price").where({ slug: Shugo.params.all.slice(2) }).first()
 console.log("loose " + item.id)
 </script>
