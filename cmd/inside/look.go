@@ -534,7 +534,11 @@ func reach(s storeLook, c change) (hits []hit, misses []miss) {
 				touched = touched || changed[column]
 			}
 			if !touched {
-				misses = append(misses, miss{sh, fmt.Sprintf("%s changed, but only %s matter to this read shape", strings.Join(c.Changed, ", "), strings.Join(matters, ", "))})
+				why := fmt.Sprintf("%s changed, but only %s matter to this read shape", strings.Join(c.Changed, ", "), strings.Join(matters, ", "))
+				if len(matters) == 0 {
+					why = fmt.Sprintf("%s changed, but for this read shape only insertion and deletion matter", strings.Join(c.Changed, ", "))
+				}
+				misses = append(misses, miss{sh, why})
 				continue
 			}
 		}
@@ -564,6 +568,12 @@ func reach(s storeLook, c change) (hits []hit, misses []miss) {
 			}
 			why := ""
 			switch {
+			case len(sh.By) == 0 && c.Old == nil:
+				why = "the read selected all rows, and a row was added"
+			case len(sh.By) == 0 && c.New == nil:
+				why = "the read selected all rows, and a row was removed"
+			case len(sh.By) == 0:
+				why = "the read selected all rows, and a relevant column changed"
 			case c.Old == nil:
 				why = "a row with these lookup values was added"
 			case c.New == nil:
