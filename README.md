@@ -65,6 +65,18 @@ node examples/catalog/stand.mjs --size 10000    # stand: 21 data change, update 
 
 ## Results
 
-Shop at 100,000 items, 104,202 pages, Bun:
+Store on 100,000 products, 104,202 pages and 100,009 common blocks, Bun, 8 cores:
 
-RESULTS
+| What | Time |
+| --- | ---: |
+| First build, with eight indexes that Shugo builds itself | 13.7–14.1 s |
+| Update after price change of one product: page and card calculated, HTML changed to 7 pages | 28–32 ms, the whole team of 36–41 ms |
+| Update after changing column that no one reads, 5,000 products | 0.10–0.11 s, nothing calculated |
+| Update after changing the cap that is on all pages | 0.11–0.12 s: One record of the common block |
+| First export to files | 7.1–8.5 s |
+| Export after the price change of one product | 7–8 ms: built by 7 pages |
+| Export after changing the header | 8.1–8.7 s: all files rewritten |
+| Assembly of the product page by the server from the storage | 58–67 µs |
+| Request to server as a whole, 8 clients in the same process | about 17–18 thousand per second |
+
+After 21 changes the data, the site updated and exported in steps, matches the file to the file with the build from scratch. Details are in [README booth](examples/catalog/README.md).

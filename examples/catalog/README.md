@@ -2,7 +2,7 @@
 
 A shop with a configurable number of products, a page for each product, category listings of 24 products per page, a header with navigation and a featured product, and recommendations.
 
-Variant 5 stores the shop data in SQLite. Pages read it through `Shugo.query`, and each row records which of its columns were read. The benchmark checks that changes reevaluate only the readers of the changed columns in the changed rows. See the [design and decisions](../../VARIANT.md).
+The shop stores its data in SQLite. Pages use `Shugo.query`, and each row records which columns were read. The benchmark checks that a data change reevaluates only the readers of the changed columns in the changed rows. Export writes only pages whose HTML changed. See [how it works](../../README.md#how-it-works) and the [change tracking specification](../../spec/change-tracking.md).
 
 ## Run the benchmark
 
@@ -15,8 +15,9 @@ The benchmark runs the following steps.
 
 1. Generates `data/catalog.db` for `--size` products. The same size always produces the same shop. The database starts with indexes for keys and product URLs only.
 2. Builds the site with `shugo build`. On the first build, Shugo creates the indexes that page queries need, and the benchmark reports them.
-3. Changes the data 21 times using SQL and runs `shugo update` after each change. It checks the report against the expected evaluations and changes.
-4. Rebuilds the site from the same data in another directory and compares the resulting files.
+3. Exports the site to files with `shugo export`.
+4. Changes the data 21 times using SQL and runs `shugo update` and `shugo export` after each change. It checks the update report against the expected evaluations and changes. It also checks that export writes exactly the pages whose HTML the report says changed.
+5. Rebuilds and exports the site from the same data in another directory and compares the two directories file by file.
 
 To view the site, run `node examples/catalog/lib/generate.mjs 1000`, then `bin/shugo dev examples/catalog`.
 
@@ -36,8 +37,26 @@ Only the list of product URLs specifies columns. Each page depends on the column
 
 ## Results
 
-The [benchmark](../../VARIANT.md#benchmark) has detailed tables, initial build times, and analysis. The following figures use Bun with 100,000 products and 104,202 pages.
+The benchmark used 100,000 products, 104,202 pages, and 100,009 shared blocks. It ran with Bun on eight cores and an ext4 filesystem.
 
-- Changing one price evaluates one page and one card. The full `shugo update` command takes 38 ms.
-- Changing an unread column on 5,000 products or one variant's shelf location triggers no evaluations.
-- An initial build takes 14.4–14.7 s. Building with eight new indexes takes 15.1–15.4 s.
+- The initial build took 13.7–14.1 s, including 0.8 s to create eight indexes automatically. The first export took 7.1–8.5 s.
+- Changing one price evaluated one page and one card and changed the HTML on seven pages. The update took 28–32 ms, the full command took 36–41 ms, and the export took 7–8 ms.
+- Changing an unread column on 5,000 products or one variant's shelf location triggered no evaluations.
+- Updating the header evaluated one shared block record and took 0.11–0.12 s. Export rewrote all 104,202 files in 8.1–8.7 s. `shugo serve` displayed the change immediately.
+- Deleting a product took 0.34–0.41 s to update. Export wrote 88 pages and deleted one file in 25–32 ms.
+
+| Change | Rows | Pages / shared blocks evaluated | Pages with changed HTML | Update (ms) | Export (ms) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| No changes | 0 | 0 / 0 | 0 | 380–495 | 6–7 |
+| Unread column on every 20th product | 5,000 | 0 / 0 | 0 | 104–113 | 7 |
+| Price of one product | 1 | 1 / 1 | 7 | 28–32 | 7–8 |
+| Prices of 20 products | 20 | 20 / 20 | 70 | 36–37 | 17 |
+| Title of the featured product | 1 | 1 / 2 | 104,202 | 116 | 8,121 |
+| Footer phone number | 1 | 0 / 1 | 104,202 | 118 | 8,225 |
+| Move a product to another category | 1 | 168 / 1 | 104,202 | 249 | 8,509 |
+| Approved review text | 1 | 1 / 0 | 1 | 22 | 7 |
+| Stock of one variant | 1 | 1 / 0 | 1 | 25 | 7 |
+| Delete the last product | 15 | 89 / 0 | 88 | 340–414 | 25–32 |
+| Add a product | 5 | 86 / 2 | 104,202 | 481–920 | 8,314 |
+
+The first update after the build is the no-op row. It takes longer than most updates because SQLite reads the journal for the first time since the build. For a change visible on all pages, export must rewrite every file.
