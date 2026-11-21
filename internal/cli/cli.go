@@ -53,7 +53,7 @@ const Store = "store.db"
 var options = map[string][]string{
 	"build":  {"json", "runtime"},
 	"update": {"json", "check", "runtime"},
-	"serve":  {"addr", "runtime"},
+	"serve":  {"addr"},
 	"export": {"json", "out"},
 	"dev":    {"addr", "runtime"},
 }
@@ -293,8 +293,7 @@ func (c *command) serve() error {
 // listen answers requests until the process is stopped.
 func (c *command) listen(s *server.Server) error {
 	if c.project.Config.CatalogIslands {
-		s.Islands = server.NewIslands(c.project.Path(project.Output), c.project.Runtime(), c.stderr)
-		defer s.Islands.Close()
+		s.Catalog = server.NewCatalog(c.project.Path(project.Output))
 	}
 	s.Public = c.project.Path(project.Public)
 	s.Assets = c.project.Path(project.Output, compile.Assets)

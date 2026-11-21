@@ -24,7 +24,7 @@ type Server struct {
 	Public, Assets string
 	// Live, when set, tells open pages to reload after every update.
 	Live    *Live
-	Islands *Islands
+	Catalog *Catalog
 	// Failed is called with every error that a visitor sees as a status 500.
 	Failed func(error)
 }
@@ -50,7 +50,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case s.Live != nil && address == livePath:
 		s.Live.serve(w, r)
 		return
-	case s.Islands != nil && address == catalogPath:
+	case s.Catalog != nil && address == catalogPath:
 		s.searchCatalog(w, r)
 		return
 	case len(address) > 1 && strings.HasSuffix(address, "/"):
@@ -70,8 +70,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer buffers.Put(buffer)
 	var replace replaceIsland
 	filtered := false
-	if s.Islands != nil && r.URL.RawQuery != "" {
-		replace = s.Islands.forRequest(r.Context(), r.URL, &filtered)
+	if s.Catalog != nil && r.URL.RawQuery != "" {
+		replace = s.Catalog.forRequest(r.URL, &filtered)
 	}
 	page, err := s.Pages.render((*buffer)[:0], address, replace)
 	if errors.Is(err, errSearchTooLong) {

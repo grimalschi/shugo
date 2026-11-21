@@ -1,4 +1,5 @@
 import { createInterface } from 'node:readline';
+import { createRequire } from 'node:module';
 
 const wanted = '5.59.1';
 const { compile, VERSION } = await import('svelte/compiler').catch((error) => {
@@ -6,21 +7,37 @@ const { compile, VERSION } = await import('svelte/compiler').catch((error) => {
 });
 if (VERSION !== wanted) throw new Error(`Shugo islands use Svelte ${wanted}: this project has ${VERSION}`);
 
+// Resolve the parser from Svelte so projects with isolated node_modules
+// layouts use the same parser dependency as the pinned compiler.
+const requireFromSvelte = createRequire(import.meta.resolve('svelte/compiler'));
+const parseGenerated = (source) => requireFromSvelte('acorn').parse(source, {
+  ecmaVersion: 'latest', sourceType: 'module', locations: true,
+});
+const serverMaps = new Map();
+
 for await (const line of createInterface({ input: process.stdin })) {
-  const { filename, source } = JSON.parse(line);
+  const { filename, source, lower } = JSON.parse(line);
   let result;
   try {
-    const options = { filename, css: 'external' };
-    const client = compile(source, { ...options, generate: 'client' });
-    const server = compile(source, { ...options, generate: 'server' });
-    result = {
-      client: client.js.code,
-      server: server.js.code,
-      css: client.css?.code ?? '',
-      warnings: client.warnings.map(diagnostic),
-    };
+    if (lower) {
+      result = { program: lowerIsland(source, parseGenerated) };
+    } else {
+      const options = { filename, css: 'external' };
+      const client = compile(source, { ...options, generate: 'client' });
+      const server = compile(source, { ...options, generate: 'server' });
+      serverMaps.set(filename, server.js.map);
+      result = {
+        client: client.js.code,
+        server: server.js.code,
+        css: client.css?.code ?? '',
+        warnings: client.warnings.map(diagnostic),
+        request: server.js.code.includes('shugoSSR') && parseGenerated(server.js.code).body.some((node) =>
+          node.type === 'ExportNamedDeclaration' && node.declaration?.kind === 'const' &&
+          node.declaration.declarations.some(({ id, init }) => id.name === 'shugoSSR' && init?.value === true)),
+      };
+    }
   } catch (error) {
-    result = { error: diagnostic(error) };
+    result = { error: diagnostic(error), sourceMap: lower ? serverMaps.get(filename) : undefined };
   }
   process.stdout.write(JSON.stringify(result) + '\n');
 }

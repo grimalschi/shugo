@@ -1,7 +1,6 @@
 <script>
   import { catalog } from "shugo:catalog"
   import ProductCard from "../components/ProductCard.shugo"
-  import { pageHref, pageNumbers, sorts } from "../lib/catalog.js"
 
   const action = "/catalog"
   const result = catalog()
@@ -21,7 +20,7 @@
       <legend>Categories</legend>
       <div class="options category-options">
         {#each result.facets.category as option}
-          <label><input type="checkbox" name="category" value={option.value} checked={filters.category.includes(option.value)}><span>{option.label}</span><small aria-label={option.count + " products"}>{option.count}</small></label>
+          <label><input type="checkbox" name="category" value={option.value} checked={option.selected}><span>{option.label}</span><small aria-label={option.countLabel}>{option.count}</small></label>
         {/each}
       </div>
     </fieldset>
@@ -30,12 +29,12 @@
       <legend>Sizes</legend>
       <div class="options">
         {#each result.facets.size as option}
-          <label><input type="checkbox" name="size" value={option.value} checked={filters.size.includes(option.value)}><span>{option.label}</span><small aria-label={option.count + " products"}>{option.count}</small></label>
+          <label><input type="checkbox" name="size" value={option.value} checked={option.selected}><span>{option.label}</span><small aria-label={option.countLabel}>{option.count}</small></label>
         {/each}
       </div>
     </fieldset>
 
-    <label class="stock-option"><input type="checkbox" name="stock" value="1" checked={filters.stock}> In stock only <small aria-label={result.facets.stock + " products"}>{result.facets.stock}</small></label>
+    <label class="stock-option"><input type="checkbox" name="stock" value="1" checked={filters.stock}> In stock only <small aria-label={result.facets.stockLabel}>{result.facets.stock}</small></label>
 
     <div class="price-range">
       <label class="field">Minimum price<input type="number" name="price_from" min="0" step="1" placeholder="$" value={filters.priceFrom}></label>
@@ -44,7 +43,7 @@
 
     <label class="field">Sort by
       <select name="sort">
-        {#each sorts as sort}<option value={sort.value} selected={sort.value === filters.sort}>{sort.label}</option>{/each}
+        {#each result.sorts as sort}<option value={sort.value} selected={sort.selected}>{sort.label}</option>{/each}
       </select>
     </label>
 
@@ -56,12 +55,12 @@
 
   <section class="results" data-catalog-results aria-labelledby="results-heading">
     <div class="results-header">
-      <h2 id="results-heading" tabindex="-1"><span role="status" aria-atomic="true">Products: {result.total}</span></h2>
+      <h2 id="results-heading" tabindex="-1"><span role="status" aria-atomic="true">{result.totalLabel}</span></h2>
       <p class="pending" aria-live="polite"></p>
     </div>
 
     <div aria-busy={false}>
-      {#if result.total}
+      {#if result.hasHits}
         <ul class="products">
           {#each result.hits as item}<li><ProductCard {item} /></li>{/each}
         </ul>
@@ -70,15 +69,15 @@
       {/if}
     </div>
 
-    {#if result.pages > 1}
+    {#if result.hasPages}
       <nav class="pagination" aria-label="Catalog pages">
-        {#if result.page > 1}<a href={pageHref(action, result.filters, result.page - 1)}>Previous</a>{/if}
-        {#each pageNumbers(result.page, result.pages) as number}
-          {#if number === null}<span aria-hidden="true">…</span>
-          {:else if number === result.page}<span aria-current="page">{number}</span>
-          {:else}<a href={pageHref(action, result.filters, number)}>{number}</a>{/if}
+        {#if result.hasPrev}<a href={result.prevHref}>Previous</a>{/if}
+        {#each result.pageLinks as link}
+          {#if link.gap}<span aria-hidden="true">…</span>
+          {:else if link.current}<span aria-current="page">{link.label}</span>
+          {:else}<a href={link.href}>{link.label}</a>{/if}
         {/each}
-        {#if result.page < result.pages}<a href={pageHref(action, result.filters, result.page + 1)}>Next</a>{/if}
+        {#if result.hasNext}<a href={result.nextHref}>Next</a>{/if}
       </nav>
     {/if}
   </section>

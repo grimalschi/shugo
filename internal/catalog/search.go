@@ -25,34 +25,52 @@ type Filters struct {
 
 type Hit struct {
 	Product
-	CategoryTitle string `json:"categoryTitle"`
+	CategoryTitle      string `json:"categoryTitle"`
+	PriceLabel         string `json:"priceLabel"`
+	OriginalPriceLabel string `json:"originalPriceLabel"`
+	Discounted         bool   `json:"discounted"`
+	StockClass         string `json:"stockClass"`
+	StockLabel         string `json:"stockLabel"`
+	HasSizes           bool   `json:"hasSizes"`
+	SizesLabel         string `json:"sizesLabel"`
 }
 
 type Facet struct {
 	option
-	Count int `json:"count"`
+	Count      int    `json:"count"`
+	CountLabel string `json:"countLabel"`
+	Selected   bool   `json:"selected"`
 }
 
 type Facets struct {
-	Category []Facet `json:"category"`
-	Size     []Facet `json:"size"`
-	Stock    int     `json:"stock"`
+	Category   []Facet `json:"category"`
+	Size       []Facet `json:"size"`
+	Stock      int     `json:"stock"`
+	StockLabel string  `json:"stockLabel"`
 }
 
 // Result is shared by the default render, request SSR and the JSON endpoint.
 type Result struct {
-	Filters Filters `json:"filters"`
-	Hits    []Hit   `json:"hits"`
-	Facets  Facets  `json:"facets"`
-	Total   int     `json:"total"`
-	Page    int     `json:"page"`
-	Pages   int     `json:"pages"`
+	Filters    Filters      `json:"filters"`
+	Hits       []Hit        `json:"hits"`
+	Facets     Facets       `json:"facets"`
+	Total      int          `json:"total"`
+	TotalLabel string       `json:"totalLabel"`
+	Page       int          `json:"page"`
+	Pages      int          `json:"pages"`
+	HasHits    bool         `json:"hasHits"`
+	HasPages   bool         `json:"hasPages"`
+	HasPrev    bool         `json:"hasPrev"`
+	HasNext    bool         `json:"hasNext"`
+	PrevHref   string       `json:"prevHref"`
+	NextHref   string       `json:"nextHref"`
+	PageLinks  []PageLink   `json:"pageLinks"`
+	Sorts      []SortOption `json:"sorts"`
 }
 
-var sortNames = []string{"popular", "cheap", "expensive", "new"}
-
 func (i *Index) orderProducts() {
-	for _, sort := range sortNames {
+	for _, option := range sortOptions {
+		sort := option.Value
 		order := make([]int, len(i.data.Products))
 		for id := range order {
 			order[id] = id
@@ -93,7 +111,7 @@ func normalize(values url.Values, categories, sizes []option) Filters {
 	if f.PriceFrom != nil && f.PriceTo != nil && *f.PriceFrom > *f.PriceTo {
 		f.PriceFrom, f.PriceTo = f.PriceTo, f.PriceFrom
 	}
-	if !slices.Contains(sortNames, f.Sort) {
+	if !slices.ContainsFunc(sortOptions, func(option option) bool { return option.Value == f.Sort }) {
 		f.Sort = "popular"
 	}
 	page, _ := strconv.Atoi(values.Get("page"))
@@ -196,6 +214,7 @@ func (i *Index) Search(values url.Values) Result {
 		p.Sizes = append([]string{}, p.Sizes...)
 		result.Hits = append(result.Hits, Hit{Product: p, CategoryTitle: i.data.Categories[i.categories[p.Category]].Label})
 	}
+	result.prepareView()
 	return result
 }
 

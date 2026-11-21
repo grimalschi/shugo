@@ -15,13 +15,17 @@ import (
 
 	"github.com/evanw/esbuild/pkg/api"
 
-	"github.com/grimalschi/shugo/internal/jsrt"
+	"github.com/grimalschi/shugo/internal/program"
 	"github.com/grimalschi/shugo/internal/project"
+	"github.com/grimalschi/shugo/internal/sourcemap"
 	"github.com/grimalschi/shugo/internal/syntax"
 )
 
 //go:embed svelte-compiler.mjs
 var svelteCompiler string
+
+//go:embed island-program.mjs
+var islandCompiler string
 
 // The compiler does two passes over each reachable component in one JS process.
 // Both bundles use the same result, including Svelte's class names for CSS.
@@ -40,6 +44,9 @@ type svelteModule struct {
 	Client, Server, CSS string
 	Warnings            []svelteDiagnostic
 	Error               *svelteDiagnostic
+	Request             bool
+	Program             []program.IslandOp
+	SourceMap           json.RawMessage
 }
 
 type svelteDiagnostic struct {
@@ -52,7 +59,7 @@ func startSvelte(p *project.Project) (*svelteProcess, error) {
 	if p.Runtime() != "bun" {
 		args = append(args, "--input-type=module")
 	}
-	args = append(args, "--eval", svelteCompiler)
+	args = append(args, "--eval", islandCompiler+"\n"+svelteCompiler)
 	s := &svelteProcess{cmd: exec.Command(p.Runtime(), args...), modules: map[string]svelteModule{}}
 	s.cmd.Dir = p.Root
 	s.cmd.Stderr = &s.stderr
@@ -91,8 +98,20 @@ func (s *svelteProcess) compile(path, source string) (svelteModule, error) {
 	if result, known := s.modules[path]; known {
 		return result, nil
 	}
+	result, err := s.ask(path, source, false)
+	if err == nil {
+		s.modules[path] = result
+	}
+	return result, err
+}
+
+func (s *svelteProcess) ask(path, source string, lower bool) (svelteModule, error) {
 	var result svelteModule
-	err := s.request.Encode(map[string]string{"filename": path, "source": source})
+	err := s.request.Encode(struct {
+		Filename string `json:"filename"`
+		Source   string `json:"source"`
+		Lower    bool   `json:"lower"`
+	}{path, source, lower})
 	if err == nil {
 		err = s.response.Decode(&result)
 	}
@@ -102,7 +121,6 @@ func (s *svelteProcess) compile(path, source string) (svelteModule, error) {
 		s.failed = fmt.Errorf("the Svelte compiler stopped: %w\n%s", err, strings.TrimSpace(s.stderr.String()))
 		return result, s.failed
 	}
-	s.modules[path] = result
 	return result, nil
 }
 
@@ -113,8 +131,8 @@ type islandEntry struct {
 
 type islandOutput struct {
 	names    map[string]islandEntry
-	worker   []byte
-	filename string
+	eval     string
+	programs map[string][]program.IslandOp
 	assets   []api.OutputFile
 	files    []string
 	warnings []string
@@ -196,12 +214,12 @@ func (b *builder) buildIslands() (*islandOutput, error) {
 		return nil, fmt.Errorf("Svelte bundler: made %d browser entries for %d islands", len(out.names), len(paths))
 	}
 
-	const serverEntry = "shugo-island-entry:server"
-	serverSources := map[string]string{serverEntry: b.serverIslands(paths, out.names), "shugo-island-entry:worker": jsrt.IslandWorker}
+	const serverEntry = "shugo-island-entry:eval"
+	serverSources := map[string]string{serverEntry: b.evalIslands(paths, out.names)}
 	options = b.islandOptions()
 	options.EntryPoints = []string{serverEntry}
 	options.Platform = api.PlatformNode
-	options.Outfile = b.project.Path(project.Output, "island-ssr.mjs")
+	options.Outfile = b.project.Path(project.Output, "island-eval.mjs")
 	options.Plugins = []api.Plugin{b.sveltePlugin(compiler, serverSources, false)}
 	server := api.Build(options)
 	ssr, err := islandMetadata(server)
@@ -209,10 +227,13 @@ func (b *builder) buildIslands() (*islandOutput, error) {
 		return nil, err
 	}
 	if len(server.OutputFiles) != 1 {
-		return nil, fmt.Errorf("Svelte bundler: the SSR worker should be one file, got %d", len(server.OutputFiles))
+		return nil, fmt.Errorf("Svelte bundler: the evaluation code should be one file, got %d", len(server.OutputFiles))
 	}
-	out.worker = server.OutputFiles[0].Contents
-	out.filename = "island-ssr-" + digest(out.worker)[:12] + ".mjs"
+	out.eval = string(server.OutputFiles[0].Contents)
+	out.programs, err = b.islandPrograms(compiler, paths)
+	if err != nil {
+		return nil, err
+	}
 	out.files = append(out.files, ssr.inputs()...)
 	out.files = append(out.files, "package.json", "bun.lock", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "node_modules/svelte/package.json")
 	slices.Sort(out.files)
@@ -377,9 +398,9 @@ for (const island of document.querySelectorAll('[data-shugo-island]')) {
 `
 }
 
-func (b *builder) serverIslands(paths []string, islands map[string]islandEntry) string {
+func (b *builder) evalIslands(paths []string, islands map[string]islandEntry) string {
 	var entry strings.Builder
-	entry.WriteString("import { render } from 'svelte/server';\nimport { serve } from 'shugo-island-entry:worker';\n")
+	entry.WriteString("import { render } from 'svelte/server';\n")
 	for i, path := range paths {
 		fmt.Fprintf(&entry, "import Component%d from %s;\n", i, quote(b.project.Path(filepath.FromSlash(path))))
 	}
@@ -389,6 +410,90 @@ func (b *builder) serverIslands(paths []string, islands map[string]islandEntry) 
 		fmt.Fprintf(&entry, "[%s, { id: %s, url: %s, css: %s, render: props => render(Component%d, { props }) }],\n",
 			quote(island.path), quote(island.path), quote(island.url), quote(island.css), i)
 	}
-	entry.WriteString("]);\nif (import.meta.main) await serve(islands);\n")
+	entry.WriteString("]);\n")
 	return entry.String()
+}
+
+func (b *builder) islandPrograms(compiler *svelteProcess, roots []string) (map[string][]program.IslandOp, error) {
+	programs := make(map[string][]program.IslandOp)
+	visiting := make(map[string]bool)
+	var add func(string) error
+	add = func(path string) error {
+		if visiting[path] {
+			return fmt.Errorf("%s: request-time island components cannot call themselves recursively", path)
+		}
+		if _, done := programs[path]; done {
+			return nil
+		}
+		source, ok := compiler.modules[path]
+		if !ok {
+			return fmt.Errorf("%s: request-time island component was not compiled by Svelte", path)
+		}
+		lowered, err := compiler.ask(path, source.Server, true)
+		if err != nil {
+			return err
+		}
+		if lowered.Error != nil {
+			diagnostic := lowered.Error
+			if diagnostic.Line > 0 {
+				if origin, err := sourcemap.Parse(lowered.SourceMap); err == nil {
+					_, line, column, found := origin.Find(diagnostic.Line-1, diagnostic.Column)
+					if found {
+						return Errors{&syntax.Error{
+							Path: path, Line: line + 1, Column: column + 1,
+							Message: "request-time island: " + diagnostic.Message,
+						}}
+					}
+				}
+				return fmt.Errorf("%s: request-time island: %s (generated SSR %d:%d)", path, diagnostic.Message, diagnostic.Line, diagnostic.Column+1)
+			}
+			return fmt.Errorf("%s: request-time island: %s", path, diagnostic.Message)
+		}
+		visiting[path] = true
+		defer delete(visiting, path)
+		if err := b.resolveIslandCalls(path, lowered.Program, add); err != nil {
+			return err
+		}
+		programs[path] = lowered.Program
+		return nil
+	}
+	for _, path := range roots {
+		if compiler.modules[path].Request {
+			if err := add(path); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return programs, nil
+}
+
+func (b *builder) resolveIslandCalls(parent string, ops []program.IslandOp, add func(string) error) error {
+	for i := range ops {
+		op := &ops[i]
+		if op.Kind == "component" {
+			var path string
+			switch {
+			case strings.HasPrefix(op.Text, "@/"):
+				path = b.project.Path(project.Source, filepath.FromSlash(op.Text[2:]))
+			case strings.HasPrefix(op.Text, "./"), strings.HasPrefix(op.Text, "../"):
+				path = b.project.Path(filepath.Dir(parent), filepath.FromSlash(op.Text))
+			default:
+				return fmt.Errorf("%s: request-time child %q needs a relative path or @/", parent, op.Text)
+			}
+			op.Text = b.relative(path)
+			if !strings.HasPrefix(op.Text, project.Source+"/") {
+				return fmt.Errorf("%s: request-time child %q must be inside src/", parent, op.Text)
+			}
+			if err := add(op.Text); err != nil {
+				return err
+			}
+		}
+		if err := b.resolveIslandCalls(parent, op.Body, add); err != nil {
+			return err
+		}
+		if err := b.resolveIslandCalls(parent, op.Alt, add); err != nil {
+			return err
+		}
+	}
+	return nil
 }

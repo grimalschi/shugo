@@ -337,6 +337,22 @@ func (r *renderer) island(value []byte) error {
 		return errors.New("invalid island entry or props")
 	}
 	if r.dry {
+		// During evaluation, use the native Svelte render as the reference
+		// for the build-produced Go program before publishing the record.
+		_, compiled := r.site.IslandPrograms[island.ID]
+		if island.Search || compiled {
+			body, err := IslandBody(r.site, island.ID, island.Props)
+			if err != nil {
+				return err
+			}
+			if body != island.Body {
+				at := 0
+				for at < min(len(body), len(island.Body)) && body[at] == island.Body[at] {
+					at++
+				}
+				return fmt.Errorf("island %s: Go markup differs from the Svelte server render at byte %d", island.ID, at)
+			}
+		}
 		return nil
 	}
 	if r.replace != nil && island.Search {

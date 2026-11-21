@@ -1,22 +1,26 @@
+<script module>
+  export const shugoSSR = true
+</script>
+
 <script>
   import { onMount, tick } from "svelte"
   import ProductCard from "./ProductCard.shugo"
-  import { pageHref, pageNumbers, readFilters, searchParams, sorts } from "../lib/catalog.js"
+  import { readFilters, searchParams } from "../lib/catalog.js"
 
   let { initial, action, endpoint } = $props()
-  const initialResult = () => initial
-  let result = $state.raw(initialResult())
-  let draft = $state(copyFilters(initialResult().filters))
+  // svelte-ignore state_referenced_locally
+  let result = $state.raw(initial)
+  // svelte-ignore state_referenced_locally
+  let draft = $state(initial.filters)
+  // svelte-ignore state_referenced_locally
+  let facets = $state(initial.facets)
   let ready = $state(false)
   let pending = $state(false)
   let failed = $state(false)
+  let sortControl = $state()
   let heading
   let request
   let revision = 0
-
-  function copyFilters(filters) {
-    return { ...filters, category: [...filters.category], size: [...filters.size] }
-  }
 
   onMount(() => {
     const restore = () => navigate(new URL(window.location.href), false)
@@ -26,6 +30,12 @@
       window.removeEventListener("popstate", restore)
       request?.abort()
     }
+  })
+
+  // The SSR options provide selected attributes. After an edit the browser
+  // also needs the current selection property restored on history changes.
+  $effect(() => {
+    if (sortControl) sortControl.value = draft.sort
   })
 
   async function navigate(url, push, scrollToResults = false) {
@@ -48,8 +58,9 @@
       const next = await response.json()
       if (controller.signal.aborted) return
       result = next
+      facets = next.facets
       // Preserve any text or price the visitor entered while this query ran.
-      if (revision === startedAt) draft = copyFilters(next.filters)
+      if (revision === startedAt) draft = next.filters
       if (scrollToResults) {
         await tick()
         if (!controller.signal.aborted) {
@@ -90,7 +101,8 @@
     if (url.href !== window.location.href || pending || failed) {
       navigate(url, true, Boolean(event.currentTarget.closest(".pagination")))
     } else {
-      draft = copyFilters(result.filters)
+      draft = result.filters
+      facets = result.facets
     }
   }
 </script>
@@ -104,8 +116,8 @@
     <fieldset>
       <legend>Categories</legend>
       <div class="options category-options">
-        {#each result.facets.category as option (option.value)}
-          <label><input type="checkbox" name="category" value={option.value} bind:group={draft.category}><span>{option.label}</span><small aria-label={option.count + " products"}>{option.count}</small></label>
+        {#each facets.category as option (option.value)}
+          <label><input type="checkbox" name="category" value={option.value} bind:checked={option.selected}><span>{option.label}</span><small aria-label={option.countLabel}>{option.count}</small></label>
         {/each}
       </div>
     </fieldset>
@@ -113,13 +125,13 @@
     <fieldset>
       <legend>Sizes</legend>
       <div class="options">
-        {#each result.facets.size as option (option.value)}
-          <label><input type="checkbox" name="size" value={option.value} bind:group={draft.size}><span>{option.label}</span><small aria-label={option.count + " products"}>{option.count}</small></label>
+        {#each facets.size as option (option.value)}
+          <label><input type="checkbox" name="size" value={option.value} bind:checked={option.selected}><span>{option.label}</span><small aria-label={option.countLabel}>{option.count}</small></label>
         {/each}
       </div>
     </fieldset>
 
-    <label class="stock-option"><input type="checkbox" name="stock" value="1" bind:checked={draft.stock}> In stock only <small aria-label={result.facets.stock + " products"}>{result.facets.stock}</small></label>
+    <label class="stock-option"><input type="checkbox" name="stock" value="1" bind:checked={draft.stock}> In stock only <small aria-label={result.facets.stockLabel}>{result.facets.stock}</small></label>
 
     <div class="price-range">
       <label class="field">Minimum price<input type="number" name="price_from" min="0" step="1" placeholder="$" bind:value={draft.priceFrom}></label>
@@ -127,8 +139,8 @@
     </div>
 
     <label class="field">Sort by
-      <select name="sort" bind:value={draft.sort}>
-        {#each sorts as sort (sort.value)}<option value={sort.value}>{sort.label}</option>{/each}
+      <select name="sort" bind:this={sortControl}>
+        {#each result.sorts as sort (sort.value)}<option value={sort.value} selected={sort.selected}>{sort.label}</option>{/each}
       </select>
     </label>
 
@@ -140,7 +152,7 @@
 
   <section class="results" data-catalog-results aria-labelledby="results-heading">
     <div class="results-header">
-      <h2 id="results-heading" bind:this={heading} tabindex="-1"><span role="status" aria-atomic="true">Products: {result.total}</span></h2>
+      <h2 id="results-heading" bind:this={heading} tabindex="-1"><span role="status" aria-atomic="true">{result.totalLabel}</span></h2>
       <p class="pending" aria-live="polite">{pending ? "Updating…" : ""}</p>
     </div>
 
@@ -151,7 +163,7 @@
     {/if}
 
     <div aria-busy={pending}>
-      {#if result.total}
+      {#if result.hasHits}
         <ul class="products">
           {#each result.hits as item (item.id)}<li><ProductCard {item} /></li>{/each}
         </ul>
@@ -160,15 +172,15 @@
       {/if}
     </div>
 
-    {#if result.pages > 1}
+    {#if result.hasPages}
       <nav class="pagination" aria-label="Catalog pages">
-        {#if result.page > 1}<a href={pageHref(action, result.filters, result.page - 1)} onclick={follow}>Previous</a>{/if}
-        {#each pageNumbers(result.page, result.pages) as number}
-          {#if number === null}<span aria-hidden="true">…</span>
-          {:else if number === result.page}<span aria-current="page">{number}</span>
-          {:else}<a href={pageHref(action, result.filters, number)} onclick={follow}>{number}</a>{/if}
+        {#if result.hasPrev}<a href={result.prevHref} onclick={follow}>Previous</a>{/if}
+        {#each result.pageLinks as link}
+          {#if link.gap}<span aria-hidden="true">…</span>
+          {:else if link.current}<span aria-current="page">{link.label}</span>
+          {:else}<a href={link.href} onclick={follow}>{link.label}</a>{/if}
         {/each}
-        {#if result.page < result.pages}<a href={pageHref(action, result.filters, result.page + 1)} onclick={follow}>Next</a>{/if}
+        {#if result.hasNext}<a href={result.nextHref} onclick={follow}>Next</a>{/if}
       </nav>
     {/if}
   </section>

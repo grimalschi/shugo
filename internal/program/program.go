@@ -11,10 +11,11 @@ import (
 	"strings"
 )
 
-// Version 3 adds Svelte islands and the public asset manifest.
-const Version = 3
+// Version 4 adds the markup programs of request-bound Svelte islands.
+const Version = 4
 
 const versionStaticSvelte = 2
+const versionIslandWorker = 3
 
 // Site is a whole compiled project.
 type Site struct {
@@ -32,8 +33,9 @@ type Site struct {
 	// Assets lists this generation's public compiler outputs. A nil list
 	// marks an older program, whose assets folder had only one generation.
 	Assets []string `json:"assets"`
-	// IslandWorker names the private JavaScript bundle for request-time SSR.
-	IslandWorker string `json:"islandWorker,omitempty"`
+	// IslandPrograms holds the precompiled markup of request-bound islands
+	// and the component views they call. Keys are source-relative paths.
+	IslandPrograms map[string][]IslandOp `json:"islandPrograms,omitempty"`
 }
 
 // File is one compiled template.
@@ -208,8 +210,19 @@ func Decode(data []byte) (*Site, error) {
 	if err := json.Unmarshal(data, site); err != nil {
 		return nil, err
 	}
-	if site.Version != Version && site.Version != versionStaticSvelte {
-		return nil, fmt.Errorf("program: the project was compiled for format %d, this runtime reads formats %d and %d", site.Version, versionStaticSvelte, Version)
+	if site.Version == versionIslandWorker {
+		var legacy struct {
+			Worker string `json:"islandWorker"`
+		}
+		if err := json.Unmarshal(data, &legacy); err != nil {
+			return nil, err
+		}
+		if legacy.Worker != "" {
+			return nil, fmt.Errorf("program: this site used JavaScript for request-time island rendering; run `shugo build` to compile it for Go")
+		}
+	}
+	if site.Version < versionStaticSvelte || site.Version > Version {
+		return nil, fmt.Errorf("program: unsupported format %d, run `shugo build`", site.Version)
 	}
 	return site, nil
 }

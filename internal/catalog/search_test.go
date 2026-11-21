@@ -95,9 +95,16 @@ func TestSearch(t *testing.T) {
 		t.Fatalf("filter normalization and card projection: %+v", got)
 	}
 	want := Facets{
-		Category: []Facet{{option{"c1", "Teapots"}, 1}, {option{"c0", "Empty"}, 0}, {option{"c2", "Tableware"}, 1}},
-		Size:     []Facet{{option{"small", "small"}, 1}, {option{"medium", "medium"}, 0}},
-		Stock:    1,
+		Category: []Facet{
+			{option: option{"c1", "Teapots"}, Count: 1, CountLabel: "1 product", Selected: true},
+			{option: option{"c0", "Empty"}, CountLabel: "0 products"},
+			{option: option{"c2", "Tableware"}, Count: 1, CountLabel: "1 product"},
+		},
+		Size: []Facet{
+			{option: option{"small", "small"}, Count: 1, CountLabel: "1 product", Selected: true},
+			{option: option{"medium", "medium"}, CountLabel: "0 products"},
+		},
+		Stock: 1, StockLabel: "1 product",
 	}
 	if !reflect.DeepEqual(got.Facets, want) {
 		t.Fatalf("facets %+v; want %+v", got.Facets, want)
@@ -107,7 +114,7 @@ func TestSearch(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := string(encoded)
-	for _, fragment := range []string{`"category":["c1"]`, `"priceFrom":null`, `"categoryTitle":"Teapots"`, `{"value":"c1","label":"Teapots","count":1}`} {
+	for _, fragment := range []string{`"category":["c1"]`, `"priceFrom":null`, `"categoryTitle":"Teapots"`, `{"value":"c1","label":"Teapots","count":1,"countLabel":"1 product","selected":true}`} {
 		if !strings.Contains(body, fragment) {
 			t.Fatalf("response %s is missing %s", body, fragment)
 		}

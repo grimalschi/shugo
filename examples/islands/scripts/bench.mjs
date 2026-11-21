@@ -15,14 +15,15 @@ import { gzipSync } from "node:zlib";
 import { open } from "../../catalog/scripts/db.mjs";
 import { generate, write } from "../../catalog/scripts/generate.mjs";
 
-const demo = fileURLToPath(new URL("..", import.meta.url));
+const here = fileURLToPath(new URL("..", import.meta.url));
 const { values: options } = parseArgs({
   options: {
     sizes: { type: "string", default: "1000,10000,100000" },
     runs: { type: "string", default: "3" },
     requests: { type: "string", default: "60" },
     clients: { type: "string", default: "1" },
-    shugo: { type: "string", default: join(demo, "../../bin/shugo") },
+    shugo: { type: "string", default: join(here, "../../bin/shugo") },
+    fixture: { type: "string", default: here },
     runtime: { type: "string" },
   },
 });
@@ -41,6 +42,7 @@ const requests = integer(options.requests, "--requests");
 const clients = integer(options.clients, "--clients");
 if (clients > requests) throw new Error("--requests must cover every --clients worker");
 const shugo = resolve(options.shugo);
+const demo = resolve(options.fixture);
 const modules = realpathSync(join(demo, "node_modules"));
 if (options.runtime && !["bun", "node"].includes(options.runtime)) {
   throw new Error("Expected --runtime to be bun or node");
@@ -241,12 +243,12 @@ async function measure(folder, variant, size) {
     const cold = await withServer(folder, async (request) => {
       const firstAPI = await request(apiPath);
       const firstSSR = await request(filteredPath);
-      return { index: firstAPI.time, worker: firstSSR.time };
+      return { api: firstAPI.time, html: firstSSR.time };
     });
-    // This server has seen neither request. JSON opens only the index;
-    // SSR then starts the worker with an already loaded index.
-    server.coldIndex = cold.index;
-    server.coldWorker = cold.worker;
+    // The JSON request opens the index. The filtered HTML request uses
+    // that already loaded index without earlier HTML requests.
+    server.coldAPI = cold.api;
+    server.warmIndexFirstHTML = cold.html;
   }
 
   const noop = measureCommand(shugoCommand("update", folder));
@@ -271,6 +273,7 @@ function medians(samples) {
 const result = {
   machine: { platform: platform(), arch: arch(), cpu: cpus()[0]?.model, logicalCPUs: cpus().length, node: process.version },
   runtime: options.runtime ?? "project default (Bun when available)",
+  fixture: demo,
   command: process.argv,
   binarySHA256: createHash("sha256").update(readFileSync(shugo)).digest("hex"),
   runs,

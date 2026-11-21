@@ -60,6 +60,13 @@ func TestDecodeStaticSvelteProgram(t *testing.T) {
 	}
 }
 
+func TestDecodeRequiresRebuildForWorkerProgram(t *testing.T) {
+	_, err := Decode([]byte(`{"version":3,"islandWorker":"island-ssr.mjs"}`))
+	if err == nil || !strings.Contains(err.Error(), "shugo build") {
+		t.Fatalf("expected migration diagnostic, got %v", err)
+	}
+}
+
 func TestDecodeRejects(t *testing.T) {
 	cases := []string{
 		`{"version":1,"files":[]}`,

@@ -20,6 +20,3 @@ var Query string
 
 //go:embed catalog.js
 var Catalog string
-
-//go:embed island-worker.mjs
-var IslandWorker string

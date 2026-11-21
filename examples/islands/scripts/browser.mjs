@@ -33,6 +33,25 @@ async (page) => {
     return expected;
   }
 
+  async function controls(tab, filters) {
+    const values = await tab.locator("form.filters").evaluate((form) => {
+      const data = new FormData(form);
+      const price = (name) => data.get(name) === "" ? null : Number(data.get(name));
+      return {
+        q: data.get("q"),
+        category: data.getAll("category"),
+        size: data.getAll("size"),
+        stock: data.has("stock"),
+        priceFrom: price("price_from"),
+        priceTo: price("price_to"),
+        sort: data.get("sort"),
+      };
+    });
+    const { q, category, size, stock, priceFrom, priceTo, sort } = filters;
+    same(values, { q, category, size, stock, priceFrom, priceTo, sort },
+      "visible filter controls match the normalized URL state");
+  }
+
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => {
     if (message.type() === "warning" || /hydrat/i.test(message.text())) errors.push(message.text());
@@ -50,16 +69,38 @@ async (page) => {
   checks.push("default SSR, one hydration and zero initial API requests");
 
   const deep = "?q=" + encodeURIComponent("cup") + "&stock=1&sort=cheap&page=2";
-  const direct = await page.goto(origin + catalog + deep);
-  await page.locator(hydrated).waitFor();
+  let releaseModule;
+  const waitForSSR = new Promise((resolve) => { releaseModule = resolve; });
+  const moduleRoute = (url) => url.pathname.startsWith("/_assets/island-") && url.pathname.endsWith(".js");
+  await page.route(moduleRoute, async (route) => {
+    await waitForSSR;
+    await route.continue();
+  });
+  let direct;
+  try {
+    direct = await page.goto(origin + catalog + deep, { waitUntil: "commit" });
+    await page.locator(cards).first().waitFor();
+    same(await page.locator(hydrated).count(), 0, "server-rendered cards arrive before the module");
+    await page.evaluate((cards) => {
+      window.ssrHeading = document.querySelector("#results-heading");
+      window.ssrCard = document.querySelector(cards);
+    }, cards);
+    releaseModule();
+    await page.locator(hydrated).waitFor();
+  } finally {
+    releaseModule();
+    await page.unrouteAll({ behavior: "wait" });
+  }
+  assert(await page.evaluate((cards) =>
+    window.ssrHeading === document.querySelector("#results-heading") &&
+    window.ssrCard === document.querySelector(cards), cards),
+    "strict hydration preserves the exact heading and first card from server HTML");
   const open = await results(page, deep);
   assert(open.page === 2, "seed at least 1,000 products for the deep-link check");
-  same(await page.getByRole("searchbox").inputValue(), "cup", "search filled from URL");
-  assert(await page.getByLabel("In stock only").isChecked(), "stock filled from URL");
-  same(await page.getByLabel("Sort by").inputValue(), "cheap", "sort filled from URL");
+  await controls(page, open.filters);
   same((await direct.allHeaders())["x-robots-tag"], "noindex", "filtered HTML robots tag");
   same(requests, 0, "filtered deep-link hydration does not duplicate the API request");
-  checks.push("query-specific SSR, page two and hydration with zero API requests");
+  checks.push("query-specific SSR, page two and hydration preserving the server DOM with zero API requests");
 
   const before = navigations;
   const search = page.getByRole("searchbox");
@@ -91,10 +132,12 @@ async (page) => {
   await page.evaluate(() => history.back());
   await page.waitForURL((url) => url.search === filtersURL);
   await results(page, filtersURL);
+  await controls(page, combined.filters);
   await page.evaluate(() => history.forward());
   await page.waitForURL((url) => url.search === "");
   await results(page, "");
-  checks.push("repeated facets, stock, price, sorting, reset and Back/Forward");
+  await controls(page, all.filters);
+  checks.push("repeated facets, stock, price, sorting, reset and Back/Forward with control values restored");
 
   await page.getByRole("link", { name: "Next" }).click();
   same((await results(page, urlSearch())).page, 2, "paging preserves catalog state");
@@ -149,19 +192,25 @@ async (page) => {
     const tab = await noJS.newPage();
     await tab.goto(origin + catalog + deep);
     await results(tab, deep, false);
+    await controls(tab, open.filters);
     same(await tab.locator(hydrated).count(), 0, "no JS context stays unhydrated");
     await tab.getByRole("searchbox").fill("mug");
-    await Promise.all([
+    const [submitted] = await Promise.all([
       tab.waitForNavigation(),
       tab.getByRole("button", { name: "Show results" }).click(),
     ]);
-    await results(tab, new URL(tab.url()).search, false);
+    same(submitted.request().method(), "GET", "native form submits a document GET");
+    const url = new URL(tab.url());
+    same(url.searchParams.get("q"), "mug", "native form carries the edited parameter");
+    const raw = await results(tab, url.search, false);
+    await controls(tab, raw.filters);
+    same(await tab.locator(hydrated).count(), 0, "native GET results are rendered without client JS");
   } finally {
     await noJS.close();
   }
   checks.push("browser with JavaScript disabled can deep-link and submit a native GET form");
 
-  const samples = "</script><span data-shugo-test-injection>";
+  const samples = '"< & > 🏺 </script><span data-shugo-test-injection>';
   await page.goto(origin + catalog + "?q=" + encodeURIComponent(samples));
   await page.locator(hydrated).waitFor();
   same(await page.getByRole("searchbox").inputValue(), samples, "SSR preserves HTML-sensitive search text");

@@ -97,10 +97,7 @@ func Build(p *project.Project) (*Result, error) {
 			}
 			site.Assets = append(site.Assets, filepath.Base(file.Path))
 		}
-		if err := writeHashedFile(filepath.Join(output, islands.filename), islands.worker); err != nil {
-			return nil, err
-		}
-		site.IslandWorker = islands.filename
+		site.IslandPrograms = islands.programs
 		bundled.files = append(bundled.files, islands.files...)
 		warnings = append(warnings, islands.warnings...)
 	}
@@ -131,7 +128,7 @@ func Build(p *project.Project) (*Result, error) {
 }
 
 // A running server can still render a previously built store. Publish new
-// hashed files without truncating the assets and SSR worker it refers to.
+// hashed files without truncating the assets it refers to.
 func writeHashedFile(path string, contents []byte) error {
 	if current, err := os.ReadFile(path); err == nil && bytes.Equal(current, contents) {
 		return nil
@@ -178,11 +175,12 @@ func Load(p *project.Project) (*Result, error) {
 type sources struct {
 	Templates []string          `json:"templates"`
 	Files     map[string]string `json:"files"`
+	Format    int               `json:"format"`
 }
 
 // sources hashes the files of the project that the compiled result depends on.
 func (b *builder) sources(bundled []string) sources {
-	out := sources{Templates: b.paths, Files: map[string]string{}}
+	out := sources{Templates: b.paths, Files: map[string]string{}, Format: program.Version}
 	for _, name := range append(bundled, project.Settings) {
 		out.Files[name] = hashFile(b.project.Path(filepath.FromSlash(name)))
 	}
@@ -211,7 +209,7 @@ func Changed(p *project.Project) (bool, error) {
 		return false, err
 	}
 	var compiled sources
-	if err := json.Unmarshal(data, &compiled); err != nil {
+	if err := json.Unmarshal(data, &compiled); err != nil || compiled.Format != program.Version {
 		return true, nil
 	}
 	templates, err := p.Templates()
@@ -428,9 +426,6 @@ func (b *builder) bundle(routes []program.Route, islands *islandOutput) (*bundle
 
 	plugin := api.Plugin{Name: "shugo", Setup: func(build api.PluginBuild) {
 		build.OnResolve(api.OnResolveOptions{Filter: `^shugo:`}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
-			if args.Path == "shugo:island-worker" && islands != nil {
-				return api.OnResolveResult{Path: "./" + islands.filename, External: true}, nil
-			}
 			return api.OnResolveResult{Path: args.Path, Namespace: "shugo"}, nil
 		})
 		build.OnLoad(api.OnLoadOptions{Filter: `.*`, Namespace: "shugo"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
@@ -442,6 +437,11 @@ func (b *builder) bundle(routes []program.Route, islands *islandOutput) (*bundle
 				contents = jsrt.Query
 			case "shugo:catalog":
 				contents = jsrt.Catalog
+			case "shugo:island-eval":
+				if islands == nil {
+					return api.OnLoadResult{}, fmt.Errorf("the Svelte evaluation module needs a .svelte import")
+				}
+				contents = islands.eval
 			}
 			return api.OnLoadResult{Contents: &contents, Loader: api.LoaderJS, ResolveDir: root}, nil
 		})
@@ -450,7 +450,7 @@ func (b *builder) bundle(routes []program.Route, islands *islandOutput) (*bundle
 			if islands == nil || islands.names[rel].path == "" {
 				return api.OnLoadResult{}, fmt.Errorf("import the .svelte file as a default component directly in a .shugo file")
 			}
-			contents := `import { islands } from "shugo:island-worker"; export default islands.get(` + quote(rel) + `);`
+			contents := `import { islands } from "shugo:island-eval"; export default islands.get(` + quote(rel) + `);`
 			return api.OnLoadResult{Contents: &contents, Loader: api.LoaderJS, ResolveDir: filepath.Dir(args.Path)}, nil
 		})
 		build.OnLoad(api.OnLoadOptions{Filter: `\.shugo$`}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {

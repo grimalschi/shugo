@@ -1,4 +1,6 @@
-# Experiment with Svelte islands in Shugo
+# First experiment with Svelte islands in Shugo
+
+This report covers the first experiment, which ran a JavaScript worker for requests. The current example assembles filtered HTML in Go. [Current experiment report](GO-SSR.md)
 
 A catalog link can include a search query, filters, sort order, and page number. The initial HTML already contains the corresponding product cards. After hydration, Svelte updates the results in place. Users can share the URL or use Back and Forward to restore the form and cards. A standard GET form handles the same parameters with JavaScript disabled.
 

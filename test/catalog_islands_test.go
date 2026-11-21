@@ -34,9 +34,8 @@ INSERT INTO products SELECT 'p' || id, 'item-' || id, 'Item ' || id, 'c', 100, N
 INSERT INTO variants VALUES ('sku', 'p1', 'large', 1, 1);
 `)
 	s.build()
-	extension := server.NewIslands(s.project().Path(project.Output), s.project().Runtime(), io.Discard)
-	defer extension.Close()
-	ts := httptest.NewServer(&server.Server{Pages: s.pages, Islands: extension})
+	extension := server.NewCatalog(s.project().Path(project.Output))
+	ts := httptest.NewServer(&server.Server{Pages: s.pages, Catalog: extension})
 	defer ts.Close()
 
 	query := func(search, want string) {
