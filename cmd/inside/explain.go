@@ -327,6 +327,7 @@ var (
 		'L': "list pages by route",
 		'C': "compute these pages and shared blocks: p or s \x02 URL or name \x02 route",
 		'Q': "no more work; exit",
+		'K': "from earlier runs: indexed queries and read shapes with their IDs",
 		'I': "index response: 1 means built, 0 means a suitable index already existed",
 	}
 	fromJS = map[byte]string{
@@ -430,6 +431,7 @@ type round struct {
 	Indexes []indexNote
 	Shapes  []string // kinds of readings met for the first time in this run
 	Failed  string
+	Told    bool // Go only told something: no answer is waited for
 }
 
 type routeNote struct {
@@ -487,6 +489,24 @@ func rounds(requests, answers []frame) []round {
 	for _, f := range requests {
 		var r round
 		switch f.Kind {
+		case "K":
+			var told struct {
+				Plans  []string `json:"plans"`
+				Shapes [][2]any `json:"shapes"`
+			}
+			if json.Unmarshal([]byte(f.Body), &told) == nil {
+				r.Ask = fmt.Sprintf("from earlier runs: %s already indexed, and %s", counted(len(told.Plans), "query", "queries"), counted(len(told.Shapes), "read shape", "read shapes"))
+				r.Told = true
+				for _, number := range told.Shapes {
+					var s spec
+					if text, ok := number[1].(string); ok && json.Unmarshal([]byte(text), &s) == nil {
+						n, _ := number[0].(float64)
+						shapes[int(n)] = s
+					}
+				}
+			}
+			out = append(out, r)
+			continue
 		case "L":
 			r.Ask = "list pages for all routes"
 			if f.Body != "" {

@@ -222,7 +222,7 @@
 <p>Go decides what to compute. JS runs the project code and returns records. This division supports updates because Go tracks what changed and what the store already contains. The first build uses the same process, so it runs in several rounds.</p>
 <ul>
   <li><b>Rounds by level.</b> Go discovers a shared block when a record references it. A page renders a card, for example, or a layout renders a header. Go checks the store and requests any missing blocks in the next round. A first build starts with pages, then processes their shared blocks and any further dependencies.</li>
-  <li><b>Indexes on demand.</b> The first time JS runs a query, it asks Go for an index and waits for a reply. Go alone writes to the database.</li>
+  <li><b>Indexes on demand.</b> The first time JS runs a query, it asks Go for an index and waits for a reply. Go alone writes to the database. The store remembers indexed queries, so Go tells JS at startup which indexes are ready.</li>
 </ul>
 {{template "rounds" .Build.Rounds}}
 <details><summary>Full messages recorded by tap.sh</summary>
@@ -427,7 +427,8 @@
 </div>
 {{define "rounds"}}{{range $i, $r := .}}
 <div class="card round">
-<h4>Round {{add $i 1}}. Go: {{$r.Ask}}</h4>
+<h4>{{if $r.Told}}At startup{{else}}Round {{$i}}{{end}}. Go: {{$r.Ask}}</h4>
+{{if $r.Told}}<p class="note">JS remembers these indexes and does not send a response or request them again.</p>{{end}}
 {{if $r.Units}}<p class="note">{{join $r.Units "; "}}</p>{{end}}
 {{if $r.Pages}}<p><b>JS listed {{counted (len $r.Pages) "page" "pages"}}:</b> {{join $r.Pages ", "}}</p>{{end}}
 {{if $r.Routes}}<table><tr><th style="width:8em">route</th><th>Reads by getStaticPaths</th></tr>
@@ -436,7 +437,7 @@
 <table><tr><th>record</th><th style="width:4em">Blocks</th><th>Renders shared blocks</th><th>Database reads</th></tr>
 {{range $r.Records}}<tr><td>{{.Kind}} <span class="mono">{{.Key}}</span></td><td>{{.Blocks}}</td><td class="mono">{{join .Shows ", "}}</td><td>{{range .Readings}}<div>{{.}}</div>{{end}}</td></tr>{{end}}</table>{{end}}
 {{if $r.Named}}<p><b>Records reference these shared blocks:</b> <span class="mono">{{join $r.Named ", "}}</span>. Go will request any missing blocks in the next round.</p>{{end}}
-{{if $r.Indexes}}<p><b>JS index requests to Go: {{len $r.Indexes}}:</b></p>
+{{if $r.Indexes}}<p><b>JS asked Go for indexes {{counted (len $r.Indexes) "time" "times"}}:</b></p>
 <table><tr><th>Table</th><th>Lookup columns</th><th>Order columns</th><th>Go response</th></tr>
 {{range $r.Indexes}}<tr><td>{{.Table}}</td><td>{{join .Equal ", "}}</td><td>{{join .Order ", "}}</td><td>{{if .Made}}built{{else}}suitable index already existed{{end}}</td></tr>{{end}}</table>{{end}}
 {{if $r.Shapes}}<p class="note">Read shapes first seen on this run: {{join $r.Shapes "; "}}.</p>{{end}}
