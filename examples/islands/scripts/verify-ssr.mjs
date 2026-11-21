@@ -19,6 +19,46 @@ const binary = join(workspace, "shugo");
 const runtime = process.env.SHUGO_RUNTIME ?? "bun";
 let server;
 
+const nestedTemplate = `
+<script module>
+  export const shugoSSR = true
+</script>
+<script>
+  import ProductCard from "./ProductCard.shugo"
+  let { initial } = $props()
+</script>
+
+{#if initial.hasHits}
+  <ul>
+    {#each initial.hits as item (item.id)}
+      <li data-product={item.id}>
+        {#if item.hasSizes}
+          <ul>
+            {#each item.sizes as size (size)}
+              <li data-size={size}>
+                {#if item.discounted}
+                  <span data-branch="discounted">{size}</span>
+                  <ProductCard {item} />
+                {:else if item.available}
+                  <span data-branch="available">{item.title} · {size}</span>
+                {:else}
+                  <span data-branch="unavailable">{item.title} · {size}</span>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        {:else}
+          <p data-branch="no-sizes">{item.title}</p>
+        {/if}
+        <small>{item.id}</small>
+      </li>
+    {/each}
+  </ul>
+{:else}
+  <p data-branch="empty">No products</p>
+{/if}
+`;
+
 try {
   assert.equal(VERSION, "5.59.1");
   assert(["bun", "node"].includes(runtime), "SHUGO_RUNTIME must name bun or node");
@@ -26,7 +66,24 @@ try {
   cpSync(join(demo, "src"), join(project, "src"), { recursive: true });
   for (const name of ["shugo.json", "package.json", "bun.lock"]) cpSync(join(demo, name), join(project, name));
   symlinkSync(realpathSync(join(demo, "node_modules")), join(project, "node_modules"), "dir");
-  await write(join(project, "data", "catalog.db"), generate(1000));
+  const components = join(project, "src", "components");
+  const nestedPath = join(components, "Nested.svelte");
+  writeFileSync(nestedPath, nestedTemplate);
+  writeFileSync(join(project, "src", "pages", "nested.shugo"), `<script>
+  import Nested from "../components/Nested.svelte"
+</script>
+<Nested shugoSearch={true} />`);
+  const shop = generate(1000);
+  const [noSizes, discounted, available, unavailable] = shop.products;
+  noSizes.variants = [];
+  discounted.discount = { percent: 10, until: "2026-12-20" };
+  discounted.variants = [
+    { sku: "p2-a", title: "small", stock: 1 },
+    { sku: "p2-b", title: "large", stock: 1 },
+  ];
+  Object.assign(available, { available: true, discount: null });
+  Object.assign(unavailable, { available: false, discount: null });
+  await write(join(project, "data", "catalog.db"), shop);
   execFileSync("go", ["build", "-o", binary, "./cmd/shugo"], { cwd: join(demo, "../.."), stdio: "inherit" });
   execFileSync(binary, ["build", "-runtime", runtime, project], { stdio: "inherit" });
 
@@ -57,10 +114,12 @@ try {
       return { contents: js.code, loader: "js" };
     });
   } });
-  const catalogPath = join(project, "src", "components", "Catalog.svelte");
+  const catalogPath = join(components, "Catalog.svelte");
   const { default: Catalog } = await import(catalogPath);
+  const { default: Nested } = await import(nestedPath);
   const queries = [
     {},
+    { sort: "popular" }, // Exercise the Go request program with the default product order.
     { q: "cup", sort: "cheap", stock: "1", page: "2" },
     { q: "thisproductdoesnotexist" },
     { category: "c1", stock: "1", price_from: "800", price_to: "5000" },
@@ -72,25 +131,25 @@ try {
     { price_to: "0" },
     [["category", "c1"], ["category", "c2"], ["size", "medium"], ["sort", "new"]],
   ];
+  const seenBranches = new Set();
   for (const values of queries) {
     const search = String(new URLSearchParams(values));
     const query = search ? "?" + search : "";
-    const [page, api] = await Promise.all([
+    const [page, nested, api] = await Promise.all([
       fetch(origin + "/catalog" + query),
+      fetch(origin + "/nested" + query),
       fetch(origin + "/_islands/catalog" + query),
     ]);
-    assert.equal(page.status, 200, query);
     assert.equal(api.status, 200, query);
-    const { body, props } = island(await page.text());
-    assert.deepEqual(props.initial, await api.json(), "hydration props must match the API " + query);
-    const expected = render(Catalog, { props }).body;
-    if (body !== expected) {
-      let at = 0;
-      while (at < body.length && at < expected.length && body[at] === expected[at]) at++;
-      throw new Error(`SSR differs at character ${at} for ${query || "the default page"}\n` +
-        `Svelte: ${JSON.stringify(expected.slice(at, at + 100))}\nShugo:  ${JSON.stringify(body.slice(at, at + 100))}`);
+    const result = await api.json();
+    await compare(page, Catalog, result, "/catalog" + query);
+    const body = await compare(nested, Nested, result, "/nested" + query);
+    if (query) {
+      assert.equal(nested.headers.get("x-robots-tag"), "noindex", "the request rendered the island using filters");
+      for (const [, branch] of body.matchAll(/data-branch="([^"]+)"/g)) seenBranches.add(branch);
     }
   }
+  assert.deepEqual([...seenBranches].sort(), ["available", "discounted", "empty", "no-sizes", "unavailable"]);
   if (process.platform === "linux") {
     const tasks = `/proc/${server.pid}/task`;
     for (const tid of readdirSync(tasks)) {
@@ -101,7 +160,7 @@ try {
       }
     }
   }
-  console.log(`${queries.length} catalog responses and hydration payloads match Svelte in a deployment without JavaScript tools.`);
+  console.log(`${queries.length * 2} catalog and nested responses and hydration payloads match Svelte in a deployment without JavaScript tools.`);
 
   const original = readFileSync(catalogPath, "utf8");
   writeFileSync(catalogPath, original + "\n<p>{result.total.toFixed(0)}</p>\n");
@@ -149,4 +208,18 @@ function island(html) {
   const end = html.indexOf("</script>", middle);
   assert(start >= 0 && middle > start && end > middle, "missing server-rendered island and hydration props");
   return { body: html.slice(start + open.length, middle), props: JSON.parse(html.slice(middle + payload.length, end)) };
+}
+
+async function compare(response, Component, expectedProps, address) {
+  assert.equal(response.status, 200, address);
+  const { body, props } = island(await response.text());
+  assert.deepEqual(props.initial, expectedProps, "hydration props must match the API " + address);
+  const expected = render(Component, { props }).body;
+  if (body !== expected) {
+    let at = 0;
+    while (at < body.length && at < expected.length && body[at] === expected[at]) at++;
+    throw new Error(`SSR differs at character ${at} for ${address}\n` +
+      `Svelte: ${JSON.stringify(expected.slice(at, at + 100))}\nShugo:  ${JSON.stringify(body.slice(at, at + 100))}`);
+  }
+  return body;
 }
