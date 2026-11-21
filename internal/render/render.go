@@ -15,10 +15,8 @@ import (
 	"github.com/grimalschi/shugo/internal/record"
 )
 
-// Source is where the renderer takes what records only name.
+// Source gives the renderer the shared blocks that records name.
 type Source interface {
-	// Values returns the values kept under a name.
-	Values(record.Hash) ([]byte, error)
 	// Shared returns the record of a shared block.
 	Shared(id int64) (*record.Record, error)
 }
@@ -39,15 +37,15 @@ func Page(dst []byte, site *program.Site, rec *record.Record, src Source) ([]byt
 }
 
 // Check tells whether the values of one block fit its template: whether
-// showing the block would read exactly these values and exactly this many
-// components. The blocks inside it are not looked at.
-func Check(site *program.Site, b *record.Block, values []byte) error {
+// showing the block would read exactly its values and exactly as many
+// components as it has. The blocks inside it are not looked at.
+func Check(site *program.Site, b *record.Block) error {
 	ops, ok := site.Part(b.File, b.Part)
 	if !ok {
 		return fmt.Errorf("there is no template %d, part %d", b.File, b.Part)
 	}
 	r := renderer{site: site, dry: true}
-	return r.run(ops, &cursor{block: b, rest: values})
+	return r.run(ops, &cursor{block: b, rest: b.Values})
 }
 
 type renderer struct {
@@ -72,8 +70,8 @@ type frame struct {
 type cursor struct {
 	rec   *record.Record
 	block *record.Block
-	rest  []byte // values not read yet, each after a zero byte
-	child int    // how many of the block's children have been shown
+	rest  record.Tape // values not read yet
+	child int         // how many of the block's children have been shown
 	frame *frame
 }
 
@@ -112,11 +110,7 @@ func (r *renderer) show(rec *record.Record, at int, from *frame) error {
 	if !ok {
 		return fmt.Errorf("there is no template %d, part %d", c.block.File, c.block.Part)
 	}
-	values, err := r.src.Values(c.block.Values)
-	if err != nil {
-		return err
-	}
-	c.rest = values
+	c.rest = c.block.Values
 	return r.run(ops, &c)
 }
 
@@ -139,15 +133,14 @@ var errShort = errors.New("the block has fewer values than its template reads")
 
 // next takes the next value of the block.
 func (c *cursor) next() ([]byte, error) {
-	if len(c.rest) == 0 || c.rest[0] != 0 {
+	if len(c.rest) == 0 {
 		return nil, errShort
 	}
-	end := 1
-	for end < len(c.rest) && c.rest[end] != 0 {
-		end++
+	value, rest, ok := c.rest.Next()
+	if !ok {
+		return nil, errors.New("the values of the block are damaged")
 	}
-	value := c.rest[1:end]
-	c.rest = c.rest[end:]
+	c.rest = rest
 	return value, nil
 }
 

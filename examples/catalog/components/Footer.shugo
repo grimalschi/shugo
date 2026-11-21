@@ -1,4 +1,4 @@
 ---
-import { shop } from "../lib/catalog"
+const shop = Shugo.query("shop").get(1)
 ---
 <footer>{shop.name} · {shop.phone}</footer>

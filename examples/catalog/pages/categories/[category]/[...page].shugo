@@ -1,15 +1,17 @@
 ---
 import ProductCard from "../../../components/ProductCard.shugo"
-import { categories, inCategory, type Category, type Product } from "../../../lib/catalog"
 
-// Every category is a list of pages, 24 products on each.
-export function getStaticPaths({ paginate }) {
-  return categories.flatMap((category) =>
-    paginate(inCategory(category.id), { pageSize: 24, params: { category: category.id }, props: { category } }),
+// Every category is a list of pages, 24 products on each. The route counts
+// the products to know how many pages there are; every page asks for its
+// own products.
+export function getStaticPaths({ query, paginate }) {
+  return query("categories").all().flatMap(({ id }) =>
+    paginate(query("products").where({ category: id }).count(), { pageSize: 24, params: { category: id } }),
   )
 }
 
-const { category, page } = Shugo.props as { category: Category; page: { data: Product[]; currentPage: number; lastPage: number; total: number; url: { prev?: string; next?: string } } }
+const category = Shugo.query("categories").get(Shugo.params.category)
+const page = Shugo.paginate(Shugo.query("products").where({ category: category.id }).order("position"), { pageSize: 24 })
 ---
 <title slot="head">{category.title} — Measure</title>
 <h1>{category.title}</h1>

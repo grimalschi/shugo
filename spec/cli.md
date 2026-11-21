@@ -34,7 +34,8 @@ A folder is a project; without it, the current one is taken.
 
 ```
 $ shugo update
-updated in 68 ms: 1052 pages, 1009 shared blocks, 12214 blocks, 3150 values
+updated in 68 ms: 1052 pages, 1009 shared blocks, 3150 values
+  computed 1052 pages and 1009 shared blocks, 12214 blocks in all
   pages: 0 added, 1 changed, 0 removed
     changed: /products/product-5
   shared blocks: 0 added, 1 changed, 0 removed

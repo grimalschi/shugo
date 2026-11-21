@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -16,7 +17,8 @@ import (
 func shugo(t *testing.T, arguments ...string) (stdout, stderr string, status int) {
 	t.Helper()
 	var out, errs bytes.Buffer
-	if runtime := os.Getenv("SHUGO_RUNTIME"); runtime != "" {
+	// Only the commands that run the project's code take a runtime.
+	if runtime := os.Getenv("SHUGO_RUNTIME"); runtime != "" && slices.Contains([]string{"build", "update", "dev"}, arguments[0]) {
 		arguments = append(arguments, "-runtime", runtime)
 	}
 	status = cli.Main(arguments, &out, &errs)
@@ -24,7 +26,7 @@ func shugo(t *testing.T, arguments ...string) (stdout, stderr string, status int
 }
 
 func TestCommands(t *testing.T) {
-	s := newSite(t, shop)
+	s := newShop(t)
 	s.store.Close() // the commands open the store themselves
 
 	if _, errs, status := shugo(t, "serve", s.root); status != 1 || !strings.Contains(errs, "run `shugo build` first") {
@@ -36,10 +38,7 @@ func TestCommands(t *testing.T) {
 	}
 
 	// The report as JSON, for programs.
-	s.change(func(data map[string]any, products []map[string]any) []map[string]any {
-		data["motto"] = "New"
-		return products
-	})
+	s.sql(`UPDATE settings SET motto = 'New'`)
 	out, errs, status = shugo(t, "update", "-json", s.root)
 	var report evaluate.Report
 	if err := json.Unmarshal([]byte(out), &report); status != 0 || err != nil {
@@ -50,10 +49,7 @@ func TestCommands(t *testing.T) {
 	}
 
 	// In words, an update says that the header is on every page.
-	s.change(func(data map[string]any, products []map[string]any) []map[string]any {
-		data["motto"] = "Newer"
-		return products
-	})
+	s.sql(`UPDATE settings SET motto = 'Newer'`)
 	if out, _, _ := shugo(t, "update", s.root); !strings.Contains(out, "the HTML differs on 5 pages") {
 		t.Errorf("update in words: %s", out)
 	}
@@ -67,7 +63,7 @@ func TestCommands(t *testing.T) {
 		t.Errorf("the exported page: %s", html)
 	}
 
-	for _, wrong := range [][]string{{"nonsense"}, {"build", "a", "b"}, {"build", "-nonsense"}} {
+	for _, wrong := range [][]string{{"nonsense"}, {"build", "a", "b"}, {"build", "-nonsense"}, {"export", "-check"}, {"serve", "-out", "x"}} {
 		if _, _, status := shugo(t, wrong...); status != 2 {
 			t.Errorf("shugo %v: status %d", wrong, status)
 		}

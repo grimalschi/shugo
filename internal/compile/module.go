@@ -119,7 +119,8 @@ func (m *module) segments(line string, offset int) []sourcemap.Segment {
 }
 
 // readsPage tells whether code uses Shugo for more than the parameters, the
-// slots and the component itself: Shugo.url, Shugo.params, or Shugo as a value.
+// slots, the component itself and the data database: Shugo.url, Shugo.params,
+// Shugo.paginate, or Shugo as a value.
 func readsPage(text string) bool {
 	if !strings.Contains(text, "Shugo") {
 		return false
@@ -142,7 +143,7 @@ func readsPage(text string) bool {
 			switch name := peek.Text(member); {
 			case peek.Text(dot) != ".":
 				return true
-			case name != "props" && name != "slots" && name != "self":
+			case name != "props" && name != "slots" && name != "self" && name != "query":
 				return true
 			}
 		}

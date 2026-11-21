@@ -1,9 +1,6 @@
 package test
 
 import (
-	"encoding/json"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -14,30 +11,19 @@ import (
 // A small shop. The header and the cards do not depend on the page they
 // stand on, so each of them is computed and kept once for the whole site.
 const shop = `
--- data.json --
-{"motto": "Clay and wood", "products": [
-  {"slug": "jug", "title": "Jug", "price": 10, "note": "internal", "related": ["cup", "tray"]},
-  {"slug": "cup", "title": "Cup", "price": 5, "note": "", "related": ["jug"]},
-  {"slug": "tray", "title": "Tray", "price": 7, "note": "", "related": []}
-]}
--- lib/data.ts --
-import { readFileSync } from "node:fs"
-export interface Product { slug: string; title: string; price: number; related: string[] }
-const data = JSON.parse(readFileSync("data.json", "utf8"))
-export const motto: string = data.motto
-export const products: Product[] = data.products
-export const product = (slug: string): Product => products.find((p) => p.slug === slug)!
+-- shugo.json --
+{"data": "data/shop.db"}
 -- components/Header.shugo --
 ---
-import { motto, products } from "../lib/data"
+const motto = Shugo.query("settings").get(1).motto
+const count = Shugo.query("products").count()
 console.log("header computed")
 ---
-<header>{motto} · {products.length} products</header>
+<header>{motto} · {count} products</header>
 -- components/Card.shugo --
 ---
-import { product } from "../lib/data"
 const { slug } = Shugo.props as { slug: string }
-const { title, price } = product(slug)
+const { title, price } = Shugo.query("products").where({ slug }).first()
 ---
 <a href={"/products/" + slug}>{title} — {price}</a>
 -- pages/+layout.shugo --
@@ -48,7 +34,7 @@ import Header from "../components/Header.shugo"
 -- pages/index.shugo --
 ---
 import Card from "../components/Card.shugo"
-import { products } from "../lib/data"
+const products = Shugo.query("products").select("slug").order("position").all()
 ---
 <ul><g-for each={products} as="p"><li><Card slug={p.slug} /></li></g-for></ul>
 -- pages/about.shugo --
@@ -56,34 +42,27 @@ import { products } from "../lib/data"
 -- pages/products/[slug].shugo --
 ---
 import Card from "../../components/Card.shugo"
-import { products, type Product } from "../../lib/data"
-export const getStaticPaths = () => products.map((p) => ({ params: { slug: p.slug }, props: { p } }))
-const { p } = Shugo.props as { p: Product }
+export const getStaticPaths = ({ query }) => query("products").select("slug").all().map((p) => ({ params: { slug: p.slug } }))
+const p = Shugo.query("products").where({ slug: Shugo.params.slug }).first()
+const related = Shugo.query("related").where({ product: p.slug }).order("position").all()
 ---
-<h1>{p.title}</h1><p>{p.price}</p><g-for each={p.related} as="slug"><Card slug={slug} /></g-for>
+<h1>{p.title}</h1><p>{p.price}</p><g-for each={related} as="r"><Card slug={r.other} /></g-for>
 `
 
-// change rewrites data.json.
-func (s *site) change(edit func(data map[string]any, products []map[string]any) []map[string]any) {
-	s.t.Helper()
-	path := filepath.Join(s.root, "data.json")
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		s.t.Fatal(err)
-	}
-	var data map[string]any
-	if err := json.Unmarshal(raw, &data); err != nil {
-		s.t.Fatal(err)
-	}
-	var products []map[string]any
-	for _, p := range data["products"].([]any) {
-		products = append(products, p.(map[string]any))
-	}
-	data["products"] = edit(data, products)
-	raw, _ = json.Marshal(data)
-	if err := os.WriteFile(path, raw, 0o644); err != nil {
-		s.t.Fatal(err)
-	}
+const shopRows = `
+CREATE TABLE settings (id INTEGER PRIMARY KEY, motto TEXT NOT NULL);
+CREATE TABLE products (slug TEXT PRIMARY KEY, title TEXT NOT NULL, price INTEGER NOT NULL, note TEXT NOT NULL, position INTEGER NOT NULL);
+CREATE TABLE related (id INTEGER PRIMARY KEY, product TEXT NOT NULL, other TEXT NOT NULL, position INTEGER NOT NULL);
+INSERT INTO settings VALUES (1, 'Clay and wood');
+INSERT INTO products VALUES ('jug', 'Jug', 10, 'internal', 1), ('cup', 'Cup', 5, '', 2), ('tray', 'Tray', 7, '', 3);
+INSERT INTO related (product, other, position) VALUES ('jug', 'cup', 1), ('jug', 'tray', 2), ('cup', 'jug', 1);
+`
+
+// newShop makes the shop with its data.
+func newShop(t testing.TB) *site {
+	s := newSite(t, shop)
+	s.sql(shopRows)
+	return s
 }
 
 // expectChanges compares what an update reports with what should have changed.
@@ -111,7 +90,7 @@ const (
 )
 
 func TestUpdates(t *testing.T) {
-	s := newSite(t, shop)
+	s := newShop(t)
 	first := s.build()
 	if first.Pages.Total != 5 || first.Pages.Added != 5 {
 		t.Fatalf("first build: %+v", first.Pages)
@@ -128,25 +107,23 @@ func TestUpdates(t *testing.T) {
 	t.Run("nothing changed", func(t *testing.T) {
 		r := s.update()
 		expectChanges(t, r, evaluate.Changes{}, evaluate.Changes{})
-		if r.Values.Added != 0 || r.Values.Removed != 0 || r.Render != 0 {
-			t.Errorf("values: %+v, pages with new HTML: %d", r.Values, r.Render)
+		if r.Computed.Pages+r.Computed.Shared != 0 || r.Render != 0 {
+			t.Errorf("computed %+v, pages with new HTML: %d", r.Computed, r.Render)
 		}
 	})
 
 	t.Run("a field no page shows", func(t *testing.T) {
-		s.change(func(_ map[string]any, products []map[string]any) []map[string]any {
-			products[0]["note"] = "changed"
-			return products
-		})
-		expectChanges(t, s.update(), evaluate.Changes{}, evaluate.Changes{})
+		s.sql(`UPDATE products SET note = 'changed' WHERE slug = 'jug'`)
+		r := s.update()
+		expectChanges(t, r, evaluate.Changes{}, evaluate.Changes{})
+		if r.Computed.Pages+r.Computed.Shared != 0 {
+			t.Errorf("computed %+v", r.Computed)
+		}
 	})
 
 	// The header stands on every page, and no page is touched when it changes.
 	t.Run("the text in the header", func(t *testing.T) {
-		s.change(func(data map[string]any, products []map[string]any) []map[string]any {
-			data["motto"] = "Handmade"
-			return products
-		})
+		s.sql(`UPDATE settings SET motto = 'Handmade'`)
 		r := s.update()
 		expectChanges(t, r, evaluate.Changes{},
 			evaluate.Changes{Changed: 1, ChangedNames: []string{header}})
@@ -163,10 +140,7 @@ func TestUpdates(t *testing.T) {
 	// A card is shown on the main page and on the pages of other products;
 	// only the card itself and the page of the product change.
 	t.Run("the price of one product", func(t *testing.T) {
-		s.change(func(_ map[string]any, products []map[string]any) []map[string]any {
-			products[1]["price"] = 6
-			return products
-		})
+		s.sql(`UPDATE products SET price = 6 WHERE slug = 'cup'`)
 		r := s.update()
 		expectChanges(t, r,
 			evaluate.Changes{Changed: 1, ChangedNames: []string{"/products/cup"}},
@@ -182,18 +156,12 @@ func TestUpdates(t *testing.T) {
 	})
 
 	t.Run("two products change places", func(t *testing.T) {
-		s.change(func(_ map[string]any, products []map[string]any) []map[string]any {
-			products[0], products[1] = products[1], products[0]
-			return products
-		})
+		s.sql(`UPDATE products SET position = 3 - position WHERE slug IN ('jug', 'cup')`)
 		expectChanges(t, s.update(), evaluate.Changes{Changed: 1, ChangedNames: []string{"/"}}, evaluate.Changes{})
 	})
 
 	t.Run("a product is removed", func(t *testing.T) {
-		s.change(func(_ map[string]any, products []map[string]any) []map[string]any {
-			products[1]["related"] = []string{"cup"} // the jug no longer points at the tray
-			return products[:2]
-		})
+		s.sql(`DELETE FROM products WHERE slug = 'tray'; DELETE FROM related WHERE other = 'tray'`)
 		expectChanges(t, s.update(),
 			evaluate.Changes{Changed: 2, Removed: 1, ChangedNames: []string{"/", "/products/jug"}, RemovedNames: []string{"/products/tray"}},
 			evaluate.Changes{Changed: 1, Removed: 1, ChangedNames: []string{header}, RemovedNames: []string{cardTray}})
@@ -203,23 +171,19 @@ func TestUpdates(t *testing.T) {
 	})
 
 	t.Run("a product is added", func(t *testing.T) {
-		s.change(func(_ map[string]any, products []map[string]any) []map[string]any {
-			return append(products, map[string]any{"slug": "pot", "title": "Pot", "price": 12, "related": []string{}})
-		})
+		s.sql(`INSERT INTO products VALUES ('pot', 'Pot', 12, '', 4)`)
 		expectChanges(t, s.update(),
 			evaluate.Changes{Added: 1, Changed: 1, AddedNames: []string{"/products/pot"}, ChangedNames: []string{"/"}},
 			evaluate.Changes{Added: 1, Changed: 1, AddedNames: []string{cardPot}, ChangedNames: []string{header}})
 		expect(t, s.page("/products/pot"), `<html><body><header>Handmade · 3 products</header><main><h1>Pot</h1><p>12</p></main></body></html>`)
 	})
 
-	// After a template changes every record is written anew. The markup of
-	// a template is no value, so no values are added for it, and those that
-	// came out as before stay where they are.
+	// After a template changes every record is written anew.
 	t.Run("a template changes", func(t *testing.T) {
 		s.write("-- pages/about.shugo --\n<h1>About us</h1>")
 		r := s.build()
-		if !r.Rebuilt || r.Pages.Added != r.Pages.Total || r.Values.Added != 0 {
-			t.Errorf("rebuilt=%v pages=%+v values=%+v", r.Rebuilt, r.Pages, r.Values)
+		if !r.Rebuilt || r.Pages.Added != r.Pages.Total {
+			t.Errorf("rebuilt=%v pages=%+v", r.Rebuilt, r.Pages)
 		}
 		if !strings.Contains(s.page("/about"), "<h1>About us</h1>") {
 			t.Error("the page shows the old template")
@@ -229,16 +193,33 @@ func TestUpdates(t *testing.T) {
 
 // A failed update leaves the store as it was.
 func TestFailedUpdateChangesNothing(t *testing.T) {
-	s := newSite(t, shop)
+	s := newShop(t)
 	s.build()
 	before := s.page("/products/jug")
-	s.change(func(_ map[string]any, products []map[string]any) []map[string]any {
-		products[0]["price"] = 11
-		products[0]["related"] = []string{"missing"} // the card of a product that is not there fails
-		return products
-	})
+	// The card of a product that is not there fails.
+	s.sql(`UPDATE products SET price = 11 WHERE slug = 'jug'; UPDATE related SET other = 'missing' WHERE product = 'jug' AND other = 'cup'`)
 	if _, err := s.tryBuild(); err == nil {
 		t.Fatal("the update did not fail")
 	}
 	expect(t, s.page("/products/jug"), before)
+}
+
+// A project without a data database has no data that could change: an
+// update computes nothing. Its pages change with the project, and shugo
+// update compiles and builds a project that has changed.
+func TestUpdateWithoutData(t *testing.T) {
+	s := newSite(t, `
+-- lib/names.ts --
+export const names = ["Ann", "Bob"]
+-- pages/index.shugo --
+---
+import { names } from "../lib/names"
+---
+<ul><g-for each={names} as="name"><li>{name}</li></g-for></ul>
+`)
+	s.build()
+	if r := s.update(); r.Computed.Pages+r.Computed.Shared != 0 || r.Data != nil {
+		t.Errorf("an update without data computed %+v", r.Computed)
+	}
+	expect(t, s.page("/"), "<ul><li>Ann</li><li>Bob</li></ul>")
 }

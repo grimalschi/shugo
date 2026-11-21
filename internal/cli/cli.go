@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -24,15 +25,21 @@ import (
 const usage = `shugo builds a static site and shows it.
 
   shugo build  [folder]   compile the project and compute every page
-  shugo update [folder]   compute the pages again after the data has changed;
-                          only what differs is written
+  shugo update [folder]   bring the site up to date: after a change of the data,
+                          only what read a changed row is computed; after a
+                          change of the project, it is compiled again and
+                          every page is computed
   shugo serve  [folder]   show the site, building every page on request
-  shugo export [folder]   write the site as files for any web server
-  shugo dev    [folder]   build, show, and build again whenever a file changes
+  shugo export [folder]   write the site as files for any web server; after the
+                          first time, only what has changed since
+  shugo dev    [folder]   update, show, and update again whenever a file changes
 
 The folder is the project; without it, the current one. Options:
 
   -json          print the report of build, update and export as JSON
+  -check         with update: compute every page, whatever has changed, and
+                 tell which pages came out different although no row of the
+                 data database that they read has changed
   -runtime NAME  what runs the JavaScript of the project: bun or node
                  (default: the "runtime" of shugo.json, else bun if installed)
   -addr ADDRESS  where serve and dev listen (default localhost:4321)
@@ -41,6 +48,15 @@ The folder is the project; without it, the current one. Options:
 
 // Store is the file inside the output folder where the computed site is kept.
 const Store = "store.db"
+
+// options are the options every command takes.
+var options = map[string][]string{
+	"build":  {"json", "runtime"},
+	"update": {"json", "check", "runtime"},
+	"serve":  {"addr"},
+	"export": {"json", "out"},
+	"dev":    {"addr", "runtime"},
+}
 
 // Main runs the command and returns its exit status.
 func Main(arguments []string, stdout, stderr io.Writer) int {
@@ -52,6 +68,7 @@ func Main(arguments []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet(arguments[0], flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.BoolVar(&c.json, "json", false, "")
+	flags.BoolVar(&c.check, "check", false, "")
 	flags.StringVar(&c.addr, "addr", "localhost:4321", "")
 	flags.StringVar(&c.out, "out", "", "")
 	flags.StringVar(&c.runtime, "runtime", "", "")
@@ -83,6 +100,17 @@ func Main(arguments []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "shugo: there is no command %q\n\n%s", arguments[0], usage)
 		return 2
 	}
+	// An option the command does not use is a mistake, not a wish to ignore.
+	var stray []string
+	flags.Visit(func(f *flag.Flag) {
+		if !slices.Contains(options[arguments[0]], f.Name) {
+			stray = append(stray, "-"+f.Name)
+		}
+	})
+	if len(stray) > 0 {
+		fmt.Fprintf(stderr, "shugo %s does not take %s\n", arguments[0], strings.Join(stray, ", "))
+		return 2
+	}
 	var err error
 	if c.project, err = project.Open(dir); err == nil {
 		if c.runtime != "" {
@@ -100,7 +128,8 @@ func Main(arguments []string, stdout, stderr io.Writer) int {
 type command struct {
 	stdout, stderr io.Writer
 	project        *project.Project
-	json           bool
+	json, check    bool
+	position       int64 // of the journal of the data database, at the latest build or update
 	addr, out      string
 	runtime        string
 }
@@ -133,13 +162,25 @@ func (c *command) rebuild(st *store.Store) error {
 		fmt.Fprintln(c.stderr, "warning:", warning)
 	}
 	compiledIn := time.Since(started)
-	report, err := evaluate.Run(c.project, compiled, st, evaluate.Options{Log: c.stderr})
+	// A build computes everything: what the pages read from elsewhere than
+	// the data database is read again.
+	report, err := evaluate.Run(c.project, compiled, st, evaluate.Options{Log: c.stderr, Whole: true})
 	if err != nil {
 		return err
 	}
 	report.Time["compile"] = float64(compiledIn.Microseconds()) / 1000
 	report.Time["total"] += report.Time["compile"]
+	c.noted(report)
 	return c.print(report, func() string { return summary("built", report) })
+}
+
+// noted keeps where the journal of the data database stood when the site
+// was brought up to date: development mode tells by it whether the data has
+// changed since.
+func (c *command) noted(report *evaluate.Report) {
+	if report.Data != nil {
+		c.position = report.Data.Position
+	}
 }
 
 // update computes the pages of a compiled project again. If the project
@@ -150,6 +191,10 @@ func (c *command) update() error {
 		return err
 	}
 	defer st.Close()
+	return c.renew(st)
+}
+
+func (c *command) renew(st *store.Store) error {
 	if changed, err := compile.Changed(c.project); err != nil {
 		return err
 	} else if changed {
@@ -160,11 +205,22 @@ func (c *command) update() error {
 	if err != nil {
 		return err
 	}
-	report, err := evaluate.Run(c.project, compiled, st, evaluate.Options{Log: c.stderr})
+	report, err := evaluate.Run(c.project, compiled, st, evaluate.Options{Log: c.stderr, Check: c.check})
 	if err != nil {
 		return err
 	}
-	return c.print(report, func() string { return summary("updated", report) })
+	c.noted(report)
+	if err := c.print(report, func() string { return summary("updated", report) }); err != nil {
+		return err
+	}
+	if len(report.Unseen) > 0 {
+		// The store is right now: everything was computed. But the next
+		// plain update would again leave such a page as it is.
+		return fmt.Errorf("%d pages or shared blocks came out different although no row they read has changed; the first: %s.\n"+
+			"They read data past the data database — a file, the network, something another page left in a module — or a package does so for them. "+
+			"Put that data into the database and ask for it with Shugo.query; until then only `shugo build` reads it again", len(report.Unseen), report.Unseen[0])
+	}
+	return nil
 }
 
 // print writes a report: as JSON for programs, in words for people.
@@ -181,7 +237,14 @@ func (c *command) print(report any, words func() string) error {
 // summary says in a few lines what an update did.
 func summary(verb string, r *evaluate.Report) string {
 	var out strings.Builder
-	fmt.Fprintf(&out, "%s in %.0f ms: %d pages, %d shared blocks, %d blocks, %d values", verb, r.Time["total"], r.Pages.Total, r.Shared.Total, r.Blocks, r.Values.Total)
+	fmt.Fprintf(&out, "%s in %.0f ms: %d pages, %d shared blocks", verb, r.Time["total"], r.Pages.Total, r.Shared.Total)
+	fmt.Fprintf(&out, "\n  computed %d pages and %d shared blocks, %d blocks in all", r.Computed.Pages, r.Computed.Shared, r.Blocks)
+	if r.Data != nil && !r.Data.Whole {
+		fmt.Fprintf(&out, "\n  %d rows of the data have changed", r.Data.Rows)
+	}
+	if r.Data != nil && len(r.Data.Indexes) > 0 {
+		fmt.Fprintf(&out, "\n  made %d indexes in the data database in %.0f ms: %s", len(r.Data.Indexes), r.Time["indexes"], strings.Join(r.Data.Indexes, ", "))
+	}
 	if r.Rebuilt {
 		out.WriteString("\n  the project was compiled anew, so everything was computed from scratch")
 	}
@@ -200,6 +263,9 @@ func summary(verb string, r *evaluate.Report) string {
 	line("shared blocks", r.Shared)
 	if r.Render > r.Pages.Added+r.Pages.Changed {
 		fmt.Fprintf(&out, "\n  the HTML differs on %d pages: they show a shared block that has changed", r.Render)
+	}
+	if r.Checked && r.Data != nil && !r.Data.Whole && len(r.Unseen) == 0 {
+		out.WriteString("\n  checked: everything was computed, and every page that came out different had read a row that has changed")
 	}
 	if r.Pages.Added+r.Pages.Changed+r.Pages.Removed+r.Shared.Added+r.Shared.Changed+r.Shared.Removed == 0 {
 		out.WriteString("\n  nothing has changed")
@@ -251,8 +317,8 @@ func (c *command) export() error {
 		return err
 	}
 	return c.print(done, func() string {
-		return fmt.Sprintf("exported to %s in %.0f ms: %d pages, %d files; %d written, %d removed",
-			out, float64(time.Since(started).Microseconds())/1000, done.Pages, done.Files, done.Written, done.Removed)
+		return fmt.Sprintf("exported to %s in %.0f ms: %d pages, %d of them built; %d files, %d written, %d removed",
+			out, float64(time.Since(started).Microseconds())/1000, done.Pages, done.Built, done.Files, done.Written, done.Removed)
 	})
 }
 

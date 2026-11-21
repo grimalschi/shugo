@@ -27,20 +27,19 @@ func lines(s *script, spans []span) string {
 
 func TestScriptSplit(t *testing.T) {
 	_, s, err := parseScript(t, `
-import { getProducts, type Product } from "../lib/shop"
+import { price, type Product } from "../lib/shop"
 import Card from "../components/Card.shugo"
 import "../styles/main.css"
 import type { Unused } from "./types"
 interface Props { title: string }
 
-export async function getStaticPaths(): Promise<{ params: { slug: string } }[]> {
-  const products = await getProducts()
-  return products.map((p: Product) => ({ params: { slug: p.slug } }))
+export function getStaticPaths({ query }): { params: { slug: string } }[] {
+  return query("products").select("slug").all().map((p: Product) => ({ params: { slug: p.slug } }))
 }
 export const prerender = { a: 1 }
 
 const { title } = Shugo.props as Props
-const lazy = await import("../lib/lazy")
+const item = Shugo.query("products").where({ slug: Shugo.params.slug }).first()
 const text = "import x from 'y'"
 if (!title) {
   throw new Error("no title")
@@ -51,19 +50,18 @@ const tpl = `+"`export ${ {a: 1}.a }`"+`
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantTop := `import { getProducts } from "../lib/shop";
+	wantTop := `import { price } from "../lib/shop";
 import Card from "../components/Card.shugo";
 import "../styles/main.css";
-export async function getStaticPaths() {
-  const products = await getProducts();
-  return products.map((p) => ({ params: { slug: p.slug } }));
+export function getStaticPaths({ query }) {
+  return query("products").select("slug").all().map((p) => ({ params: { slug: p.slug } }));
 }
 export const prerender = { a: 1 };`
 	if got := lines(s, s.top); got != wantTop {
 		t.Errorf("imports and exports\n got:\n%s\nwant:\n%s", got, wantTop)
 	}
 	wantBody := `const { title } = Shugo.props;
-const lazy = await import("../lib/lazy");
+const item = Shugo.query("products").where({ slug: Shugo.params.slug }).first();
 const text = "import x from 'y'";
 if (!title) {
   throw new Error("no title");
@@ -87,7 +85,9 @@ func TestScriptForms(t *testing.T) {
 	}{
 		{"no script code", "", "", false},
 		{"only types", "interface Props { a: string }", "", false},
-		{"constant with a function", "export const getStaticPaths = async () => { return [] }\nconst a = 1", "export const getStaticPaths = async () => {\n  return [];\n};", true},
+		{"constant with a function", "export const getStaticPaths = () => { return [] }\nconst a = 1", "export const getStaticPaths = () => {\n  return [];\n};", true},
+		// Waiting is refused later, with a hint; the split itself takes it.
+		{"an async function", "export async function getStaticPaths() { return [] }\nconst a = 1", "export async function getStaticPaths() {\n  return [];\n}", true},
 		{"export list", "const a = 1\nasync function getStaticPaths() { return [] }\nexport { getStaticPaths }", "export { getStaticPaths };", true},
 		{"class", "export class A { m() { return {} } }\nconst a = 1", "export class A {\n  m() {\n    return {};\n  }\n}", false},
 		{"import.meta is an expression", "const u = import.meta.url", "", false},

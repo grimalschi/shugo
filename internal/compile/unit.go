@@ -1,6 +1,7 @@
 // Package compile turns the sources of a project into what the next stages
-// run: one JavaScript bundle that loads the data and computes the values of
-// every template, and the program the runtime puts those values into.
+// run: one JavaScript bundle that computes the values of every template,
+// reading the data database of the project through Shugo.query, and the
+// program the runtime puts those values into.
 package compile
 
 import (
@@ -59,7 +60,7 @@ func compileFile(path, source string, id int, r role) (*unit, error) {
 		m.script(s, lines)
 	}
 	m.add(`import { component as $$component } from "shugo:runtime";`)
-	m.add("export default $$component(%d, async function ($$, Shugo) {", id)
+	m.add("export default $$component(%d, function ($$, Shugo) {", id)
 	for _, lines := range s.body() {
 		m.script(s, lines)
 	}

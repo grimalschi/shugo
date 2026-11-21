@@ -122,17 +122,13 @@ func TestServer(t *testing.T) {
 
 // A server that is running shows the result of an update at once.
 func TestServerSeesUpdates(t *testing.T) {
-	s := newSite(t, shop)
+	s := newShop(t)
 	s.build()
 	ts := serve(t, s)
 	if _, _, body := get(t, ts, "/products/jug"); !strings.Contains(body, "Clay and wood · 3 products") {
 		t.Fatalf("before: %s", body)
 	}
-	s.change(func(data map[string]any, products []map[string]any) []map[string]any {
-		data["motto"] = "New"
-		products[0]["related"] = []string{"cup"}
-		return products[:2]
-	})
+	s.sql(`UPDATE settings SET motto = 'New'; DELETE FROM products WHERE slug = 'tray'; DELETE FROM related WHERE other = 'tray'`)
 	s.update()
 	if _, _, body := get(t, ts, "/products/jug"); !strings.Contains(body, "New · 2 products") {
 		t.Errorf("after: %s", body)
@@ -142,20 +138,32 @@ func TestServerSeesUpdates(t *testing.T) {
 	}
 }
 
+// export writes the site into the folder out.
+func (s *site) export(out string) server.Exported {
+	s.t.Helper()
+	done, err := server.Export(s.pages, filepath.Join(s.root, project.Public), filepath.Join(s.root, project.Output, compile.Assets), out)
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	return done
+}
+
 func TestExport(t *testing.T) {
 	s := newSite(t, small)
 	s.build()
 	out := filepath.Join(s.root, "dist")
-	export := func() server.Exported {
-		t.Helper()
-		done, err := server.Export(s.pages, filepath.Join(s.root, project.Public), filepath.Join(s.root, project.Output, compile.Assets), out)
-		if err != nil {
+	export := func() server.Exported { return s.export(out) }
+	// What was in the folder before the first export is not the export's.
+	for name, text := range map[string]string{"old/index.html": "old", "notes.txt": "notes", ".git/x/index.html": "git"} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(out, name)), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		return done
+		if err := os.WriteFile(filepath.Join(out, name), []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	// Four pages, two public files and the style sheet.
-	if done := export(); done.Pages != 4 || done.Files != 7 || done.Written != 7 {
+	if done := export(); done.Pages != 4 || done.Files != 7 || done.Written != 7 || done.Removed != 0 {
 		t.Errorf("first export: %+v", done)
 	}
 	for _, name := range []string{"index.html", "about/index.html", "404.html", "café au lait/index.html", "robots.txt", "img/dot.svg"} {
@@ -167,21 +175,70 @@ func TestExport(t *testing.T) {
 		t.Errorf("an export with nothing new: %+v", done)
 	}
 	// One page changes and one goes away: one file is written, one removed.
+	// The project has changed, so every page is built again, and the
+	// folder is cleared of pages the site does not have.
 	s.write("-- pages/about.shugo --\n<h1>about us</h1>")
 	s.remove("pages/café au lait.shugo")
 	s.build()
-	if done := export(); done.Pages != 3 || done.Written != 1 || done.Removed != 1 {
+	if done := export(); done.Pages != 3 || done.Built != 3 || done.Written != 1 || done.Removed != 2 {
 		t.Errorf("after a change: %+v", done)
 	}
-	if _, err := os.Stat(filepath.Join(out, "café au lait", "index.html")); err == nil {
-		t.Error("the file of the removed page is still there")
+	for name, there := range map[string]bool{"café au lait/index.html": false, "café au lait": false, "old/index.html": false, "notes.txt": true, ".git/x/index.html": true} {
+		if _, err := os.Stat(filepath.Join(out, filepath.FromSlash(name))); (err == nil) != there {
+			t.Errorf("%s: there %v, want %v", name, err == nil, there)
+		}
+	}
+}
+
+// After a change of the data, an export builds the pages whose HTML may
+// differ, and no others.
+func TestExportAfterUpdate(t *testing.T) {
+	s := newShop(t)
+	s.build()
+	out := filepath.Join(s.root, "dist")
+	if done := s.export(out); done.Pages != 5 || done.Built != 5 || done.Written != 5 {
+		t.Errorf("first export: %+v", done)
+	}
+	if done := s.export(out); done.Built != 0 || done.Written != 0 {
+		t.Errorf("an export with nothing new: %+v", done)
+	}
+
+	// The cup has its own page, and its card is on the main page and on
+	// the page of the jug.
+	s.sql(`UPDATE products SET price = 6 WHERE slug = 'cup'`)
+	s.update()
+	if done := s.export(out); done.Pages != 5 || done.Built != 3 || done.Written != 3 || done.Removed != 0 {
+		t.Errorf("after a new price: %+v", done)
+	}
+	if jug, err := os.ReadFile(filepath.Join(out, "products", "jug", "index.html")); err != nil || !strings.Contains(string(jug), "Cup — 6") {
+		t.Errorf("the page of the jug: %s %v", jug, err)
+	}
+
+	// The header counts the products, so a product that goes changes every
+	// page, and its own is removed.
+	s.sql(`DELETE FROM related WHERE other = 'tray'`)
+	s.sql(`DELETE FROM products WHERE slug = 'tray'`)
+	s.update()
+	if done := s.export(out); done.Pages != 4 || done.Built != 4 || done.Removed != 1 {
+		t.Errorf("after a product is gone: %+v", done)
+	}
+
+	// Another store says nothing about what is written: every page is
+	// built, and only what differs is written.
+	other := newShop(t)
+	other.build()
+	if done := other.export(out); done.Built != 5 || done.Written != 5 || done.Removed != 0 {
+		t.Errorf("from another store: %+v", done)
+	}
+	if done := s.export(out); done.Built != 4 || done.Written != 4 || done.Removed != 1 {
+		t.Errorf("back from another store: %+v", done)
 	}
 }
 
 // While updates go on, every page a server gives belongs to one state of
 // the store: the header counts as many products as the page lists.
 func TestPagesStayWholeDuringUpdates(t *testing.T) {
-	s := newSite(t, shop)
+	s := newShop(t)
 	s.build()
 	stop := make(chan struct{})
 	failures := make(chan string, 16)
@@ -208,14 +265,13 @@ func TestPagesStayWholeDuringUpdates(t *testing.T) {
 			}
 		})
 	}
+	s.sql(`DELETE FROM related WHERE other = 'tray'`)
 	for round := range 12 {
-		s.change(func(_ map[string]any, products []map[string]any) []map[string]any {
-			products[0]["related"] = []string{"cup"}
-			if round%2 == 0 {
-				return products[:2]
-			}
-			return append(products[:2], map[string]any{"slug": "tray", "title": "Tray", "price": round, "related": []string{}})
-		})
+		if round%2 == 0 {
+			s.sql(`DELETE FROM products WHERE slug = 'tray'`)
+		} else {
+			s.sql(fmt.Sprintf(`INSERT INTO products VALUES ('tray', 'Tray', %d, '', 3)`, round))
+		}
 		s.update()
 	}
 	close(stop)

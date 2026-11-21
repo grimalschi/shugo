@@ -117,8 +117,7 @@ func (s *site) tryBuild() (*evaluate.Report, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer s.pages.Refresh()
-	return evaluate.Run(p, compiled, s.store, evaluate.Options{Log: &s.printed})
+	return evaluate.Run(p, compiled, s.store, evaluate.Options{Log: &s.printed, Whole: true})
 }
 
 func (s *site) build() *evaluate.Report {
@@ -139,7 +138,6 @@ func (s *site) update() *evaluate.Report {
 		s.t.Fatal(err)
 	}
 	report, err := evaluate.Run(p, compiled, s.store, evaluate.Options{Log: &s.printed})
-	s.pages.Refresh()
 	if err != nil {
 		s.t.Fatalf("update: %v", err)
 	}

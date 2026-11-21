@@ -27,7 +27,7 @@ import (
 
 // The files a compiled project consists of, under the output folder.
 const (
-	Bundle  = "eval.mjs"     // loads the data and computes the values of all pages
+	Bundle  = "eval.mjs"     // the code of the project: computes the values of the pages it is asked for
 	Site    = "site.json"    // the program of the site: templates and routes
 	Assets  = "assets"       // style sheets, published under AssetsURL
 	Sources = "sources.json" // what the project was compiled from
@@ -291,7 +291,7 @@ func (b *builder) routes() ([]program.Route, error) {
 			}
 		}
 		if dynamic && !u.script.paths {
-			errs = append(errs, u.file.Errorf(0, "the name of this page has a parameter, so its script must say which pages there are: export async function getStaticPaths() { return [{ params: { … } }] }"))
+			errs = append(errs, u.file.Errorf(0, "the name of this page has a parameter, so its script must say which pages there are: export function getStaticPaths({ query }) { return query(\"products\").select(\"slug\").all().map((row) => ({ params: { slug: row.slug } })) }; without a data database, return the list itself: [{ params: { … } }]"))
 		}
 		// Every folder from pages/ down to the page may hold a layout.
 		for dir := project.Pages; ; {
@@ -352,22 +352,29 @@ type bundled struct {
 // library of the framework into one file.
 func (b *builder) bundle(routes []program.Route) (*bundled, error) {
 	root := b.project.Root
-	// The entry names the modules that give pages; the rest of what it
-	// needs to know is in the program of the site.
-	used := map[int]bool{}
+	// The entry names the module of every file: a page is computed from its
+	// route, and a shared block from its name alone, so any file may be what
+	// a computation starts from. The rest of what the run needs to know is
+	// in the program of the site.
+	//
+	// Pages and layouts come first, in their order: style sheets apply in
+	// the order of imports, and that order starts from the pages.
+	routed := map[int]bool{}
 	for _, r := range routes {
-		used[r.File] = true
+		routed[r.File] = true
 		for _, layout := range r.Layouts {
-			used[layout] = true
+			routed[layout] = true
 		}
 	}
 	var entry strings.Builder
 	entry.WriteString("import { run } from \"shugo:runtime\";\n")
 	var table []string
-	for id, path := range b.paths {
-		if used[id] {
-			fmt.Fprintf(&entry, "import * as $%d from %s;\n", id, quote("./"+path))
-			table = append(table, fmt.Sprintf("[%d, $%d]", id, id))
+	for _, first := range []bool{true, false} {
+		for id, path := range b.paths {
+			if routed[id] == first {
+				fmt.Fprintf(&entry, "import * as $%d from %s;\n", id, quote("./"+path))
+				table = append(table, fmt.Sprintf("[%d, $%d]", id, id))
+			}
 		}
 	}
 	fmt.Fprintf(&entry, "await run([%s]);\n", strings.Join(table, ", "))
@@ -378,8 +385,11 @@ func (b *builder) bundle(routes []program.Route) (*bundled, error) {
 		})
 		build.OnLoad(api.OnLoadOptions{Filter: `.*`, Namespace: "shugo"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
 			contents := jsrt.Source
-			if args.Path == "shugo:entry" {
+			switch args.Path {
+			case "shugo:entry":
 				contents = entry.String()
+			case "shugo:query":
+				contents = jsrt.Query
 			}
 			return api.OnLoadResult{Contents: &contents, Loader: api.LoaderJS, ResolveDir: root}, nil
 		})
@@ -407,6 +417,7 @@ func (b *builder) bundle(routes []program.Route) (*bundled, error) {
 		Target:        api.ESNext,
 		Charset:       api.CharsetUTF8,
 		Packages:      api.PackagesExternal,
+		External:      []string{"bun:sqlite"}, // built into Bun; Node has node:sqlite
 		Alias:         map[string]string{"@": root},
 		Plugins:       []api.Plugin{plugin},
 		AbsWorkingDir: root,
@@ -480,6 +491,10 @@ func (b *builder) diagnose(message api.Message) *syntax.Error {
 	text := message.Text
 	if line := at.Line - 1; line < len(u.module.from) && u.module.from[line].kind == 't' && markupInCode.MatchString(u.module.lines[line]) {
 		text += "; markup cannot stand inside {…}: put <g-if> or <g-for> around it instead"
+	}
+	if strings.Contains(text, `"await" can only be used inside an "async" function`) {
+		text = "a page is computed without waiting: its data comes from Shugo.query, which answers at once, so there is nothing to wait for. " +
+			"What takes time and needs doing once, such as making a highlighter, can be awaited at the top of a module in lib/ and used here"
 	}
 	return u.file.Errorf(u.module.locate(u.script, at.Line-1, at.Column), "%s", text)
 }

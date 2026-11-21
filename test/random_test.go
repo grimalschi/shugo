@@ -538,11 +538,9 @@ func TestRandomPages(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(s.root, "data.json"), encoded, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if round == 0 {
-			s.build()
-		} else {
-			s.update()
-		}
+		// The data of these pages lies in a file, past the data database:
+		// every round is built anew.
+		s.build()
 		failed := 0
 		for i, nodes := range trees {
 			var want strings.Builder

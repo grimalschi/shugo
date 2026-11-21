@@ -1,31 +1,33 @@
-// Package evaluate is the second stage: it runs the compiled JavaScript of a
-// project, which loads the data and computes the values of every page, and
-// keeps the result in the store. It compares what was computed with what the
-// store has and writes only what differs, so that after a change in the data
-// only the pages and the shared blocks that show it are touched.
+// Package evaluate is the second stage: it has the compiled JavaScript of a
+// project compute pages and shared blocks, and keeps the result in the
+// store.
+//
+// Go leads: it asks the JavaScript side which pages there are, names the
+// pages and the shared blocks to compute, and takes their records. What it
+// takes is compared with what the store has, and only what differs is
+// written. An update may compute any part of the site: everything it does
+// not name stays in the store as it is.
+//
+// Which part to compute, the data database of the project tells. Every page
+// and shared block left a note of the rows it read from the database, and
+// the database keeps a journal of the rows that change. An update computes
+// what read a row that has changed, and nothing else: its cost follows the
+// size of the change, not of the site. A project without a data database
+// has no data to change: an update computes nothing unless the project
+// itself has changed, and then everything.
 package evaluate
 
 import (
-	"bufio"
-	"bytes"
-	"encoding/binary"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
-	"slices"
 	"sort"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/grimalschi/shugo/internal/compile"
-	"github.com/grimalschi/shugo/internal/program"
+	"github.com/grimalschi/shugo/internal/data"
 	"github.com/grimalschi/shugo/internal/project"
-	"github.com/grimalschi/shugo/internal/record"
-	"github.com/grimalschi/shugo/internal/render"
 	"github.com/grimalschi/shugo/internal/store"
 )
 
@@ -36,16 +38,19 @@ type Report struct {
 	Build   string `json:"build"`
 	Rebuilt bool   `json:"rebuilt"`
 
+	// Data tells what the data database of the project said, if it has one.
+	Data *DataReport `json:"data,omitempty"`
+
+	// Computed counts the pages and the shared blocks the update computed,
+	// Blocks the blocks they consist of. Pages and Shared tell what became
+	// of the records: computing a record again often gives the same one.
+	Computed struct {
+		Pages  int `json:"pages"`
+		Shared int `json:"shared"`
+	} `json:"computed"`
+	Blocks int     `json:"blocks"`
 	Pages  Changes `json:"pages"`
 	Shared Changes `json:"shared"`
-	// Blocks is how many blocks all pages and shared blocks consist of.
-	// Values counts the distinct values of blocks that are kept.
-	Blocks int `json:"blocks"`
-	Values struct {
-		Total   int `json:"total"`
-		Added   int `json:"added"`
-		Removed int `json:"removed"`
-	} `json:"values"`
 	// Render counts the pages whose HTML is not what it was: the pages that
 	// are new or have changed themselves, and the pages that show a shared
 	// block that has. RenderNames are the first of them.
@@ -54,8 +59,32 @@ type Report struct {
 	// Shadowed counts addresses that a dynamic page gave and a more exact
 	// page had already taken.
 	Shadowed int `json:"shadowed"`
+	// Checked tells that everything was computed to check what a plain
+	// update would have done. Unseen are the pages and shared blocks whose
+	// record came out different although no row they read has changed: they
+	// show something that Shugo does not see them read.
+	Checked bool     `json:"checked,omitempty"`
+	Unseen  []string `json:"unseen,omitempty"`
 	// Time is how long every step took, in milliseconds.
 	Time map[string]float64 `json:"time"`
+}
+
+// DataReport tells what an update learned from the data database.
+type DataReport struct {
+	// Whole tells that everything was computed: the first time, after the
+	// project or the tables of the database changed, on request, or when the
+	// journal of the database could not tell what had changed.
+	Whole bool `json:"whole"`
+	// Rows counts the rows that are not what they were at the previous update.
+	Rows int `json:"rows"`
+	// Routes counts the routes whose list of pages was read again.
+	Routes int `json:"routes"`
+	// Indexes are the indexes that were made in the database for questions
+	// of the project that had none to find their rows by.
+	Indexes []string `json:"indexes,omitempty"`
+	// Position is where the journal of the database stood when the update
+	// read it: every change up to there is in the site.
+	Position int64 `json:"position"`
 }
 
 // Changes tells what happened to the pages or to the shared blocks.
@@ -70,23 +99,29 @@ type Changes struct {
 	RemovedNames []string `json:"removedNames,omitempty"`
 }
 
+// note counts one page or shared block under what happened to it.
+func (c *Changes) note(count *int, names *[]string, name string, limit int) {
+	if *count++; len(*names) < limit {
+		*names = append(*names, name)
+	}
+}
+
 // Options tune a run.
 type Options struct {
 	// Log receives what the project's code prints.
 	Log io.Writer
 	// Names is how many names of pages a report lists at most.
 	Names int
+	// Whole has everything computed, whatever the data database says has
+	// changed: what a page reads from elsewhere is read again.
+	Whole bool
+	// Check computes every page and shared block too, and reports those
+	// that came out different although no row they read has changed.
+	Check bool
 }
 
-// Limits on what the project's code may send. It runs outside of our
-// control, so nothing it sends is taken on trust.
-const (
-	maxFrame  = 1 << 30 // bytes of one message
-	maxBlocks = 1 << 22 // blocks of one page
-)
-
-// Run computes the site and brings the store up to date with it. If it
-// fails, the store stays as it was.
+// Run brings the store up to date with the project. If it fails, the store
+// stays as it was.
 func Run(p *project.Project, compiled *compile.Result, st *store.Store, options Options) (*Report, error) {
 	started := time.Now()
 	lap := started
@@ -107,48 +142,62 @@ func Run(p *project.Project, compiled *compile.Result, st *store.Store, options 
 		return nil, err
 	}
 	defer u.Rollback()
-	site, err := compiled.Site.Encode()
+	k, err := newKeeper(compiled.Site, u, report, options.Names)
 	if err != nil {
 		return nil, err
 	}
-	if kept, _, err := u.Build(); err != nil {
+	kept, err := u.BuildID()
+	if err != nil {
 		return nil, err
-	} else if kept != compiled.ID {
+	}
+	if kept != compiled.ID && kept != "" {
 		// Records name templates by their numbers in the compiled project,
-		// so those of another one say nothing here. Values are kept: most of
-		// them will be computed again as they were.
-		report.Rebuilt = kept != ""
-		if err := u.ClearRecords(); err != nil {
+		// so those of another one say nothing here.
+		report.Rebuilt = true
+		if err := k.clear(); err != nil {
 			return nil, err
 		}
 	}
-	k := &keeper{
-		site: compiled.Site, update: u, report: report, names: options.Names,
-		numbers: map[int64]int64{}, live: map[record.Hash]struct{}{},
-		pageShows: map[string][]int64{}, sharedShows: map[int64][]int64{}, fresh: map[int64]bool{}, touched: map[string]bool{},
-	}
-	if k.pages, err = u.KeptPages(); err != nil {
-		return nil, err
-	}
-	if k.shared, err = u.KeptShared(); err != nil {
-		return nil, err
-	}
-	if k.values, err = u.KeptValues(); err != nil {
-		return nil, err
-	}
-	k.seenPages, k.seenShared = make(map[string]struct{}, len(k.pages)), make(map[string]struct{}, len(k.shared))
 	took("open")
 
-	if err := compute(p, options.Log, k); err != nil {
+	k.check, report.Checked = options.Check, options.Check
+	w := &worker{project: p, log: options.Log}
+	defer w.stop()
+	switch path := p.Data(); {
+	case path != "":
+		err = tracked(w, k, path, options.Whole || kept != compiled.ID, took)
+	case options.Whole || options.Check || kept != compiled.ID:
+		if options.Check {
+			// Nothing tells to compute anything: a record that comes out
+			// otherwise reads something past the data.
+			k.reached = map[string]struct{}{}
+		}
+		err = everything(w, k, took)
+	}
+	if err == nil {
+		err = w.end()
+	}
+	if err != nil {
 		return nil, err
 	}
 	took("compute")
 
 	if err := k.finish(); err != nil {
+		// A shared block that failed earlier is an error only now.
+		var script *ScriptError
+		if errors.As(err, &script) {
+			script.locate(p)
+		}
 		return nil, err
 	}
-	if err := u.SetBuild(compiled.ID, site); err != nil {
-		return nil, err
+	if kept != compiled.ID {
+		site, err := compiled.Site.Encode()
+		if err != nil {
+			return nil, err
+		}
+		if err := u.SetBuild(compiled.ID, site); err != nil {
+			return nil, err
+		}
 	}
 	if err := u.Commit(); err != nil {
 		return nil, err
@@ -158,422 +207,299 @@ func Run(p *project.Project, compiled *compile.Result, st *store.Store, options 
 	return report, nil
 }
 
-// compute runs the JavaScript of the project and hands every record it
-// sends to the keeper.
-func compute(p *project.Project, log io.Writer, k *keeper) error {
-	reader, writer, err := os.Pipe()
+// everything computes all pages and every shared block they show, and drops
+// the pages the project no longer has.
+func everything(w *worker, k *keeper, took func(string)) error {
+	pages, err := w.list(nil, k)
 	if err != nil {
 		return err
 	}
-	defer reader.Close()
-	command := exec.Command(p.Runtime(), p.Path(project.Output, compile.Bundle))
-	command.Dir = p.Root
-	command.Stdout, command.Stderr = log, log
-	// The results come through a pipe of their own, so that whatever the
-	// project prints cannot get mixed into them.
-	command.ExtraFiles = []*os.File{writer}
-	command.Env = append(os.Environ(), "SHUGO_OUT=3")
-	if err := command.Start(); err != nil {
-		writer.Close()
-		return fmt.Errorf("cannot start %s to run the project's code: %w", p.Runtime(), err)
-	}
-	writer.Close()
-
-	failure := receive(bufio.NewReaderSize(reader, 1<<20), k)
-	if failure != nil {
-		// What follows is of no use; let the process end instead of blocking on the pipe.
-		command.Process.Kill()
-	}
-	exit := command.Wait()
-	var script *ScriptError
-	switch {
-	case errors.As(failure, &script):
-		script.locate(p)
-		return script
-	case failure != nil:
-		return failure
-	case exit != nil:
-		return fmt.Errorf("%s ended before the site was computed: %w", p.Runtime(), exit)
-	case !k.done:
-		return fmt.Errorf("%s ended without saying that the site was computed", p.Runtime())
-	}
-	return nil
-}
-
-// receive reads the messages of the project's code: a length in four bytes,
-// then a letter that says what the message is, then the message.
-func receive(in *bufio.Reader, k *keeper) error {
-	var head [4]byte
-	var message []byte
-	for {
-		if _, err := io.ReadFull(in, head[:]); err == io.EOF {
-			return nil
-		} else if err != nil {
-			return fmt.Errorf("the results of the project's code are cut short: %w", err)
-		}
-		size := int(binary.LittleEndian.Uint32(head[:]))
-		if size < 1 || size > maxFrame {
-			return fmt.Errorf("the project's code sent a message of %d bytes", size)
-		}
-		if cap(message) < size {
-			message = make([]byte, size)
-		}
-		message = message[:size]
-		if _, err := io.ReadFull(in, message); err != nil {
-			return fmt.Errorf("the results of the project's code are cut short: %w", err)
-		}
-		switch body := message[1:]; message[0] {
-		case 'R':
-			for len(body) > 0 {
-				var one []byte
-				one, body, _ = bytes.Cut(body, []byte{3})
-				if err := k.keep(one); err != nil {
-					return err
-				}
-			}
-		case 'E':
-			failure := &ScriptError{}
-			if err := json.Unmarshal(body, failure); err != nil {
-				return fmt.Errorf("the project's code failed, and its report cannot be read: %w", err)
-			}
-			return failure
-		case 'D':
-			var counts struct{ Shadowed int }
-			if err := json.Unmarshal(body, &counts); err != nil {
-				return fmt.Errorf("the project's code sent a damaged summary: %w", err)
-			}
-			k.report.Shadowed = counts.Shadowed
-			k.done = true
-		default:
-			return fmt.Errorf("the project's code sent a message of an unknown kind %q", message[0])
-		}
-	}
-}
-
-// keeper takes the records of one run and writes to the store those that
-// differ from what it has.
-type keeper struct {
-	site   *program.Site
-	update *store.Update
-	report *Report
-	names  int
-	done   bool
-
-	// What the store had before the run.
-	pages  map[string]record.Hash
-	shared map[string]store.Kept
-	values map[record.Hash]struct{}
-
-	// What the run has shown so far.
-	seenPages, seenShared map[string]struct{}
-	numbers               map[int64]int64 // the number a shared block has in this run → its number in the store
-	live                  map[record.Hash]struct{}
-
-	// Which shared blocks every page and every shared block shows, and
-	// which records are new or not what they were: together they tell on
-	// which pages the HTML differs.
-	pageShows   map[string][]int64
-	sharedShows map[int64][]int64
-	fresh       map[int64]bool  // shared blocks
-	touched     map[string]bool // pages
-}
-
-// keep takes one record as the project's code sent it: a header and blocks
-// split by \x01, their fields split by \x02.
-func (k *keeper) keep(data []byte) error {
-	header, rest, _ := bytes.Cut(data, []byte{1})
-	fields := bytes.Split(header, []byte{2})
-	if len(fields) != 4 || len(fields[0]) != 1 {
-		return errors.New("the project's code sent a record with a damaged header")
-	}
-	kind, name := fields[0][0], string(fields[1])
-	origin, err := strconv.ParseInt(string(fields[2]), 10, 64)
-	top, err2 := strconv.Atoi(string(fields[3]))
-	if err != nil || err2 != nil {
-		return errors.New("the project's code sent a record with a damaged header")
-	}
-	where := "the shared block " + name
-	if kind == 'p' {
-		where = "the page " + name
-	}
-
-	rec := &record.Record{Top: top}
-	var values [][]byte
-	for len(rest) > 0 {
-		if len(rec.Blocks) == maxBlocks {
-			return fmt.Errorf("%s has more than %d blocks", where, maxBlocks)
-		}
-		var one []byte
-		one, rest, _ = bytes.Cut(rest, []byte{1})
-		block, data, err := k.block(one)
-		if err != nil {
-			return fmt.Errorf("%s: %w", where, err)
-		}
-		rec.Blocks = append(rec.Blocks, block)
-		values = append(values, data)
-	}
-	k.report.Blocks += len(rec.Blocks)
-	encoded := rec.Encode()
-	hash := record.HashOf(encoded)
-	var shows []int64
-	for i := range rec.Blocks {
-		if rec.Blocks[i].Use {
-			shows = append(shows, rec.Blocks[i].Shared)
-		}
-	}
-
-	// A record that is what it was needs nothing: its values are in the
-	// store already, and it was checked when it got there.
-	changed := true
-	switch kind {
-	case 'p':
-		if !validPath(name) {
-			return fmt.Errorf("the project's code sent a page with the address %q", name)
-		}
-		if _, twice := k.seenPages[name]; twice {
-			return fmt.Errorf("the project's code sent %s twice", where)
-		}
-		k.seenPages[name] = struct{}{}
-		if shows != nil {
-			k.pageShows[name] = shows
-		}
-		kept, known := k.pages[name]
-		if changed = !known || kept != hash; changed {
-			k.touched[name] = true
-			if err := k.check(rec, values); err != nil {
-				return fmt.Errorf("%s: %w", where, err)
-			}
-			if err := k.update.PutPage(name, hash, encoded); err != nil {
-				return err
-			}
-			k.count(&k.report.Pages, name, known)
-		}
-	case 's':
-		if _, twice := k.seenShared[name]; twice {
-			return fmt.Errorf("the project's code sent %s twice", where)
-		}
-		k.seenShared[name] = struct{}{}
-		kept, known := k.shared[name]
-		if !known {
-			if kept.ID, err = k.update.NewShared(name); err != nil {
-				return err
-			}
-		}
-		k.numbers[origin] = kept.ID
-		if shows != nil {
-			k.sharedShows[kept.ID] = shows
-		}
-		if changed = !known || kept.Hash != hash; changed {
-			k.fresh[kept.ID] = true
-			if rec.Blocks[rec.Top].Use {
-				return fmt.Errorf("%s does not start with a template", where)
-			}
-			if err := k.check(rec, values); err != nil {
-				return fmt.Errorf("%s: %w", where, err)
-			}
-			if err := k.update.PutShared(kept.ID, hash, encoded); err != nil {
-				return err
-			}
-			k.count(&k.report.Shared, name, known)
-		}
-	default:
-		return fmt.Errorf("the project's code sent a record of an unknown kind %q", kind)
-	}
-
-	for i := range rec.Blocks {
-		b := &rec.Blocks[i]
-		if b.Use {
-			continue
-		}
-		if _, known := k.live[b.Values]; known {
-			continue
-		}
-		k.live[b.Values] = struct{}{}
-		if _, kept := k.values[b.Values]; !kept {
-			if err := k.update.PutValues(b.Values, values[i]); err != nil {
-				return err
-			}
-			k.report.Values.Added++
-		}
-	}
-	return nil
-}
-
-// block reads one block: "b", its file, its part, its children, its slots
-// and its values; or "u", a shared block and what fills its slots.
-func (k *keeper) block(data []byte) (record.Block, []byte, error) {
-	damaged := errors.New("the project's code sent a damaged block")
-	fields := bytes.SplitN(data, []byte{2}, 6)
-	var b record.Block
-	var slots []byte
-	var values []byte
-	switch {
-	case len(fields) == 3 && string(fields[0]) == "u":
-		number, err := strconv.ParseInt(string(fields[1]), 10, 64)
-		if err != nil {
-			return b, nil, damaged
-		}
-		id, known := k.numbers[number]
-		if !known {
-			return b, nil, errors.New("the project's code used a shared block before sending it")
-		}
-		b.Use, b.Shared, slots = true, id, fields[2]
-	case len(fields) == 6 && string(fields[0]) == "b":
-		var err1, err2, err3 error
-		b.File, err1 = strconv.Atoi(string(fields[1]))
-		b.Part, err2 = strconv.Atoi(string(fields[2]))
-		b.Children, err3 = numbers(fields[3])
-		if err1 != nil || err2 != nil || err3 != nil {
-			return b, nil, damaged
-		}
-		if _, ok := k.site.Part(b.File, b.Part); !ok {
-			return b, nil, fmt.Errorf("the project's code sent a block of template %d, part %d, which the site does not have", b.File, b.Part)
-		}
-		slots, values = fields[4], fields[5]
-		b.Values = record.HashOf(values)
-	default:
-		return b, nil, damaged
-	}
-	// Slots are written as name=1,2;other=3.
-	for len(slots) > 0 {
-		var one []byte
-		one, slots, _ = bytes.Cut(slots, []byte{';'})
-		name, list, found := bytes.Cut(one, []byte{'='})
-		fills, err := numbers(list)
-		if !found || len(name) == 0 || err != nil {
-			return b, nil, damaged
-		}
-		b.Slots = append(b.Slots, record.Slot{Name: string(name), Blocks: fills})
-	}
-	return b, values, nil
-}
-
-// numbers reads "1,2,3".
-func numbers(list []byte) ([]int, error) {
-	if len(list) == 0 {
-		return nil, nil
-	}
-	parts := bytes.Split(list, []byte{','})
-	out := make([]int, len(parts))
-	for i, part := range parts {
-		n, err := strconv.Atoi(string(part))
-		if err != nil || n < 0 {
-			return nil, errors.New("not a number")
-		}
-		out[i] = n
-	}
-	return out, nil
-}
-
-// check tells whether a record can be shown: its blocks make one tree, and
-// the values of every block fit its template.
-func (k *keeper) check(rec *record.Record, values [][]byte) error {
-	if err := rec.Check(); err != nil {
+	took("list")
+	if err := k.computeAll(); err != nil {
 		return err
 	}
-	for i := range rec.Blocks {
-		if b := &rec.Blocks[i]; !b.Use {
-			if err := render.Check(k.site, b, values[i]); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
 
-// count notes one page or shared block that is new or not what it was.
-func (k *keeper) count(changes *Changes, name string, known bool) {
-	if known {
-		changes.Changed++
-		if len(changes.ChangedNames) < k.names {
-			changes.ChangedNames = append(changes.ChangedNames, name)
-		}
-		return
+	units := make([]unit, len(pages))
+	there := make(map[string]struct{}, len(pages))
+	for i, page := range pages {
+		units[i] = unit{name: page.path, route: page.route}
+		there[page.path] = struct{}{}
 	}
-	changes.Added++
-	if len(changes.AddedNames) < k.names {
-		changes.AddedNames = append(changes.AddedNames, name)
+	if err := w.compute(units, k); err != nil {
+		return err
 	}
-}
-
-// finish drops from the store what the run did not show: pages that are not
-// there any more, shared blocks nothing uses, values no block has.
-func (k *keeper) finish() error {
+	if err := shared(w, k); err != nil {
+		return err
+	}
 	for path := range k.pages {
-		if _, seen := k.seenPages[path]; !seen {
-			if err := k.update.DeletePage(path); err != nil {
+		if _, still := there[path]; !still {
+			if err := k.remove(path); err != nil {
 				return err
 			}
-			k.report.Pages.Removed++
-			if len(k.report.Pages.RemovedNames) < k.names {
-				k.report.Pages.RemovedNames = append(k.report.Pages.RemovedNames, path)
-			}
 		}
-	}
-	for name, kept := range k.shared {
-		if _, seen := k.seenShared[name]; !seen {
-			if err := k.update.DeleteShared(kept.ID); err != nil {
-				return err
-			}
-			k.report.Shared.Removed++
-			if len(k.report.Shared.RemovedNames) < k.names {
-				k.report.Shared.RemovedNames = append(k.report.Shared.RemovedNames, name)
-			}
-		}
-	}
-	for hash := range k.values {
-		if _, live := k.live[hash]; !live {
-			if err := k.update.DeleteValues(hash); err != nil {
-				return err
-			}
-			k.report.Values.Removed++
-		}
-	}
-	k.report.Pages.Total, k.report.Shared.Total, k.report.Values.Total = len(k.seenPages), len(k.seenShared), len(k.live)
-	k.rendered()
-	for _, names := range []*[]string{
-		&k.report.RenderNames,
-		&k.report.Pages.AddedNames, &k.report.Pages.ChangedNames, &k.report.Pages.RemovedNames,
-		&k.report.Shared.AddedNames, &k.report.Shared.ChangedNames, &k.report.Shared.RemovedNames,
-	} {
-		sort.Strings(*names)
 	}
 	return nil
 }
 
-// rendered counts the pages whose HTML differs from what it was. A shared
-// block that shows a changed shared block has changed too, for whoever
-// shows it.
-func (k *keeper) rendered() {
-	for spread := true; spread; {
-		spread = false
-		for id, shows := range k.sharedShows {
-			if !k.fresh[id] && slices.ContainsFunc(shows, func(shown int64) bool { return k.fresh[shown] }) {
-				k.fresh[id], spread = true, true
+// shared computes the shared blocks that the records of this run show and
+// that are still to be computed. A shared block is computed once it is
+// known that something shows it; what it shows itself comes with the next
+// round.
+func shared(w *worker, k *keeper) error {
+	for names := k.take(); len(names) > 0; names = k.take() {
+		units := make([]unit, len(names))
+		for i, name := range names {
+			units[i] = unit{shared: true, name: name}
+		}
+		if err := w.compute(units, k); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// tracked brings a project with a data database up to date: it computes
+// what read the rows that the journal of the database tells have changed.
+// whole has it compute everything instead; so has a journal that cannot
+// tell what has changed since the records were computed.
+func tracked(w *worker, k *keeper, path string, whole bool, took func(string)) error {
+	source, err := data.Open(path)
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+	if k.shapes, err = newShapes(k.update, source); err != nil {
+		return err
+	}
+	state, err := k.update.Data()
+	if err != nil {
+		return err
+	}
+	var journal string
+	var at int64
+	fmt.Sscanf(state, "%s %d", &journal, &at)
+	k.report.Data = &DataReport{}
+
+	var changes []data.Change
+	now := at
+	if whole = whole || journal != source.ID; !whole {
+		// Where the journal stands is read before the data is: a row that
+		// changes while the pages are computed is computed again next time.
+		var lost bool
+		if changes, now, lost, err = source.Changes(at); err != nil {
+			return err
+		}
+		whole = lost
+	}
+	if whole {
+		if now, err = source.Position(); err != nil {
+			return err
+		}
+		k.report.Data.Whole = true
+		took("data")
+		err = everything(w, k, took)
+	} else {
+		k.report.Data.Rows = len(changes)
+		var readers map[string]struct{}
+		if readers, err = k.shapes.reached(changes); err == nil {
+			took("data")
+			if k.check {
+				err = checked(w, k, readers, took)
+			} else {
+				err = part(w, k, readers, took)
 			}
 		}
 	}
-	note := func(path string) {
-		if k.report.Render++; len(k.report.RenderNames) < k.names {
-			k.report.RenderNames = append(k.report.RenderNames, path)
-		}
+	if err != nil {
+		return err
 	}
-	for path := range k.seenPages {
-		if k.touched[path] || slices.ContainsFunc(k.pageShows[path], func(shown int64) bool { return k.fresh[shown] }) {
-			note(path)
-		}
-	}
+	k.report.Data.Position = now
+	return k.update.SetData(fmt.Sprintf("%s %d", source.ID, now))
 }
 
-// validPath tells whether text can be the address of a page.
-func validPath(path string) bool {
-	if !strings.HasPrefix(path, "/") || len(path) > 4096 {
-		return false
-	}
-	for _, part := range strings.Split(path[1:], "/") {
-		if part == "." || part == ".." || (part == "" && path != "/") {
-			return false
+// checked computes everything where the journal told to compute only the
+// readers given, and has the keeper note what came out different without
+// having been told: a page that reads its data past the database, or takes
+// it from what another page left in a module.
+func checked(w *worker, k *keeper, readers map[string]struct{}, took func(string)) error {
+	k.reached = map[string]struct{}{}
+	for reader := range readers {
+		route, is := store.ReaderRoute(reader)
+		if !is {
+			k.reached[reader] = struct{}{}
+			continue
+		}
+		// A list of pages that is read again has its new pages computed,
+		// and all of them if the route gives its pages more than addresses.
+		props, _, _, err := k.update.Route(route)
+		if err != nil {
+			return err
+		}
+		if props {
+			k.reached[reader] = struct{}{}
 		}
 	}
-	return !strings.ContainsAny(path, "\x00\\?#")
+	return everything(w, k, took)
+}
+
+// part computes the readers that a change of the data has reached: pages,
+// shared blocks, and lists of pages of routes.
+func part(w *worker, k *keeper, readers map[string]struct{}, took func(string)) error {
+	var routes []int
+	var blocks []string
+	pages := map[string]int{} // the route of every page to compute
+	for reader := range readers {
+		if route, is := store.ReaderRoute(reader); is {
+			routes = append(routes, route)
+		} else if id, is := store.UserShared(reader); is {
+			name, err := k.update.SharedName(id)
+			if err != nil {
+				return err
+			}
+			blocks = append(blocks, name)
+		} else if kept, found, err := k.page(reader); err != nil {
+			return err
+		} else if found {
+			pages[reader] = kept.Route
+		}
+	}
+	// A page of a route that gives its pages more than their addresses is
+	// computed from what the route gives it, so the route is listed again.
+	asked := map[int]struct{}{}
+	for _, route := range pages {
+		if _, already := asked[route]; already {
+			continue
+		}
+		asked[route] = struct{}{}
+		props, _, _, err := k.update.Route(route)
+		if err != nil {
+			return err
+		}
+		if props {
+			routes = append(routes, route)
+		}
+	}
+	if err := relist(w, k, routes, pages); err != nil {
+		return err
+	}
+	took("list")
+
+	units := make([]unit, 0, len(pages)+len(blocks))
+	for path, route := range pages {
+		units = append(units, unit{name: path, route: route})
+	}
+	for _, name := range blocks {
+		units = append(units, unit{shared: true, name: name})
+	}
+	// The order is of no matter to the result; a fixed one makes runs alike.
+	sort.Slice(units, func(a, b int) bool { return units[a].name < units[b].name })
+	if err := w.compute(units, k); err != nil {
+		return err
+	}
+	return shared(w, k)
+}
+
+// relist reads again which pages routes have. A page a route no longer
+// gives is dropped, and a page it gives for the first time is added to
+// pages, to be computed. So is a page it takes over from a less exact
+// route, and every page of a route that gives its pages more than their
+// addresses.
+func relist(w *worker, k *keeper, routes []int, pages map[string]int) error {
+	done := map[int]bool{}
+	for len(routes) > 0 {
+		sort.Ints(routes)
+		queue := routes[:0]
+		for _, route := range routes {
+			if !done[route] {
+				done[route] = true
+				queue = append(queue, route)
+			}
+		}
+		if len(queue) == 0 {
+			return nil
+		}
+		k.report.Data.Routes += len(queue)
+		found, err := w.list(queue, k)
+		if err != nil {
+			return err
+		}
+		given := map[int]map[string]struct{}{}
+		for _, route := range queue {
+			given[route] = map[string]struct{}{}
+		}
+		for _, page := range found {
+			given[page.route][page.path] = struct{}{}
+		}
+
+		var next []int
+		for _, route := range queue {
+			before := map[string]struct{}{}
+			if err := k.update.RoutePages(route, func(path string) { before[path] = struct{}{} }); err != nil {
+				return err
+			}
+			for path := range before {
+				if _, still := given[route][path]; still {
+					continue
+				}
+				if err := k.remove(path); err != nil {
+					return err
+				}
+				delete(pages, path)
+				// A less exact route may give the same address: it was
+				// hidden behind this one so far.
+				for other := route + 1; other < len(k.site.Routes); other++ {
+					if !done[other] && fits(&k.site.Routes[other], path) {
+						next = append(next, other)
+					}
+				}
+			}
+			// What the route gives its pages beside their addresses may be
+			// other than it was, and only the route knows: all its pages are
+			// computed again.
+			props, _, _, err := k.update.Route(route)
+			if err != nil {
+				return err
+			}
+			for path := range given[route] {
+				if _, had := before[path]; had {
+					if props {
+						pages[path] = route
+					}
+					continue
+				}
+				kept, known, err := k.update.PageKept(path)
+				switch {
+				case err != nil:
+					return err
+				case !known || kept.Route > route:
+					pages[path] = route
+				case kept.Route < route:
+					// A more exact route has the address.
+					k.report.Shadowed++
+				}
+			}
+		}
+		routes = next
+	}
+	return nil
+}
+
+// unit names what is computed as one: a page, by its address and the route
+// that gives it, or a shared block, by its name.
+type unit struct {
+	shared bool
+	name   string
+	route  int
+}
+
+func (u unit) String() string {
+	if u.shared {
+		return "the shared block " + u.name
+	}
+	return "the page " + u.name
+}
+
+// errorf makes an error about what the project's code sent.
+func errorf(format string, arguments ...any) error {
+	return fmt.Errorf("the project's code sent "+format, arguments...)
 }

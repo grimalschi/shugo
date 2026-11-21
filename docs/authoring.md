@@ -8,8 +8,8 @@ Shugo builds static sites. A page is a `.shugo` file: TypeScript between two `--
 shugo.json       settings (optional)
 pages/           pages and layouts; the path of a file is its address
 components/      components
-lib/             shared TypeScript: data, helpers
-data/            data files, if the site has any
+lib/             shared TypeScript: helpers
+data/            the data database of the site
 styles/          style sheets
 public/          files served as they are: /robots.txt, /img/logo.svg
 _build/          written by shugo; never edit, never commit
@@ -22,37 +22,42 @@ Only `pages/` is required. `@/` in an import is the root of the project.
 ```json
 {
   "site": "https://example.com",
+  "data": "data/site.db",
   "redirects": { "/old": "/new" },
   "runtime": "bun"
 }
 ```
 
-`site` is where the site is published; `Shugo.url` is built from it (`http://localhost` without it). `runtime` is `bun` or `node`.
+`site` is where the site is published; `Shugo.url` is built from it (`http://localhost` without it). `data` is the SQLite database the pages read their data from: see [Data](#data). `runtime` is `bun` or `node`.
 
 ## Commands
 
 ```
 shugo build     compile the project and compute every page
-shugo update    compute the pages again after the data changed
-shugo dev       build, serve at http://localhost:4321, rebuild on every change
+shugo update    bring the site up to date after the data or the project changed
+shugo dev       update, serve at http://localhost:4321, update again on every change
 shugo serve     serve the site: every page is built on request from what build and update computed
-shugo export    write the site as files into _build/dist
+shugo export    write the site as files into _build/dist; after the first time, only what changed
 ```
 
 Run `shugo build` after every change and read the errors: each names a file, a line and a column.
 
-`shugo update` is for data that changed outside of the project's code: it runs the compiled code again and writes only what differs. If a file of the project changed, it compiles the project first, so it is always safe to run.
+`shugo update` is for data that changed: it computes the pages and components that read a row of the data database which is not what it was, and nothing else. It takes tens of milliseconds, whatever the size of the site. If a file of the project changed, it compiles the project first and computes everything, so it is always safe to run.
 
-`shugo export` writes `/about` as `about/index.html`, the page for missing addresses as `404.html`, and copies `public/` and the style sheet.
+`shugo update -check` computes every page and names the ones that came out different although no row they read has changed. Such a page reads data past the data database. Run it when a page looks stale.
+
+`shugo serve` keeps nothing of the site in memory: every request reads its page from the store, so a page shows an update as soon as the update ends.
+
+`shugo export` writes `/about` as `about/index.html`, the page for missing addresses as `404.html`, and copies `public/` and the style sheet. It leaves a list in the folder, `.shugo-export.json`, and the next export follows it: it builds only the pages whose HTML changed since, removes the files of pages that are gone, and copies only the files that changed. After `shugo build`, or into the folder of another project, it builds every page and removes the page files the site no longer has. The folder belongs to the export: a file edited there by hand stays so until its page changes, and a folder whose name starts with a dot is left alone. `-out` names another folder.
 
 ## A page
 
 ```
 ---
 import Card from "../components/Card.shugo"
-import { getProducts, price, type Product } from "@/lib/shop"
+import { price } from "@/lib/shop"
 
-const products: Product[] = await getProducts()
+const products = Shugo.query("products").order("title").all()
 const total = products.reduce((sum, item) => sum + item.price, 0)
 ---
 <title slot="head">Catalogue</title>
@@ -73,7 +78,7 @@ const total = products.reduce((sum, item) => sum + item.price, 0)
 
 - The script is optional: a file may be markup alone.
 - The script runs once for every page the file gives. Everything it declares is visible in the markup: values, functions, imports.
-- Top-level `await` is fine. Top-level `return` is an error.
+- There is no `await`: a page is computed without waiting, since `Shugo.query` answers at once. What takes time and needs doing once, such as making a highlighter, can be awaited at the top of a module in `lib/`. Top-level `return` is an error.
 - TypeScript everywhere: in the script and inside `{…}`. Types are removed, not checked: a type error does not stop the build, and `post.titel` shows nothing.
 - Markup goes to the page as written, HTML entities included: `&nbsp;`, `&lt;`.
 
@@ -183,6 +188,8 @@ const { title, featured = false } = Shugo.props as Props
 
 | | |
 | --- | --- |
+| `Shugo.query("table")` | a question to the data database: see [Data](#data) |
+| `Shugo.paginate(query, { pageSize })` | one page of a long list: see [Pages from data](#pages-from-data) |
 | `Shugo.props` | the props of the component; for a page, the `props` from `getStaticPaths` |
 | `Shugo.params` | the parameters of the address of the page |
 | `Shugo.url` | the address of the page, a `URL` |
@@ -215,7 +222,7 @@ import "../styles/main.css"
 - `<g-slot />` is where the page goes. A layout must have it.
 - A page gives markup to its layout with `slot="name"` on a tag at the top level of the page: `<title slot="head">About</title>`. The nearest layout that has `<g-slot name="head">` shows it. Giving markup for a slot that no layout around the page has is an error.
 - Pages do not import or call layouts.
-- The script of a layout runs for every page it wraps, unless neither the layout nor any component it imports reads `Shugo.url` or `Shugo.params`: then it runs once. A layout whose header highlights the current page runs for every page, so do not load data in its script; put the loading into a module in `lib/`.
+- The script of a layout runs for every page it wraps, unless neither the layout nor any component it imports reads `Shugo.url` or `Shugo.params`: then it runs once. A layout whose header highlights the current page runs for every page, and so does every query in it: a change of what it reads computes every page. Put what is the same on every page into a component without props, such as `<Menu />` that reads the menu itself; it is computed once, and a change of the menu computes it alone.
 
 ## Addresses
 
@@ -235,37 +242,35 @@ When two files could give one address, the one that names more of it wins: `blog
 
 ## Pages from data
 
-A file with a parameter in its name must say which pages there are:
+A file with a parameter in its name must say which pages there are. `getStaticPaths` gets `query` to ask the data database:
 
 ```
 <!-- pages/products/[slug].shugo -->
 ---
-import { getProducts, type Product } from "@/lib/shop"
-
-export async function getStaticPaths() {
-  const products = await getProducts()          // one query for all pages
-  return products.map((product) => ({
-    params: { slug: product.slug },
-    props: { product },
-  }))
+export function getStaticPaths({ query }) {
+  return query("products").select("slug").all().map(({ slug }) => ({ params: { slug } }))
 }
 
-const { product } = Shugo.props as { product: Product }
+const product = Shugo.query("products").where({ slug: Shugo.params.slug }).first()
 ---
 <h1>{product.title}</h1>
 ```
 
-`getStaticPaths` sees the imports and nothing else of the script. It runs once; the rest of the script runs for every item it returned, with that item's `params` in `Shugo.params` and its `props` in `Shugo.props`.
+`getStaticPaths` sees the imports and nothing else of the script. It runs once; the rest of the script runs for every item it returned. `Shugo.params` holds the parameters as they stand in the address of the page: always text, and only the ones the file name has.
 
-For lists split into pages name the file `[...page].shugo` and use `paginate`, which works as in Astro:
+**Return `params` alone and let every page ask for its own data.** Then one product that changes has one page computed. `getStaticPaths` may also hand rows to its pages, `{ params, props: { product } }`, read as `Shugo.props`; but then only the route knows what a page shows, and when anything of a row it read changes, all its pages are computed again.
+
+The list of addresses is the one place where `select` pays: of a hundred thousand rows it fetches one column instead of all.
+
+For lists split into pages name the file `[...page].shugo`. `paginate` in `getStaticPaths` takes the number of items and says which pages there are; `Shugo.paginate` in the page takes a query and returns the items of that page:
 
 ```
 <!-- pages/blog/[...page].shugo gives /blog, /blog/2, /blog/3 … -->
 ---
-export async function getStaticPaths({ paginate }: { paginate: Function }) {
-  return paginate(await getPosts(), { pageSize: 10 })
+export function getStaticPaths({ query, paginate }) {
+  return paginate(query("posts").count(), { pageSize: 10 })
 }
-const { page } = Shugo.props
+const page = Shugo.paginate(Shugo.query("posts").order("date", "desc"), { pageSize: 10 })
 ---
 <g-for each={page.data} as="post">…</g-for>
 <g-if cond={page.url.prev}><a href={page.url.prev}>Newer</a></g-if>
@@ -274,38 +279,70 @@ const { page } = Shugo.props
 
 | | |
 | --- | --- |
-| `page.data` | the items of this page |
+| `page.data` | the rows of this page |
 | `page.currentPage`, `page.lastPage` | numbers from 1 |
 | `page.total`, `page.size` | the number of all items, and of items on a page |
 | `page.start`, `page.end` | the places of the first and the last item of this page, from 0 |
 | `page.url.current`, `.prev`, `.next`, `.first`, `.last` | addresses; `undefined` where there is no such page |
 
-With `[page].shugo` the first page is `/blog/1`. `paginate(items, { pageSize, params, props })` adds `params` and `props` to every page, for a list inside something else: `pages/tags/[tag]/[...page].shugo`.
+With `[page].shugo` the first page is `/blog/1`. `paginate(count, { pageSize, params })` adds `params` to every page, for a list inside something else: `pages/tags/[tag]/[...page].shugo` with `params: { tag }`. The same `pageSize` goes to both calls.
 
 ## Data
 
-There is no special data layer: load data with ordinary TypeScript.
+The data of a site lives in one SQLite database, named in `shugo.json`: `{ "data": "data/site.db" }`. Whatever brings data to the site — an import script, a sync with a CMS, a person with a SQL console — writes to that database. Pages read it with `Shugo.query`, and only with it.
 
-Read data files when the code runs, with a path from the root of the project:
+That is what makes updates exact. Shugo notes for every page and every shared component which rows it asked for and which columns of them were read while it was computed — in its script, in its template, in the functions they call, in the components the template gives a row to. The database keeps a journal of the rows that change. `shugo update` computes what read a changed column of a changed row. Nothing has to be marked, declared or invalidated, and a query need not name its columns.
+
+### Rules for the database
+
+- **Every table has a primary key of one column.** By it Shugo tells the rows of a table apart. A table of pairs gets a key of its own: `id INTEGER PRIMARY KEY`.
+- Shugo adds a table `_shugo_journal`, a table `_shugo_meta`, and triggers and indexes named `_shugo_…` to the database and switches it to WAL mode. Leave them alone. Write to the tables with anything, in any way; `INSERT OR REPLACE` and upserts are fine.
+- **Make no indexes for the pages.** Shugo makes the ones their queries need, the first time a query is asked: by the columns that `where` compares with values, then by the columns of `order`, then by the key. An index over those columns that is there already is used instead. A column that must not repeat a value is said in the table: `slug TEXT NOT NULL UNIQUE`.
+- After a table is added, removed or altered, the next update computes everything once.
+- Views are not queried: Shugo cannot tell which rows a view is made of. Query the tables.
+- Data read from anywhere else — a file, `fetch`, a value that a module keeps between pages — is not tracked: `shugo update` does not see it change. `shugo build` computes everything and reads it again; `shugo update -check` names the pages that depend on such data.
+
+### Queries
 
 ```ts
-// lib/posts.ts
-import { readFileSync } from "node:fs"
-
-export interface Post { slug: string; title: string; body: string }
-export const posts: Post[] = JSON.parse(readFileSync("data/posts.json", "utf8"))
+Shugo.query("products")                       // a table
+  .where({ category: "c9", available: true }) // equal values
+  .where("price", "<", 1000)                  // =  !=  <  <=  >  >=  like  in
+  .order("position")                          // .order("price", "desc")
+  .limit(24).offset(48)
+  .all()                                      // the rows, as objects
 ```
 
-`import posts from "../data/posts.json"` works too, but then the data is a part of the compiled code: every change of it means compiling the project again.
+| | |
+| --- | --- |
+| `.all()` | the rows |
+| `.first()` | the first row, or `null` |
+| `.get(key)` | the row with this primary key, or `null` |
+| `.count()` | how many rows the `where` finds; order, limit and offset do not matter |
+| `.select("title", "price")` | take these columns only, to fetch less; without it a row has all its columns |
+| `.join("categories", "category")` | puts into every row the row of `categories` whose key is the row's `category`, as `row.categories`, or `null`. Options: `{ select: ["title"], as: "group", on: "slug" }`; `on` must be the key or a unique column of the other table. For many rows, make a second query |
 
-The props of a page come from `getStaticPaths` and may be anything. The props of a component decide whether it is computed once:
+- Every step returns a new query, so a query can be kept and asked in several ways.
+- The primary key is in every row, selected or not.
+- **A page depends on what is read of its rows, not on what a query took.** A row notes every column that is read of it: `item.title` in a template, `item.price` inside a function that got the row, `variant.stock` in a component that got the row. A change of any other column does not reach the page. A branch of `<g-if>` that is not taken reads nothing; when the data sends the page into it, the page is computed again.
+- Taking a row as a whole reads all of it: `{ ...row }`, `JSON.stringify(row)`, `Object.keys(row)`, `{...row}` among attributes. Read the columns you show instead.
+- **A row belongs to the script that asked for it.** Do not keep rows, `Shugo` or a query in a variable of a module for other pages: read there, a row would leave that page depending on nothing, so it throws and says so. Let every script ask for its rows; the database is fast.
+- `structuredClone(row)` does not work on a row; copy with `{ ...row }`.
+- **Compare with values of the column's kind**: a text for a text column, a number for a number column. `where({ id: 5 })` on a text column is an error that says what to write.
+- `where({ column: null })` finds rows without a value.
+- Rows come in the order of `order()`. Rows that it does not tell apart, and rows of a query without it, come in the order of their keys. So the same data always gives the same page, however the rows got into the table. To show rows in an order that means something, keep it in a column and say `order("position")`.
+- A query runs when it is asked, synchronously; there is nothing to `await`.
 
-- **For many pages of one kind**, load once in `getStaticPaths` and hand every page its part through `props`.
-- **For what every page shows** (a menu, the settings of the site), load in a component without props, such as `<Header />`. A component is computed once for the whole site when neither it nor any component it imports reads `Shugo.url` or `Shugo.params`, and it is called with plain values (strings, numbers, booleans) or without props.
-- **Pass an id, not an object**, to a component that many pages show: `<ProductCard id={product.id} />`. Each card is then computed once, and when the product changes only the card changes, not the pages that show it.
-- **Put shared loading into a module** in `lib/`: a module runs once per build.
-- Create `Intl.NumberFormat`, `Intl.DateTimeFormat` and the like once in a module, not on every call: they are slow to make.
-- The script of a component runs every time the component is shown, unless it is computed once as described above. Do not query a database there for a component shown thousands of times.
+### Where to ask
+
+- **In the page**, for what the page shows.
+- **In a component called with an id**, for what many pages show: `<ProductCard id={row.id} />` with `Shugo.query("products").get(id)` inside. Such a component is computed once for every id and kept on its own, so when the product changes its card is computed, and none of the pages that show it. A component is computed once like this when neither it nor any component it imports reads `Shugo.url` or `Shugo.params`, and it is called with plain values (strings, numbers, booleans) or without props.
+- **In a component without props**, for what every page shows: `<Header />` reads the menu itself.
+- Not in a module of `lib/` when it is imported: a query belongs to the page or component that asks, so only `Shugo.query` and the `query` of `getStaticPaths` can ask. A helper takes the query function or the rows as an argument.
+- A component that got a row from its page (`<Variant variant={row} />`) needs no query: it shows what the page asked for, and the page depends on what the component reads of the row.
+- Throw an error when a row that must be there is not: `if (!product) throw new Error(…)`.
+
+Create `Intl.NumberFormat`, `Intl.DateTimeFormat` and the like once in a module, not on every call: they are slow to make.
 
 ## Styles and scripts
 
@@ -320,6 +357,8 @@ The props of a page come from `getStaticPaths` and may be anything. The props of
 | Astro | Shugo |
 | --- | --- |
 | `Astro.props`, `Astro.params`, `Astro.url` | `Shugo.props`, `Shugo.params`, `Shugo.url` |
+| `fetch`, `getCollection`, files read in the frontmatter | `Shugo.query("table")` to the data database; whatever brings the data writes there |
+| `getStaticPaths` returns `props` | return `params` alone; the page asks for its row with `Shugo.query` |
 | `{items.map(item => <li>{item}</li>)}` | `<g-for each={items} as="item"><li>{item}</li></g-for>` |
 | `{cond && <b>text</b>}`, `{cond ? <a/> : <b/>}` | `<g-if cond={cond}>…</g-if>` with `<g-else>` |
 | `<slot />`, `<slot name="x" />` | `<g-slot />`, `<g-slot name="x" />` |

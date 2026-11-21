@@ -1,6 +1,7 @@
 ---
-import type { Variant } from "../lib/catalog"
-const { variant } = Shugo.props as { variant: Variant }
+// The page gives the whole row of a variant. What the page then depends on
+// is what is read of the row here: the title and the stock, not the shelf.
+const { variant } = Shugo.props as { variant: { title: string; stock: number } }
 ---
 <li class={variant.stock > 0 ? "variant" : "variant out"}>
   {variant.title}:
