@@ -19,21 +19,21 @@ import (
 const small = `
 -- shugo.json --
 {"redirects": {"/old": "/about"}}
--- pages/+layout.shugo --
+-- src/pages/+layout.shugo --
 <script>
 let { children } = $props()
 import "../styles/main.css"
 </script>
 <html><head><title>T</title></head><body>{@render children()}</body></html>
--- pages/index.shugo --
+-- src/pages/index.shugo --
 <h1>home</h1>
--- pages/about.shugo --
+-- src/pages/about.shugo --
 <h1>about</h1>
--- pages/404.shugo --
+-- src/pages/404.shugo --
 <h1>no such page</h1>
--- pages/café au lait.shugo --
+-- src/pages/café au lait.shugo --
 <h1>café</h1>
--- styles/main.css --
+-- src/styles/main.css --
 h1 { color: red }
 -- public/robots.txt --
 User-agent: *
@@ -155,7 +155,7 @@ func TestExport(t *testing.T) {
 	out := filepath.Join(s.root, "dist")
 	export := func() server.Exported { return s.export(out) }
 	// What was in the folder before the first export is not the export's.
-	for name, text := range map[string]string{"old/index.html": "old", "notes.txt": "notes", ".git/x/index.html": "git"} {
+	for name, text := range map[string]string{"old.html": "old", "notes.txt": "notes", ".git/x/index.html": "git"} {
 		if err := os.MkdirAll(filepath.Dir(filepath.Join(out, name)), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -167,7 +167,7 @@ func TestExport(t *testing.T) {
 	if done := export(); done.Pages != 4 || done.Files != 7 || done.Written != 7 || done.Removed != 0 {
 		t.Errorf("first export: %+v", done)
 	}
-	for _, name := range []string{"index.html", "about/index.html", "404.html", "café au lait/index.html", "robots.txt", "img/dot.svg"} {
+	for _, name := range []string{"index.html", "about.html", "404.html", "café au lait.html", "robots.txt", "img/dot.svg"} {
 		if _, err := os.Stat(filepath.Join(out, filepath.FromSlash(name))); err != nil {
 			t.Error(err)
 		}
@@ -178,13 +178,13 @@ func TestExport(t *testing.T) {
 	// One page changes and one goes away: one file is written, one removed.
 	// The project has changed, so every page is built again, and the
 	// folder is cleared of pages the site does not have.
-	s.write("-- pages/about.shugo --\n<h1>about us</h1>")
-	s.remove("pages/café au lait.shugo")
+	s.write("-- src/pages/about.shugo --\n<h1>about us</h1>")
+	s.remove("src/pages/café au lait.shugo")
 	s.build()
 	if done := export(); done.Pages != 3 || done.Built != 3 || done.Written != 1 || done.Removed != 2 {
 		t.Errorf("after a change: %+v", done)
 	}
-	for name, there := range map[string]bool{"café au lait/index.html": false, "café au lait": false, "old/index.html": false, "notes.txt": true, ".git/x/index.html": true} {
+	for name, there := range map[string]bool{"café au lait.html": false, "old.html": false, "notes.txt": true, ".git/x/index.html": true} {
 		if _, err := os.Stat(filepath.Join(out, filepath.FromSlash(name))); (err == nil) != there {
 			t.Errorf("%s: there %v, want %v", name, err == nil, there)
 		}
@@ -211,7 +211,7 @@ func TestExportAfterUpdate(t *testing.T) {
 	if done := s.export(out); done.Pages != 5 || done.Built != 3 || done.Written != 3 || done.Removed != 0 {
 		t.Errorf("after a new price: %+v", done)
 	}
-	if jug, err := os.ReadFile(filepath.Join(out, "products", "jug", "index.html")); err != nil || !strings.Contains(string(jug), "Cup — 6") {
+	if jug, err := os.ReadFile(filepath.Join(out, "products", "jug.html")); err != nil || !strings.Contains(string(jug), "Cup — 6") {
 		t.Errorf("the page of the jug: %s %v", jug, err)
 	}
 

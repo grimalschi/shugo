@@ -8,7 +8,7 @@ import (
 
 func TestSiteRoundTrip(t *testing.T) {
 	site := &Site{
-		Files: []File{{Path: "pages/index.shugo", Shared: true, Parts: [][]Op{
+		Files: []File{{Path: "src/pages/index.shugo", Shared: true, Parts: [][]Op{
 			{
 				{Kind: Markup, Text: `<a class="x"`},
 				{Kind: URL, Text: "href"},

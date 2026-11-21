@@ -74,11 +74,11 @@ func svelteTask(t *testing.T, dir string) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fmt.Fprintf(&files, "-- components/%s --\n%s\n", name, data)
+		fmt.Fprintf(&files, "-- src/components/%s --\n%s\n", name, data)
 	}
 	// A page for every dataset shows the component with it and nothing else.
 	for i, data := range task.Datasets {
-		fmt.Fprintf(&files, "-- pages/d%d.shugo --\n<script>\n  import Entry from \"../components/%s.shugo\";\n", i, task.Entry)
+		fmt.Fprintf(&files, "-- src/pages/d%d.shugo --\n<script>\n  import Entry from \"../components/%s.shugo\";\n", i, task.Entry)
 		spread := "{...props}"
 		if helpers {
 			files.WriteString("  import helpers from \"../components/helpers.js\";\n")

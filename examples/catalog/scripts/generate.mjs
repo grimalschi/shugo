@@ -1,4 +1,4 @@
-// Makes the data of a shop: `node lib/generate.mjs 1000` writes
+// Makes the data of a shop: `node scripts/generate.mjs 1000` writes
 // data/catalog.db with that many products. The same number always gives
 // the same shop.
 import { mkdirSync, rmSync } from "node:fs";

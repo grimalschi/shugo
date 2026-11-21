@@ -253,9 +253,9 @@ func order(path string) string {
 	switch {
 	case path == "shugo.json":
 		return "0"
-	case strings.HasPrefix(path, "pages/"):
+	case strings.HasPrefix(path, "src/pages/"):
 		return "1" + path
-	case strings.HasPrefix(path, "components/"):
+	case strings.HasPrefix(path, "src/components/"):
 		return "2" + path
 	}
 	return "3" + path

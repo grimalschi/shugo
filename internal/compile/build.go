@@ -295,7 +295,7 @@ func (b *builder) routes() ([]program.Route, error) {
 		if dynamic && !u.paths {
 			errs = append(errs, u.file.Errorf(0, "the name of this page has a parameter, so its script must say which pages there are: export function getStaticPaths({ query }) { return query(\"products\").select(\"slug\").all().map((row) => ({ params: { slug: row.slug } })) }; without a data database, return the list itself: [{ params: { … } }]"))
 		}
-		// Every folder from pages/ down to the page may hold a layout.
+		// Every folder from src/pages/ down to the page may hold a layout.
 		for dir := project.Pages; ; {
 			if layout, found := b.ids[dir+"/"+route.Layout]; found {
 				r.Layouts = append(r.Layouts, layout)
@@ -396,8 +396,13 @@ func (b *builder) bundle(routes []program.Route) (*bundled, error) {
 			return api.OnLoadResult{Contents: &contents, Loader: api.LoaderJS, ResolveDir: root}, nil
 		})
 		build.OnLoad(api.OnLoadOptions{Filter: `\.shugo$`}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
-			id, known := b.ids[b.relative(args.Path)]
-			if !known {
+			rel := b.relative(args.Path)
+			id, known := b.ids[rel]
+			switch {
+			case known:
+			case !strings.HasPrefix(rel, project.Source+"/"):
+				return api.OnLoadResult{}, fmt.Errorf("%s lies outside %s/: the templates of a project are in %s/, components in %s/components/", rel, project.Source, project.Source, project.Source)
+			default:
 				return api.OnLoadResult{}, fmt.Errorf("this file is not among the sources of the project")
 			}
 			u := b.units[id]
@@ -420,7 +425,7 @@ func (b *builder) bundle(routes []program.Route) (*bundled, error) {
 		Charset:       api.CharsetUTF8,
 		Packages:      api.PackagesExternal,
 		External:      []string{"bun:sqlite"}, // built into Bun; Node has node:sqlite
-		Alias:         map[string]string{"@": root},
+		Alias:         map[string]string{"@": filepath.Join(root, project.Source)},
 		Plugins:       []api.Plugin{plugin},
 		AbsWorkingDir: root,
 		Outfile:       filepath.Join(root, project.Output, Bundle),

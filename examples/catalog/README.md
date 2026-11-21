@@ -19,7 +19,7 @@ The benchmark runs the following steps.
 4. Changes the data 21 times using SQL and runs `shugo update` and `shugo export` after each change. It checks the update report against the expected evaluations and changes. It also checks that export writes exactly the pages whose HTML the report says changed.
 5. Rebuilds and exports the site from the same data in another directory and compares the two directories file by file.
 
-To view the site, run `node examples/catalog/lib/generate.mjs 1000`, then `bin/shugo dev examples/catalog`.
+To view the site, run `node examples/catalog/scripts/generate.mjs 1000`, then `bin/shugo dev examples/catalog`.
 
 ## How the example works
 
@@ -27,13 +27,13 @@ Only the list of product URLs specifies columns. Each page depends on the column
 
 | File | What it shows |
 | --- | --- |
-| `lib/generate.mjs` | Shop tables with single-column keys and separate ordering columns. The generator leaves index creation to the build. |
-| `components/Header.shugo` | Shared block with no parameters. It reads its own configuration, navigation, and category counts. |
-| `components/ProductCard.shugo` | Shared block that takes a product ID and reads the product. The template calls `finalPrice(item)`, so the card depends on the `price` and `discount` fields that the function reads. |
-| `components/Variant.shugo` | Regular component that receives the full variant row. Reading `title` and `stock` adds them as page dependencies. The variant's shelf location is never read. |
-| `pages/products/[slug].shugo` | The route lists URLs, and each page queries its own product, variants, reviews, badges, and recommendations. The page reads the expected arrival date only when the product is out of stock, and the discount expiration date only when a discount applies. |
-| `pages/categories/[category]/[...page].shugo` | The route uses `paginate` with a product count. The page uses `Shugo.paginate` with a query. |
-| `lib/catalog.ts` | Price helpers that load no data. |
+| `scripts/generate.mjs` | Shop tables with single-column keys and separate ordering columns. The generator leaves index creation to the build. |
+| `src/components/Header.shugo` | Shared block with no parameters. It reads its own configuration, navigation, and category counts. |
+| `src/components/ProductCard.shugo` | Shared block that takes a product ID and reads the product. The template calls `finalPrice(item)`, so the card depends on the `price` and `discount` fields that the function reads. |
+| `src/components/Variant.shugo` | Regular component that receives the full variant row. Reading `title` and `stock` adds them as page dependencies. The variant's shelf location is never read. |
+| `src/pages/products/[slug].shugo` | The route lists URLs, and each page queries its own product, variants, reviews, badges, and recommendations. The page reads the expected arrival date only when the product is out of stock, and the discount expiration date only when a discount applies. |
+| `src/pages/categories/[category]/[...page].shugo` | The route uses `paginate` with a product count. The page uses `Shugo.paginate` with a query. |
+| `src/lib/catalog.ts` | Price helpers that load no data. |
 
 ## Results
 

@@ -16,7 +16,8 @@ import (
 // The folders and files every project has by the same names.
 const (
 	Settings = "shugo.json" // the settings of the project
-	Pages    = "pages"      // the pages and their layouts
+	Source   = "src"        // the code of the site: pages, components, modules, styles
+	Pages    = "src/pages"  // the pages and their layouts
 	Public   = "public"     // files that go to the site as they are
 	Output   = "_build"     // everything the framework writes
 )
@@ -46,7 +47,7 @@ func Open(dir string) (*Project, error) {
 	if err != nil {
 		return nil, err
 	}
-	if info, err := os.Stat(filepath.Join(root, Pages)); err != nil || !info.IsDir() {
+	if info, err := os.Stat(filepath.Join(root, filepath.FromSlash(Pages))); err != nil || !info.IsDir() {
 		return nil, fmt.Errorf("%s is not a Shugo project: it has no %s folder", root, Pages)
 	}
 	p := &Project{Root: root}
@@ -78,19 +79,19 @@ func (p *Project) Data() string {
 	return p.Path(filepath.FromSlash(p.Config.Data))
 }
 
-// Templates returns the .shugo files of the project, sorted. The paths are
-// relative to the root and use "/".
+// Templates returns the .shugo files of the project: those in src/,
+// sorted. The paths are relative to the root and use "/".
 func (p *Project) Templates() ([]string, error) {
 	var out []string
-	err := filepath.WalkDir(p.Root, func(path string, entry fs.DirEntry, err error) error {
+	source := p.Path(Source)
+	err := filepath.WalkDir(source, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		name := entry.Name()
 		if entry.IsDir() {
-			// Not sources: what the framework wrote, what is published as it
-			// is, installed packages and hidden folders.
-			if path != p.Root && (name == Output || name == Public || name == "node_modules" || strings.HasPrefix(name, ".")) {
+			// Not sources: installed packages and hidden folders.
+			if path != source && (name == "node_modules" || strings.HasPrefix(name, ".")) {
 				return filepath.SkipDir
 			}
 			return nil

@@ -94,7 +94,7 @@ func compileFile(path, source string, id int, r role) (*unit, error) {
 		file: f, role: r, module: m, parts: e.parts, styles: styles,
 		outlets: l.outlets, provided: l.provided, paths: moduleScript.paths || instance.paths,
 		warnings: append(warningsOf(f), l.warnings...),
-		own: m.page || e.provides || readsPage(strings.Join(instance.lines, "\n")) || readsPage(strings.Join(moduleScript.lines, "\n")),
+		own:      m.page || e.provides || readsPage(strings.Join(instance.lines, "\n")) || readsPage(strings.Join(moduleScript.lines, "\n")),
 	}, nil
 }
 

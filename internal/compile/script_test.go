@@ -9,7 +9,7 @@ import (
 
 func parseScript(t *testing.T, code string) (*syntax.File, *script, error) {
 	t.Helper()
-	f, err := syntax.Parse("pages/a.shugo", "<script>\n"+code+"\n</script>\n<p/>")
+	f, err := syntax.Parse("src/pages/a.shugo", "<script>\n"+code+"\n</script>\n<p/>")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,10 +111,10 @@ func TestScriptForms(t *testing.T) {
 
 func TestScriptErrors(t *testing.T) {
 	cases := []struct{ name, code, want string }{
-		{"syntax", "const a = 1\nconst b = (a +\nconst c = 2", `pages/a.shugo:4:1: Unexpected "const"`},
-		{"return outside of a function", "const a = 1\nif (a) return", `pages/a.shugo:3:8: Top-level return cannot be used inside an ECMAScript module`},
-		{"export default", "export default 1", `pages/a.shugo:2:1: the script cannot have "export default": the file itself is what it exports`},
-		{"markup in the script", "const a = <b>x</b>", `pages/a.shugo:2:19: Unterminated regular expression`},
+		{"syntax", "const a = 1\nconst b = (a +\nconst c = 2", `src/pages/a.shugo:4:1: Unexpected "const"`},
+		{"return outside of a function", "const a = 1\nif (a) return", `src/pages/a.shugo:3:8: Top-level return cannot be used inside an ECMAScript module`},
+		{"export default", "export default 1", `src/pages/a.shugo:2:1: the script cannot have "export default": the file itself is what it exports`},
+		{"markup in the script", "const a = <b>x</b>", `src/pages/a.shugo:2:19: Unterminated regular expression`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

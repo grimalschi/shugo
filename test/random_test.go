@@ -22,20 +22,20 @@ import (
 // random is everything around them.
 
 const randomComponents = `
--- lib/data.ts --
+-- src/lib/data.ts --
 import { readFileSync } from "node:fs"
 export const data = JSON.parse(readFileSync("data.json", "utf8"))
--- components/Leaf.shugo --
+-- src/components/Leaf.shugo --
 <script>
 let { text } = $props()
 </script>
 <i>{text}</i>
--- components/Box.shugo --
+-- src/components/Box.shugo --
 <script>
 let { item, big = false, children, foot } = $props()
 </script>
 <div class={big ? "box big" : "box"}>{item.name}{#if children}{@render children()}{:else}none:{item.id}{/if}{#if foot}<footer>{@render foot()}</footer>{/if}</div>
--- components/Wrap.shugo --
+-- src/components/Wrap.shugo --
 <script>
 import Leaf from "./Leaf.shugo"
 let { children } = $props()
@@ -573,7 +573,7 @@ func TestRandomPages(t *testing.T) {
 		trees[i] = m.nodes(place{}, 4)
 		// The edges of a template are trimmed; a tag at each end keeps the
 		// text inside as written.
-		fmt.Fprintf(&files, "-- pages/p%d.shugo --\n<script>\nimport Leaf from \"../components/Leaf.shugo\"\nimport Box from \"../components/Box.shugo\"\nimport Wrap from \"../components/Wrap.shugo\"\nimport { data } from \"../lib/data\"\n</script>\n<main>", i)
+		fmt.Fprintf(&files, "-- src/pages/p%d.shugo --\n<script>\nimport Leaf from \"../components/Leaf.shugo\"\nimport Box from \"../components/Box.shugo\"\nimport Wrap from \"../components/Wrap.shugo\"\nimport { data } from \"../lib/data\"\n</script>\n<main>", i)
 		sources(&files, trees[i])
 		files.WriteString("</main>\n")
 	}

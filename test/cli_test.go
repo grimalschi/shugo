@@ -59,7 +59,7 @@ func TestCommands(t *testing.T) {
 	if status != 0 || !strings.Contains(out, "5 pages") {
 		t.Fatalf("export: %d\n%s\n%s", status, out, errs)
 	}
-	if html := s.read("site/about/index.html"); !strings.Contains(html, "Newer · 3 products") {
+	if html := s.read("site/about.html"); !strings.Contains(html, "Newer · 3 products") {
 		t.Errorf("the exported page: %s", html)
 	}
 
@@ -75,10 +75,10 @@ func TestCommands(t *testing.T) {
 
 // A mistake is printed with the lines of the file around it.
 func TestCommandShowsTheMistake(t *testing.T) {
-	s := newSite(t, "-- pages/index.shugo --\n<main>\n  <p>café!</div>\n</main>")
+	s := newSite(t, "-- src/pages/index.shugo --\n<main>\n  <p>café!</div>\n</main>")
 	s.store.Close()
 	_, errs, status := shugo(t, "build", s.root)
-	want := "error: pages/index.shugo:2:11: </div> does not close <p> opened at 2:3\n     1 | <main>\n     2 |   <p>café!</div>\n       |           ^\n"
+	want := "error: src/pages/index.shugo:2:11: </div> does not close <p> opened at 2:3\n     1 | <main>\n     2 |   <p>café!</div>\n       |           ^\n"
 	if status != 1 || errs != want {
 		t.Errorf("status %d\n got: %q\nwant: %q", status, errs, want)
 	}
@@ -91,10 +91,10 @@ func TestUpdateCompilesAChangedProject(t *testing.T) {
 	s := newSite(t, `
 -- data/items.json --
 ["a"]
--- lib/data.ts --
-import items from "../data/items.json"
+-- src/lib/data.ts --
+import items from "../../data/items.json"
 export const getItems = (): string[] => items
--- pages/index.shugo --
+-- src/pages/index.shugo --
 <script>
 import { getItems } from "@/lib/data"
 </script>
@@ -117,7 +117,7 @@ import { getItems } from "@/lib/data"
 		t.Errorf("the page: %s", html)
 	}
 	// A new template is a change of the project too.
-	s.write("-- pages/more.shugo --\n<p>more</p>")
+	s.write("-- src/pages/more.shugo --\n<p>more</p>")
 	if _, errs, _ := shugo(t, "update", s.root); !strings.Contains(errs, "the project has changed") {
 		t.Errorf("an update after a new page: %s", errs)
 	}

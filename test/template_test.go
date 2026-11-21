@@ -8,7 +8,7 @@ import (
 // one builds a site of one page and returns its HTML.
 func one(t *testing.T, page string, more ...string) string {
 	t.Helper()
-	s := newSite(t, "-- pages/index.shugo --\n"+page+"\n"+strings.Join(more, "\n"))
+	s := newSite(t, "-- src/pages/index.shugo --\n"+page+"\n"+strings.Join(more, "\n"))
 	s.build()
 	return s.page("/")
 }
@@ -67,7 +67,7 @@ const odd = "a\u0000b\u0001c\u0002d\u0003e\u0004f\u0005g\u0004@"
 	odd := "a\x00b\x01c\x02d\x03e\x04f\x05g\x04@"
 	expect(t, got, `<p title="`+odd+`">`+odd+`</p>`+odd)
 
-	s := newSite(t, "-- pages/index.shugo --\n<script>\nconst rest = { \"a\\u0001b\": 1 }\n</script>\n<p {...rest}>x</p>")
+	s := newSite(t, "-- src/pages/index.shugo --\n<script>\nconst rest = { \"a\\u0001b\": 1 }\n</script>\n<p {...rest}>x</p>")
 	if _, err := s.tryBuild(); err == nil || !strings.Contains(err.Error(), `"a\x01b" cannot be the name of an attribute`) {
 		t.Errorf("an attribute named with a control character: %v", err)
 	}
@@ -146,7 +146,7 @@ const note = "a < b"
 	expect(t, got, `<h3 class="t">title</h3><br/> <select><option value="s">S</option><option selected="">m</option></select> <textarea>a &lt; b</textarea>`)
 }
 
-const card = `-- components/Card.shugo --
+const card = `-- src/components/Card.shugo --
 <script>
 let { title, big = false, children, footer } = $props()
 </script>
@@ -178,17 +178,17 @@ func TestNestedComponentsPassSnippets(t *testing.T) {
 	got := one(t, `<script>
 import Outer from "../components/Outer.shugo"
 </script>
-<Outer><b>text</b></Outer>`, `-- components/Outer.shugo --
+<Outer><b>text</b></Outer>`, `-- src/components/Outer.shugo --
 <script>
 import Inner from "./Inner.shugo"
 import Shown from "./Shown.shugo"
 let { children } = $props()
 </script>
 <div class="outer"><Inner><i>before</i>{@render children()}</Inner></div><Shown content={children} />
--- components/Inner.shugo --
+-- src/components/Inner.shugo --
 <script>let { children } = $props()</script>
 <div class="inner">{@render children()}</div>
--- components/Shown.shugo --
+-- src/components/Shown.shugo --
 <script>let { content } = $props()</script>
 <p>{@render content()}</p>`)
 	expect(t, got, `<div class="outer"><div class="inner"><i>before</i><b>text</b></div></div><p><b>text</b></p>`)
@@ -201,7 +201,7 @@ const label = "№"
 </script>
 {#snippet cell(x)}<td>{label}{x}</td>{/snippet}
 <table><tbody><tr>{@render cell(1)}{@render cell(2)}</tr></tbody></table>
-<List items={["a", "b"]}>{#snippet row(item, i)}<li>{i}: {item} {label}</li>{/snippet}</List>`, `-- components/List.shugo --
+<List items={["a", "b"]}>{#snippet row(item, i)}<li>{i}: {item} {label}</li>{/snippet}</List>`, `-- src/components/List.shugo --
 <script>let { items, row } = $props()</script>
 <ul>{#each items as item, i}{@render row(item, i)}{/each}</ul>`)
 	expect(t, got, `<table><tbody><tr><td>№1</td><td>№2</td></tr></tbody></table> <ul><li>0: a №</li><li>1: b №</li></ul>`)
@@ -216,20 +216,20 @@ import B from "../components/B.shugo"
 const tree = { name: "root", children: [{ name: "a", children: [{ name: "a1", children: [] }] }, { name: "b", children: [] }] }
 const Tag = tree.children.length > 1 ? B : A
 </script>
-<Tree node={tree} /><Self node={tree} /><Tag /><svelte:component this={A} /><svelte:component this={null} />`, `-- components/Tree.shugo --
+<Tree node={tree} /><Self node={tree} /><Tag /><svelte:component this={A} /><svelte:component this={null} />`, `-- src/components/Tree.shugo --
 <script>
 let { node } = $props()
 </script>
 <li>{node.name}{#if node.children.length}<ul>{#each node.children as child}<svelte:self node={child} />{/each}</ul>{/if}</li>
--- components/Self.shugo --
+-- src/components/Self.shugo --
 <script>
 import Self from "./Self.shugo"
 let { node } = $props()
 </script>
 <li>{node.name}{#if node.children.length}<ul>{#each node.children as child}<Self node={child} />{/each}</ul>{/if}</li>
--- components/A.shugo --
+-- src/components/A.shugo --
 <a>A</a>
--- components/B.shugo --
+-- src/components/B.shugo --
 <b>B</b>`)
 	tree := `<li>root<ul><li>a<ul><li>a1</li></ul></li><li>b</li></ul></li>`
 	expect(t, got, tree+tree+`<b>B</b><a>A</a>`)
@@ -243,7 +243,7 @@ const { product = { title: "Jug", cents: 1250 } as Product } = $props() as Props
 enum Size { Small = "S", Large = "L" }
 const sizes: Size[] = [Size.Small, Size.Large]
 </script>
-<p>{(product as Product).title}: {price(product!.cents)} {sizes.map((size: Size): string => size.toLowerCase()).join("/")}</p>`, `-- lib/shop.ts --
+<p>{(product as Product).title}: {price(product!.cents)} {sizes.map((size: Size): string => size.toLowerCase()).join("/")}</p>`, `-- src/lib/shop.ts --
 export interface Product { title: string; cents: number }
 export const price = (cents: number): string => (cents / 100).toFixed(2)`)
 	expect(t, got, `<p>Jug: 12.50 s/l</p>`)
@@ -255,13 +255,13 @@ import * as ui from "@/components/ui"
 const src = "/a.png"
 const title = "T"
 </script>
-<ui.Button href="/x">go</ui.Button><img {src} alt=""><ui.Title {title} /><p title="a {'x'} b">{"{"}</p>`, `-- components/ui.ts --
+<ui.Button href="/x">go</ui.Button><img {src} alt=""><ui.Title {title} /><p title="a {'x'} b">{"{"}</p>`, `-- src/components/ui.ts --
 export { default as Button } from "./Button.shugo"
 export { default as Title } from "./Title.shugo"
--- components/Button.shugo --
+-- src/components/Button.shugo --
 <script>let { href, children } = $props()</script>
 <a class="button" {href}>{@render children?.()}</a>
--- components/Title.shugo --
+-- src/components/Title.shugo --
 <script>let { title } = $props()</script>
 <h1>{title}</h1>`)
 	expect(t, got, `<a class="button" href="/x">go</a><img src="/a.png" alt=""/><h1>T</h1><p title="a x b">{</p>`)
@@ -269,7 +269,7 @@ export { default as Title } from "./Title.shugo"
 
 func TestStyles(t *testing.T) {
 	s := newSite(t, `
--- pages/+layout.shugo --
+-- src/pages/+layout.shugo --
 <script>
 import "../styles/main.css"
 let { children } = $props()
@@ -278,21 +278,21 @@ let { children } = $props()
 <style>
   body { margin: 0 }
 </style>
--- pages/index.shugo --
+-- src/pages/index.shugo --
 <script>
 import Card from "../components/Card.shugo"
 </script>
 <Card /><Card />
 <div><style>h1 { color: blue }</style></div>
--- components/Card.shugo --
+-- src/components/Card.shugo --
 <b class="card">card</b><i class></i><i class=""></i>
 <style>.card { color: green }</style>
--- styles/main.css --
+-- src/styles/main.css --
 @import "./base.css";
 .logo { background: url("./logo.svg") }
--- styles/base.css --
+-- src/styles/base.css --
 html { font-family: sans-serif }
--- styles/logo.svg --
+-- src/styles/logo.svg --
 <svg xmlns="http://www.w3.org/2000/svg"/>
 `)
 	s.build()

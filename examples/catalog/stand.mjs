@@ -15,8 +15,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { open } from "./lib/db.mjs";
-import { generate, write } from "./lib/generate.mjs";
+import { open } from "./scripts/db.mjs";
+import { generate, write } from "./scripts/generate.mjs";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 const option = (name, fallback) => {

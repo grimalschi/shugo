@@ -10,6 +10,6 @@ npm install            # or bun install
 
 The example includes the following:
 
-- `styles/main.css` loads Tailwind, defines a custom color with `@theme`, and defines a custom rule with `@apply`.
-- The markup and the strings in `components/Button.shugo` both contain classes. Tailwind finds them by scanning the project files as text.
+- `src/styles/main.css` loads Tailwind, defines a custom color with `@theme`, and defines a custom rule with `@apply`.
+- The markup and the strings in `src/components/Button.shugo` both contain classes. Tailwind finds them by scanning the project files as text.
 - The generated stylesheet goes into `_build/assets/` and loads automatically on every page.
