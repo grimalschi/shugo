@@ -12,6 +12,8 @@ import (
 	"github.com/grimalschi/shugo/internal/data"
 	"github.com/grimalschi/shugo/internal/program"
 	"github.com/grimalschi/shugo/internal/store"
+	"slices"
+	"strconv"
 )
 
 // The project's code reads its data through queries, and every query that
@@ -131,15 +133,98 @@ func (s *shapes) tell(number int, spec string) error {
 // index makes sure that the rows a question of the project's code looks for
 // can be found without reading their whole table, and tells whether an
 // index had to be made for it.
-func (k *keeper) index(table string, equal, order []string, rows bool) (bool, error) {
+func (k *keeper) index(p plan) (bool, error) {
 	started := time.Now()
-	name, err := k.shapes.source.Index(table, equal, order, rows)
-	if err != nil || name == "" {
+	name, err := k.shapes.source.Index(p.table, p.equal, p.order, p.rows)
+	if err != nil {
 		return false, err
+	}
+	if !k.plans[p.String()] {
+		k.plans[p.String()] = true
+		if err := k.update.PutPlan(p.String()); err != nil {
+			return false, err
+		}
+	}
+	if name == "" {
+		return false, nil
 	}
 	k.report.Data.Indexes = append(k.report.Data.Indexes, name)
 	k.report.Time["indexes"] += float64(time.Since(started).Microseconds()) / 1000
 	return true, nil
+}
+
+// plan is a question the project's code wants an index for: the rows of a
+// table found by given values in the columns of equal, and either counted,
+// or taken in the order of the columns of order.
+type plan struct {
+	table        string
+	rows         bool
+	equal, order []string
+}
+
+// readPlan reads a question as the project's code writes it: the table
+// \x02 1 for rows in their order, 0 for a count \x02 how many columns rows
+// are found by with given values \x02 these columns and those of the order,
+// split by \x02.
+func readPlan(text string) (plan, error) {
+	names := strings.Split(text, "\x02")
+	if len(names) < 3 || (names[1] != "0" && names[1] != "1") {
+		return plan{}, errorf("a request for an index that cannot be read: %q", text)
+	}
+	columns := names[3:]
+	equal, err := strconv.Atoi(names[2])
+	if err != nil || equal < 0 || equal > len(columns) {
+		return plan{}, errorf("a request for an index that cannot be read: %q", text)
+	}
+	return plan{table: names[0], rows: names[1] == "1", equal: columns[:equal], order: columns[equal:]}, nil
+}
+
+func (p plan) String() string {
+	rows := "0"
+	if p.rows {
+		rows = "1"
+	}
+	return strings.Join(append([]string{p.table, rows, strconv.Itoa(len(p.equal))}, append(slices.Clone(p.equal), p.order...)...), "\x02")
+}
+
+// known tells what the project's code may take as known from earlier runs:
+// the questions it has asked indexes for, and the shapes of readings with
+// their numbers in the store. Told at the start, it spares the project's
+// code a question to the Go side for each of them, and the Go side a
+// message about each.
+//
+// Every one of those questions has its index made sure of first: the
+// project's code starts reading after that, and sees it. A question that
+// can no longer be asked — its table or a column is gone — is forgotten.
+func (k *keeper) known() ([]byte, error) {
+	told := struct {
+		Plans  []string `json:"plans"`
+		Shapes [][2]any `json:"shapes"`
+	}{Plans: []string{}, Shapes: [][2]any{}}
+	var questions []string
+	if err := k.update.Plans(func(question string) { questions = append(questions, question) }); err != nil {
+		return nil, err
+	}
+	sort.Strings(questions)
+	for _, question := range questions {
+		p, err := readPlan(question)
+		if err == nil {
+			_, err = k.index(p)
+		}
+		if err != nil {
+			if err := k.update.DropPlan(question); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		told.Plans = append(told.Plans, question)
+	}
+	for spec, one := range k.shapes.known {
+		k.shapes.told[int(one.id)] = one
+		told.Shapes = append(told.Shapes, [2]any{one.id, spec})
+	}
+	sort.Slice(told.Shapes, func(a, b int) bool { return told.Shapes[a][0].(int64) < told.Shapes[b][0].(int64) })
+	return json.Marshal(told)
 }
 
 // reached finds the readers of rows that have changed: the pages, the

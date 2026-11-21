@@ -263,6 +263,7 @@ We can review each one.
 19. **The column `UNIQUE` is considered to be the only one, only if the index covers all lines.** Partially unique index option 2 was taken as complete.
 20. **The column distinguishes between any two lines if it is `UNIQUE` and `NOT NULL`.** after this order has nothing to add to, and the index is not going further.
 21. **In the stand, instead of "articula of option", "pole of option"**, as in option 4.
+22. **As is known from past launches, Go reports JS at the beginning.** The Warehouse remembers the index questions that the project code asked and the types of readings with their numbers. Before launching JS Go checks that each such question has an index and one `K` message gives JS both lists; JS asks only about the new one. JS had previously not remembered anything between the launches and asked again: in updating the price of one item, five questions about indices and six kinds of reading, the answer to all "already there is". Now this update is one Go request and one record answer. `TestUpdateAsksNothingKnown` test. The question that cannot be asked — either the tables or the column are missing — is forgotten by the vault.
 
 ## Limitations
 

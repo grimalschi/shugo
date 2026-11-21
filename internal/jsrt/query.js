@@ -81,10 +81,11 @@ class Data {
     this.host = host;
     this.tables = new Map(); // name → what table() returns
     this.shapes = new Map(); // what a shape is → its number
+    this.nextShape = 0; // the number the next shape met for the first time gets
     // A project asks the same few questions with other values over and over.
     // How to ask one and what it reads is worked out once: see Query.#plan.
     this.plans = new Map();
-    this.served = new Set(); // the indexes asked for so far
+    this.served = new Set(); // the questions that have their index, as the Go side writes them
   }
 
   // table returns the columns of a table: their names, what kind of values
@@ -117,12 +118,25 @@ class Data {
     return table;
   }
 
-  // shape returns the number of a shape of readings.
+  // know takes what the Go side knows from earlier runs: the questions that
+  // have their index, and the shapes of readings with their numbers in the
+  // store. Neither is told to the Go side again.
+  know({ plans, shapes }) {
+    for (const question of plans) this.served.add(question);
+    for (const [number, spec] of shapes) {
+      this.shapes.set(spec, number);
+      this.nextShape = Math.max(this.nextShape, number + 1);
+    }
+  }
+
+  // shape returns the number of a shape of readings. A shape met for the
+  // first time gets a number of its own, past those the Go side told, and
+  // is told to the Go side.
   shape(table, by, columns) {
     const spec = JSON.stringify({ table, by, columns });
     let number = this.shapes.get(spec);
     if (number === undefined) {
-      this.shapes.set(spec, (number = this.shapes.size));
+      this.shapes.set(spec, (number = this.nextShape++));
       this.host.declare(number, spec);
     }
     return number;
@@ -140,10 +154,10 @@ class Data {
   // past the place the update read it at, and the next update computes
   // again whoever read it.
   serve(table, equal, order, rows) {
-    const wanted = [table.name, rows ? 1 : 0, equal.join("\x00"), order.join("\x00")].join("\x01");
-    if (this.served.has(wanted)) return;
-    this.served.add(wanted);
-    if (this.host.index(table.name, equal, order, rows)) this.again();
+    const question = [table.name, rows ? 1 : 0, equal.length, ...equal, ...order].join("\x02");
+    if (this.served.has(question)) return;
+    this.served.add(question);
+    if (this.host.index(question)) this.again();
   }
 }
 
