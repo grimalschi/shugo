@@ -97,6 +97,7 @@ func walkThrough(project, shugo string) error {
 	if r.Build.Requests, r.Build.Answers, err = talk(filepath.Join(out, "talk", "build")); err != nil {
 		return err
 	}
+	r.Build.Rounds = rounds(r.Build.Requests, r.Build.Answers)
 	r.Story = story(r.Compiled, now, "/products/jug")
 
 	// The changes of the data, one update after each.
@@ -146,6 +147,7 @@ func walkThrough(project, shugo string) error {
 		if s.Requests, s.Answers, err = talk(filepath.Join(out, "talk", fmt.Sprintf("step-%d", i+1))); err != nil {
 			return err
 		}
+		s.Rounds = rounds(s.Requests, s.Answers)
 		s.After = now
 		r.Steps = append(r.Steps, s)
 	}

@@ -44,6 +44,7 @@ type stage struct {
 	Report            string
 	Look              *look
 	Requests, Answers []frame
+	Rounds            []round
 }
 
 // step is one change of the data and the update after it.
@@ -58,6 +59,7 @@ type step struct {
 	Diff              storeDiff
 	HTML              []htmlChange
 	Requests, Answers []frame
+	Rounds            []round
 	After             *look
 }
 
@@ -574,6 +576,7 @@ func (r *report) render() ([]byte, error) {
 		"hexOf":   func(h record.Hash) string { return fmt.Sprintf("%x", h[:]) },
 		"visible": visible,
 		"sep":     separators,
+		"counted": counted,
 		"key": func(key []any) string {
 			parts := make([]string, len(key))
 			for i, v := range key {

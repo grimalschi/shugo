@@ -218,17 +218,23 @@
 <table>{{range .Build.Look.Data.Settings}}<tr><td class="mono">{{.Name}}</td><td class="mono">{{.Value}}</td></tr>{{end}}</table>
 <p class="note">Journal after the first build: {{len .Build.Look.Data.Journal}} rows. Seed data was loaded before the triggers existed. The first build computes everything.</p>
 
-<h2 id="talk">4. First build: the Go and JS exchange</h2>
-<p>Go starts <code>_build/eval.mjs</code> and exchanges messages over two separate channels. Each message contains a length, a code, and a body. The labels show the separator bytes within the body: <span class="sep">00</span> precedes each value on the tape, <span class="sep">01</span> separates blocks in a record, <span class="sep">02</span> separates fields, and <span class="sep">03</span> separates records. The messages come from <code>examples/inside/tap.sh</code>, which records each side in order. The sequence across both sides is unavailable. While computing, JS can request an index (<code>I</code>) and wait for Go to reply.</p>
+<h2 id="talk">4. First build: Go requests and JS responses</h2>
+<p>Go decides what to compute. JS runs the project code and returns records. This division supports updates because Go tracks what changed and what the store already contains. The first build uses the same process, so it runs in several rounds.</p>
+<ul>
+  <li><b>Rounds by level.</b> Go discovers a shared block when a record references it. A page renders a card, for example, or a layout renders a header. Go checks the store and requests any missing blocks in the next round. A first build starts with pages, then processes their shared blocks and any further dependencies.</li>
+  <li><b>Indexes on demand.</b> The first time JS runs a query, it asks Go for an index and waits for a reply. Go alone writes to the database.</li>
+</ul>
+{{template "rounds" .Build.Rounds}}
+<details><summary>Full messages recorded by tap.sh</summary>
+<p class="note">Each message contains its length, a code, and a body. The labels show the separator bytes by code: <span class="sep">00</span> precedes each value on the tape, <span class="sep">01</span> separates blocks in a record, <span class="sep">02</span> separates fields, and <span class="sep">03</span> separates records. Each side is recorded in order. The sequence across both sides is unavailable.</p>
 <div class="grid">
-<div><h4>Go → JS, in order</h4><table><tr><th>Code</th><th>Meaning</th><th>Body</th></tr>{{range .Build.Requests}}<tr><td class="mono">{{.Kind}}</td><td>{{sep .Meaning}}</td><td class="mono">{{sep .Body}}</td></tr>{{end}}</table></div>
-<div><h4>JS → Go, in order</h4><table><tr><th>Code</th><th>Meaning</th><th>Body</th></tr>{{range .Build.Answers}}<tr><td class="mono">{{.Kind}}</td><td>{{sep .Meaning}}</td><td class="mono">{{if eq .Kind "R"}}Records: {{len .Records}}, {{.Size}} bytes — full body below{{else}}{{sep .Body}}{{end}}</td></tr>{{end}}</table></div>
+<div><h4>Go → JS</h4><table><tr><th>Code</th><th>Meaning</th><th>Body</th></tr>{{range .Build.Requests}}<tr><td class="mono">{{.Kind}}</td><td>{{sep .Meaning}}</td><td class="mono">{{sep .Body}}</td></tr>{{end}}</table></div>
+<div><h4>JS → Go</h4><table><tr><th>Code</th><th>Meaning</th><th>Body</th></tr>{{range .Build.Answers}}<tr><td class="mono">{{.Kind}}</td><td>{{sep .Meaning}}</td><td class="mono">{{if eq .Kind "R"}}Records: {{len .Records}}, {{.Size}} bytes — see below{{else}}{{sep .Body}}{{end}}</td></tr>{{end}}</table></div>
 </div>
-<details><summary>All JS → Go messages</summary>
-{{range .Build.Answers}}<p><b>{{.Kind}}</b> — {{sep .Meaning}}, {{.Size}} bytes</p><pre>{{sep .Body}}</pre>{{end}}
+{{range .Build.Answers}}{{if eq .Kind "R"}}<p><b>R</b> — {{.Size}} bytes</p><pre>{{sep .Body}}</pre>{{end}}{{end}}
 </details>
 {{range .Build.Answers}}{{range .Records}}{{if eq (index .Fields 1) "/products/jug"}}
-<h3>Record for /products/jug as sent by JS</h3>
+<h3>One record as sent by JS: /products/jug</h3>
 <pre>{{sep .Raw}}</pre>
 <table>
 <tr><th>Header field</th><th>value</th><th>Meaning</th></tr>
@@ -388,12 +394,14 @@
 {{else}}  {{.Text}}
 {{end}}{{end}}</pre></details>{{else}}<p>No pages.</p>{{end}}
 
-<details><summary>Go and JS exchange for this update</summary>
-{{if .Requests}}<table><tr><th>Direction</th><th>Code</th><th>Meaning</th><th>Body</th></tr>
+<h4>Go requests to JS</h4>
+{{if .Rounds}}{{template "rounds" .Rounds}}
+<details><summary>Full messages</summary>
+<table><tr><th>Direction</th><th>Code</th><th>Meaning</th><th>Body</th></tr>
 {{range .Requests}}<tr><td>Go → JS</td><td class="mono">{{.Kind}}</td><td>{{sep .Meaning}}</td><td class="mono">{{sep .Body}}</td></tr>{{end}}
 {{range .Answers}}<tr><td>JS → Go</td><td class="mono">{{.Kind}}</td><td>{{sep .Meaning}}</td><td class="mono">{{sep .Body}}</td></tr>{{end}}
-</table>{{else}}<p>JS had no work to do.</p>{{end}}
-</details>
+</table>
+</details>{{else}}<p>No readers were affected, so JS did not run.</p>{{end}}
 </div>
 {{end}}
 
@@ -416,4 +424,23 @@
 </table>
 <p class="note">This is a proposed layout. A block could reference a value tape by its number in the record and omit the hash.</p>
 
-</div></body></html>
+</div>
+{{define "rounds"}}{{range $i, $r := .}}
+<div class="card round">
+<h4>Round {{add $i 1}}. Go: {{$r.Ask}}</h4>
+{{if $r.Units}}<p class="note">{{join $r.Units "; "}}</p>{{end}}
+{{if $r.Pages}}<p><b>JS listed {{counted (len $r.Pages) "page" "pages"}}:</b> {{join $r.Pages ", "}}</p>{{end}}
+{{if $r.Routes}}<table><tr><th style="width:8em">route</th><th>Reads by getStaticPaths</th></tr>
+{{range $r.Routes}}<tr><td><a href="#route-{{.Route}}">{{.Route}}</a>{{if .Props}}, supplies props{{end}}</td><td>{{range .Readings}}<div>{{.}}</div>{{else}}no database reads{{end}}</td></tr>{{end}}</table>{{end}}
+{{if $r.Records}}<p><b>JS returned {{counted (len $r.Records) "record" "records"}}:</b></p>
+<table><tr><th>record</th><th style="width:4em">Blocks</th><th>Renders shared blocks</th><th>Database reads</th></tr>
+{{range $r.Records}}<tr><td>{{.Kind}} <span class="mono">{{.Key}}</span></td><td>{{.Blocks}}</td><td class="mono">{{join .Shows ", "}}</td><td>{{range .Readings}}<div>{{.}}</div>{{end}}</td></tr>{{end}}</table>{{end}}
+{{if $r.Named}}<p><b>Records reference these shared blocks:</b> <span class="mono">{{join $r.Named ", "}}</span>. Go will request any missing blocks in the next round.</p>{{end}}
+{{if $r.Indexes}}<p><b>JS index requests to Go: {{len $r.Indexes}}:</b></p>
+<table><tr><th>Table</th><th>Lookup columns</th><th>Order columns</th><th>Go response</th></tr>
+{{range $r.Indexes}}<tr><td>{{.Table}}</td><td>{{join .Equal ", "}}</td><td>{{join .Order ", "}}</td><td>{{if .Made}}built{{else}}suitable index already existed{{end}}</td></tr>{{end}}</table>{{end}}
+{{if $r.Shapes}}<p class="note">Read shapes first seen on this run: {{join $r.Shapes "; "}}.</p>{{end}}
+{{if $r.Failed}}<p class="del">Project code failed: {{$r.Failed}}</p>{{end}}
+</div>
+{{end}}{{end}}
+</body></html>

@@ -417,3 +417,212 @@ func pretty(raw string) string {
 }
 
 func dataKey(key []any) []byte { return data.Key(key) }
+
+// round is one request of Go and what the JavaScript side did for it, told
+// by its outcome rather than message by message.
+type round struct {
+	Ask     string
+	Units   []string // the pages and shared blocks Go named
+	Pages   []string // for a listing: the pages the routes gave
+	Routes  []routeNote
+	Records []recordNote
+	Named   []string // the shared blocks the records show, each once
+	Indexes []indexNote
+	Shapes  []string // kinds of readings met for the first time in this run
+	Failed  string
+}
+
+type routeNote struct {
+	Route    string
+	Props    bool
+	Readings []string
+}
+
+type recordNote struct {
+	Kind, Key string
+	Blocks    int
+	Shows     []string
+	Readings  []string
+}
+
+type indexNote struct {
+	Table        string
+	Equal, Order []string
+	Rows, Made   bool
+}
+
+// spec is a kind of readings as the JavaScript side tells it.
+type spec struct {
+	Table   string   `json:"table"`
+	By      []string `json:"by"`
+	Columns []string `json:"columns"`
+}
+
+func (s spec) String() string {
+	out := s.Table
+	if len(s.By) > 0 {
+		out += " by " + strings.Join(s.By, ", ")
+	} else {
+		out += ", all rows"
+	}
+	if len(s.Columns) > 0 {
+		out += "; relevant columns: " + strings.Join(s.Columns, ", ")
+	}
+	return out
+}
+
+// rounds pairs every request of Go with the messages the JavaScript side
+// sent for it, up to the one that says the request is done. The answers of
+// Go to requests for indexes come in the order the requests were made.
+func rounds(requests, answers []frame) []round {
+	var replies []frame
+	for _, f := range requests {
+		if f.Kind == "I" {
+			replies = append(replies, f)
+		}
+	}
+	shapes := map[int]spec{}
+	var out []round
+	next := 0
+	for _, f := range requests {
+		var r round
+		switch f.Kind {
+		case "L":
+			r.Ask = "list pages for all routes"
+			if f.Body != "" {
+				r.Ask = "list pages again for routes " + f.Body
+			}
+		case "C":
+			pages, shared := 0, 0
+			for _, unit := range strings.Split(f.Body, "\x03") {
+				fields := strings.Split(unit, "\x02")
+				if fields[0] == "p" {
+					pages++
+					r.Units = append(r.Units, "page "+fields[1])
+				} else if len(fields) > 1 {
+					shared++
+					r.Units = append(r.Units, "shared block "+fields[1])
+				}
+			}
+			var what []string
+			if pages > 0 {
+				what = append(what, counted(pages, "page", "pages"))
+			}
+			if shared > 0 {
+				what = append(what, counted(shared, "shared block", "shared blocks"))
+			}
+			r.Ask = "compute " + strings.Join(what, " and ")
+		default:
+			continue
+		}
+		named := map[string]bool{}
+		for done := false; !done && next < len(answers); next++ {
+			m := answers[next]
+			switch m.Kind {
+			case "D":
+				done = true
+			case "E":
+				r.Failed, done = m.Body, true
+			case "S":
+				number, text, _ := strings.Cut(m.Body, "\x02")
+				var s spec
+				if json.Unmarshal([]byte(text), &s) == nil {
+					n := 0
+					fmt.Sscan(number, &n)
+					shapes[n] = s
+					r.Shapes = append(r.Shapes, s.String())
+				}
+			case "I":
+				fields := strings.Split(m.Body, "\x02")
+				if len(fields) >= 3 {
+					equal := 0
+					fmt.Sscan(fields[2], &equal)
+					columns := fields[3:]
+					equal = min(equal, len(columns))
+					note := indexNote{Table: fields[0], Rows: fields[1] == "1", Equal: columns[:equal], Order: columns[equal:]}
+					if len(replies) > 0 {
+						note.Made, replies = replies[0].Body == "1", replies[1:]
+					}
+					r.Indexes = append(r.Indexes, note)
+				}
+			case "P":
+				for _, one := range strings.Split(m.Body, "\x03") {
+					route, path, _ := strings.Cut(one, "\x02")
+					r.Pages = append(r.Pages, path+" (route "+route+")")
+				}
+			case "G":
+				fields := strings.SplitN(m.Body, "\x02", 3)
+				if len(fields) == 3 {
+					r.Routes = append(r.Routes, routeNote{Route: fields[0], Props: fields[1] == "1", Readings: readingsIn(fields[2], shapes)})
+				}
+			case "R":
+				for _, rec := range m.Records {
+					note := recordNote{Kind: "page", Key: rec.Fields[1], Blocks: len(rec.Blocks)}
+					if rec.Fields[0] == "s" {
+						note.Kind = "shared block"
+					}
+					if len(rec.Fields) > 4 {
+						note.Readings = readingsIn(rec.Fields[4], shapes)
+					}
+					for _, b := range rec.Blocks {
+						if len(b) > 1 && b[0] == "u" {
+							note.Shows = append(note.Shows, b[1])
+							if !named[b[1]] {
+								named[b[1]] = true
+								r.Named = append(r.Named, b[1])
+							}
+						}
+					}
+					r.Records = append(r.Records, note)
+				}
+			}
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+// counted formats a count with its singular or plural label.
+func counted(n int, singular, plural string) string {
+	if n == 1 {
+		return fmt.Sprintf("%d %s", n, singular)
+	}
+	return fmt.Sprintf("%d %s", n, plural)
+}
+
+// readingsIn writes readings as the JavaScript side sends them: a JSON list
+// of the number of a kind and then the values the rows were found by.
+func readingsIn(text string, shapes map[int]spec) []string {
+	if text == "" {
+		return nil
+	}
+	decoder := json.NewDecoder(strings.NewReader(text))
+	decoder.UseNumber()
+	var list []any
+	if decoder.Decode(&list) != nil {
+		return []string{text}
+	}
+	var out []string
+	for len(list) > 0 {
+		number, _ := list[0].(json.Number)
+		n, _ := number.Int64()
+		s, known := shapes[int(n)]
+		if !known || len(list)-1 < len(s.By) {
+			return append(out, "?")
+		}
+		values := make([]string, len(s.By))
+		for i := range s.By {
+			values[i] = shown(list[1+i])
+		}
+		one := s.Table + ", all rows"
+		if len(s.By) > 0 {
+			one = s.Table + " where " + strings.Join(s.By, ", ") + " = " + strings.Join(values, ", ")
+		}
+		if len(s.Columns) > 0 {
+			one += "; relevant columns: " + strings.Join(s.Columns, ", ")
+		}
+		out = append(out, one)
+		list = list[1+len(s.By):]
+	}
+	return out
+}
