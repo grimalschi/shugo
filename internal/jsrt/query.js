@@ -30,7 +30,6 @@
 //
 // Runs on Bun and on Node: each has SQLite built in.
 
-import { AsyncLocalStorage } from "node:async_hooks";
 
 // open opens the database at path for reading. host is the Go side as the
 // queries need it: declare tells it a new shape of readings, index asks it
@@ -238,7 +237,7 @@ export class Reads {
   // mine tells whether the computation running now is the one these
   // readings are of, and is not over.
   mine() {
-    return !this.settled && computing.getStore() === this;
+    return !this.settled && computing === this;
   }
 
   // late says why a question or a read is refused.
@@ -251,12 +250,19 @@ export class Reads {
 }
 
 // Who is being computed right now: the Reads of the page, shared block or
-// list of pages, through every await of its script and template.
-const computing = new AsyncLocalStorage();
+// list of pages. Nothing waits while a page is computed, so one computation
+// runs at a time and is all there is to know.
+let computing = null;
 
 // during runs compute as the computation that reads belongs to.
 export function during(reads, compute) {
-  return computing.run(reads, compute);
+  const outer = computing;
+  computing = reads;
+  try {
+    return compute();
+  } finally {
+    computing = outer;
+  }
 }
 
 // everything is noted among the columns read of a row when the row was
