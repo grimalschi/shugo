@@ -1,6 +1,6 @@
 # Shugo specification
 
-Shugo is a framework for static website generation. These documents describe in simple terms how it works and how projects are collected on it.
+Shugo is framework for static website generation. These documents describe in simple terms how to assemble and run projects on Shugo. How Shugo is arranged inside, described separately in [docs](../docs/README.md); proposals that do not yet exist are in [docs/proposals](../docs/proposals/README.md).
 
 ## Status of decisions
 
@@ -8,40 +8,34 @@ Documents are written together. Each of the three sections:
 
 - **Decisions** is just what the author of the project confirmed.
 - **Implemented, pending approval** — how it works now. The reasons for each such decision are collected in one place: [Decisions pending approval](decisions.md).
-- **Open questions** is something that needs to be decided. General list with order of discussion: [Open questions](open-questions.md).
+- **Open questions** is something that still needs to be solved. Common list with numbers: [Open questions](open-questions.md).
 
 ## Documents
 
 | Document | About what |
 | --- | --- |
 | [Project structure](project-structure.md) | What folders and files are in the project and what they mean |
-| [Build pipeline](build-pipeline.md) | Stages: compilation, calculation, runtime |
+| [Templates](templates.md) | `.shugo` files are components of Svelte 5: code, markup, blocks that output expressions where Shugo deviates from Svelte |
+| [Components](components.md) | Reusable parts of templates: parameters, snippets, common components |
+| [Layouts](layouts.md) | General binding of pages and `<svelte:head>` |
 | [File-based routing](routing.md) | How Page Files Turn into Addresses |
-| [Page Templates](templates.md) | Format `.shugo`: data code, markup, expressions, control tags |
 | [Dynamic pages](dynamic-pages.md) | Pages that come from data |
-| [Components](components.md) | Reusable template parts, parameters, slots |
-| [Layouts](layouts.md) | Overall page binding |
-| [Data loading](data-loading.md) | Where data comes from |
-| [Data adapter and data copy](data-adapter.md) | How data from any source gets into the copy that builds dependencies |
-| [Blocks and incremental updates](blocks.md) | How data changes only reach the parts of the site that show it |
-| [Change tracking](change-tracking.md) | How to find out what has changed, and only this is calculated: the sentence and measurements |
-| [Storage](storage.md) | What lies between the stages and in what form |
-| [Runtime](runtime.md) | Server on Go: pages on the fly or the entire site in files |
-| [Command line and development mode](cli.md) | `shugo` commands and their reports |
-| [Styles](styles.md) | Tailwind and CSS |
+| [Data loading](data-loading.md) | Where the data comes from and what you should know about it |
+| [Styles](styles.md) | Component styles, common files CSS and Tailwind |
 | [Page scripts](scripts.md) | Code that runs in the browser |
-| [Internationalization](i18n.md) | Languages and translations: offer |
-| [Pictures](images.md) | Compression on the fly with cache: offer and measurements |
-| [Partial data reboot](partial-reload.md) | Update on signals from sources: proposal |
+| [Command line and development mode](cli.md) | `shugo` commands and their reports |
+| [A note for the agent](authoring.md) | A short guide for someone writing a website on Shugo (in English) |
+| [Decisions pending approval](decisions.md) | What is decided without the author’s confirmation and why |
+| [Open questions](open-questions.md) | Questions with numbers and answers to the author's questions |
 
 ## General decisions
 
 - Shugo generates static sites. All pages and all data are known in advance; the project code is not executed at the request of the visitor.
 - **This is framework for agents.** Project code is written by agents, not people. Two solutions are chosen to make the agent make fewer mistakes. Therefore, expressions are written in JS, not something faster: agents know JS perfectly.
+- **Templates — components of Svelte 5** (21 solution November 2026 year). The syntax and pattern behavior copy Svelte to allow a piece of the template to be transferred from Shugo to Svelte and back, and later nearby Svelte islands with the same syntax may appear. This replaces the previous decision on its `g-*` tags.
 - The entire framework is written in Go: project compilation, start-up calculation, page assembly.
-- Expressions in templates are written in JS. Conditions, cycles and other control structures are their tags, not JSThey are tied to the work of the framework, and he needs to understand the structure of the page.
 - In the source code of the project everywhere TypeScript. This is a rule and requirement.
-- The project is divided into stages. The result of each stage is the following, and the boundary between the stages is clear. Details - in [Assembly Sequences](build-pipeline.md).
-- Everything that runs Go must be safe and can work outside the containers. The stage with JS can be run in the sandbox or without it, the result does not change.
+- The project is divided into stages. The result of each stage is the following, and the boundary between the stages is clear. Details - in [Assembly Sequences](../docs/build-pipeline.md).
+- Everything that runs Go must be safe and can work outside of containers. The stage with JS can be run in the sandbox or without it, the result does not change. The sandbox is not part of the Shugo: it is enough to describe how to run it (21 solution of November 2026 year).
 - JS is both Bun and Node: both must work.
 - The code of the framework should be clean and beautiful. It is better to spend more time finding the right solution than doing a workaround. At the same time, framework should be fast.

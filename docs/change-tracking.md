@@ -10,23 +10,29 @@ The words of the author of the project, 20 November 2026 year.
 - Expressions are calculated only for changed areas.
 - Purpose: changing the data of one product only counts the pages that show the data of this product, and blocks on other pages that show this product.
 - Data should not be marked with special calls like `source(...)`. The mechanism does not spoil the project code and leaves no holes: regular code without markings should not give an outdated page.
-- You need to analyze how patterns use variables and data: the dependency tree returns.
-- The template can see data code variables not in pure form, but through serialization. The author named Seroval for this; what exactly to copy is discussed below.
+- You need to analyze how templates use variables and data: the dependency tree returns. *Replaced by the approved final version:* does not have a tree in it, the accuracy is given by the lines that remember what you read (option 5).
+- The template can see data code variables not in pure form, but through serialization. The author named Seroval for this; what exactly to copy is discussed below. *Not required:* needed this first option, which was abandoned.
 - How data gets into pages and components can be changed for the sake of a simple and quick comparison. The main thing is the effectiveness of updates.
 - In the second variant, changes are recognized from the log that triggers on tables, and not from the mandatory field `updated_at`: the log sees inserts and deletions, and it cannot be forgotten to update. Confirmed by 20 on November 2026 year.
-- A copy of the data in SQLite is part of the architecture: [Data adapter and data copy](data-adapter.md).
+- A copy of the data in SQLite is part of the architecture: [Data adapter and data copy](proposals/data-adapter.md).
 - The first option, fingerprints without a database, is no longer considered: options with a database work much faster and better.
 
-## Final version, waiting for approval
+21 November 2026 Year:
 
-21 November 2026 year author of the project asked to remove all that remains from the first version, and prepare a solution as the final. The final version is collected from the fifth version in the branch `final` and merged into `main`. It:
+- The final version is approved in its entirety: the fifth version with everything described in [Final version](#final-implementation).
+- String order: the lines are `order()`, and indistinguishable by it and query strings without `order()` are key. Otherwise, the index that Shugo builds would change the row order on the page already shown.
+
+## Final implementation
+
+21 November 2026 year author asked to remove all that remains of the first version, and prepare a solution as the final. The final version is collected from the fifth version in the branch `final`, merged into `main` and approved on the same day. It:
 
 - **Data** is in the base of the SQLite project and is read only through `Shugo.query`. Each line remembers which columns are read, by whomever they are read, while its owner is calculated (the 5 variant). The magazine is triggered, the indexes are built by Shugo - this is decided.
-- **Pages are calculated without waiting**, one by one, is decided by 21 in November: [Data loading](data-loading.md#decisions).
+- **Pages are calculated without waiting**, one by one, is decided by 21 in November: [Data loading](../spec/data-loading.md#decisions).
 - **Conversation Go and JS** without repetition. At the beginning of Go, one message says what is known from past launches: types of readings and questions for which there is already an index. JS asks only about the new one, and for price changes there is one request Go and one answer JS with records.
-- **Project without database**: The update does not compute anything until the project itself has changed ([26](decisions.md#26-project-without-database)).
+- **Project without database**: The update does not compute anything until the project itself has changed ([26](../spec/decisions.md#26-project-without-database)).
 - **Value tapes inside records** and **server without a copy of the site** solved: [Storage](storage.md#decisions), [Runtime](runtime.md#decisions).
-- **Exports by change.** The page and shared block record stores the version in which the last update was changed; it is written by the update itself along with the record. Export builds only pages with a record newer than its version and pages that show such a shared block ([21](decisions.md#21-export-to-files)).
+- **Exports by change.** The page and shared block record stores the version in which the last time changed; it is written by the update itself along with the record. Export builds only pages with a record newer than its version and pages that show such a common block - it is decided: [Runtime](runtime.md#decisions).
+- **Failed upgrade not complete** solved: [Build pipeline](build-pipeline.md#failed-updates).
 
 Measurements on the store in 100,000 products — in [README booth](../examples/catalog/README.md#results): price of one product — update 28 ms and export 8 ms; cap on all pages — update 0.12 s; first assembly — 14.1 s. After 21 changes, the site updated and exported in steps coincides with the build from scratch file to file.
 
@@ -34,7 +40,7 @@ Internal formats and connections on the small store show the stand "Shugo inside
 
 ## Trial implementations
 
-The author of the project asked to make two implementations for comparison, then “the second option with a dependency tree from the first” and “the second with lines that remember what you read, without a tree” (20 November 2026). All done, pass all tests on Bun and Node and stand on a common basis. The final version is collected from the fifth, see above; its approval awaits the author. The 3 number in the discussion is occupied by [data Adapter](data-adapter.md): it is not a substitute for these options, but what brings data to the database of variants 2 and 4.
+The author of the project asked to make two implementations for comparison, then “the second option with a dependency tree from the first” and “the second with lines that remember what you read, without a tree” (20 November 2026). All done, pass all tests on Bun and Node and stand on a common basis. The final version is collected from the fifth, see above, and approved. The 3 number in the discussion is occupied by [data Adapter](proposals/data-adapter.md): it is not a substitute for these options, but what brings data to the database of variants 2 and 4.
 
 | | Branch & Folder | Essence |
 | --- | --- | --- |
@@ -116,7 +122,7 @@ Variant 1:
 
 Variant 2:
 
-- The main thing around it is not done: how external sources get into the base. A generator writes the base on the stand. The device is discussed in [Data Adapter](data-adapter.md).
+- The main thing around it is not done: how external sources get into the base. A generator writes the base on the stand. The device is discussed in [Data Adapter](proposals/data-adapter.md).
 - The query constructor is small: see the restrictions above.
 - The first build is one and a half times longer: 620 thousand queries and 610 thousand reads in storage.
 - The route is listed as a whole when the entry has been added or deleted: 0.25 s on 100,000 pages.
@@ -151,7 +157,7 @@ What it does not give and what is worth:
 
 - Speed does not add or subtract: the read entry costs 1–2% first build.
 - Accuracy ends where the tree says "whole": a string passed to a function in a template or a normal component reads everything.
-- The template is considered to read everything it can read, no matter what branch `g-if` goes into. Verified: the date of receipt of the product that is in stock and does not show it, still calculates the page; the record goes the same.
+- The template is considered to read everything that it can read, no matter what branch the conditions go. Verified: the date of receipt of the product that is available and does not show it, still calculates the page; the record goes the same.
 - The compiler of the version 1 with all its complexity and three rules for the author.
 
 Test output. The accuracy was not given by the tree, but by the lines that remember what was read. The tree gives another: the pattern cannot depend on what is not passed to it. Lines with memory can be put on the 2 version without a tree: then the template reads them itself, the read is recorded in fact - with accuracy to the branch conditions and through functions and components - and the rules of the 1 variant are not needed. This combination is made as a variant of 5.
@@ -192,7 +198,7 @@ What else is done in the 5 variant:
 
 - **You can't read another line.** The string records what is read to the account of the person who requested it, and only he can read it and only while it is being calculated. A string left in a variable module for another page is an error, including when pages are waiting for data interspersed. The 2 variant did not notice this, the 4 variant was not always caught.
 - **`shugo update -check`**, as in the 4 variant: calculates everything and names pages that read something past the base. 7.6 s on 100,000 products.
-- **Shugo**: [Data adapter](data-adapter.md#indices).
+- **Shugo**: [Data adapter](proposals/data-adapter.md#indices).
 - **The strings come in the order of the query and then by key.** Variant 2 gave the strings without order as they found the base. With indexes that appear themselves, this has ceased to be harmless: the new index changed the order of the lines on the already calculated page, and it diverged from the build from scratch.
 
 What is weak:
@@ -227,8 +233,8 @@ What follows:
 
 Found on the go:
 
-- **More questions for storage.** When many pages are affected, Go asks the storage for each of its route, and then again about the settings of this route - the same. If you ask about the route once, 20,000 pages are updated for 1.4 s instead of 1.65 s, 100,000 - for 6.2 s instead of 7.5 s; checked. The code is taken from the 2 variant and is available in all three base variants. Not corrected.
-- **The server re-reads the entire site after each update.** It keeps records of all pages and common blocks in memory. Seeing a new version of the repository, he reads them all over again, even if one price has changed; the first request after the update is waiting for this reading. Nothing accumulates: from update to update, the expectation is the same and depends only on the size of the site. It is corrected by the fact that the server takes only records from the storage that have changed from the previous version: [Runtime](runtime.md#what-the-server-answers). Not corrected.
+- **More questions for storage.** When many pages are covered, Go each asked the storage about its route, and then again about the settings of this route - the same. If you ask about the route once, 20,000 Pages are updated for 1.4 s instead of 1.65 s, 100,000 the “ For 6.2 s instead of 7.5 s; checked. The code was taken from the option 2 and was in all three versions with the base. Fixed in the final version: about the route settings Go Ask once for the route.
+- **The server after each update reread the device of the entire site.** It kept records of all pages and common blocks in memory. Seeing the new version of the storage, he read them all over again, even if one price changed; the first request after the update was waiting for this reading. Nothing accumulated: from update to update, the expectation is the same and depends only on the size of the site. Fixed differently than suggested: the server no longer keeps records in memory and reads every page from the repository ([Runtime](runtime.md#page-assembly)), so there is nothing to wait for the first request after the update.
 
   | Products | Pages | First request after update, ten updates in a row | The following requests |
   | ---: | ---: | ---: | ---: |
@@ -262,16 +268,16 @@ These are steps from the author's first plan: the comparison is between loading 
 
 ### Dependency Tree
 
-Product page template, with abbreviations:
+Product page template, with abbreviations; here and below examples are written in the current Svelte syntax:
 
-```html
+```svelte
 <h1>{item.title}</h1>
-<g-if cond={item.discount}><span>−{item.discount.percent}%</span></g-if>
+{#if item.discount}<span>−{item.discount.percent}%</span>{/if}
 <p>{price(item.price)}</p>
-<g-for each={item.variants} as="variant"><Variant variant={variant} /></g-for>
+{#each item.variants as variant}<Variant {variant} />{/each}
 <h2>Reviews: {reviews.length}</h2>
-<g-for each={reviews} as="review"><p>{review.text}</p></g-for>
-<g-for each={item.related} as="id"><ProductCard id={id} /></g-for>
+{#each reviews as review}<p>{review.text}</p>{/each}
+{#each item.related as id}<ProductCard {id} />{/each}
 ```
 
 Its dependency tree:
@@ -299,8 +305,8 @@ What goes into the tree:
 | In the template | What is read |
 | --- | --- |
 | `{item.title}`, `href={item.a.b}` | one value |
-| `<g-if cond={item.discount}>` | value or not; of an object only what is read next |
-| `<g-for each={item.variants} as="v">` and `{v.title}` in body | the length of the list and each element has what the body reads |
+| `{#if item.discount}` | value or not; of an object only what is read next |
+| `{#each item.variants as v}` and `{v.title}` in body | the length of the list and each element has what the body reads |
 | `{reviews.length}` | length |
 | `{price(item.price)}` | `item.price`; `price` is an imported function, it's code |
 | `{finalPrice(item)}`, `{item.tags.join(", ")}`, `{items[0].title}`, `{...attrs}` | object as a whole: what will read the function, the compiler does not know |
@@ -322,7 +328,7 @@ The fingerprint of a page or block is only compared to its own past fingerprint,
 
 ### List Keys
 
-In the prototype, the key gave the name to the block inside the list. Here the name is only for the page - its address - and the common block - its parameters. The list item belongs to its page or shared block and is calculated with it. Therefore, `key` in `<g-for>` is still not needed.
+In the prototype, the key gave the name to the block inside the list. Here, the name is only for the page - its address - and for the common block - its parameters. The list element belongs to its page or the common block and is calculated with it. Therefore, the key in `{#each}` is still not needed.
 
 If the list item must be updated separately from the page, it is shown in a common block: `<ProductCard id={item.id} />`. The parameters serve as its key.
 
@@ -339,24 +345,25 @@ Violation of any rule is a mistake when assembling with a place and a clue, and 
 What you will need to change in the example of the store:
 
 ```ts
-// lib/money.ts — new module: template functions moved from lib/catalog.ts
+// src/lib/money.ts — new module: template functions moved from src/lib/catalog.ts
 export function price(value: number): string { … }
 export function finalPrice(product: Product): number { … }
 ```
 
-```html
-<!-- components/Header.shugo: usage product() moved from template to data code -->
----
-import { categories, inCategory, product, shop } from "../lib/catalog"
-const menu = …
-const featured = shop.featured ? product(shop.featured) : null
----
+```svelte
+<!-- src/components/Header.shugo: usage product() moved from template to data code -->
+<script>
+  import { categories, inCategory, product, shop } from "../lib/catalog"
+  const menu = …
+  const featured = shop.featured ? product(shop.featured) : null
+</script>
+
 <a class="brand" href="/">{shop.name}</a>
 …
-<g-if cond={featured}>
+{#if featured}
   <p>Product of the month: {featured.title}</p>
   <ProductCard id={featured.id} />
-</g-if>
+{/if}
 ```
 
 The product page, category list, card, option and footer remain as written, only the import string changes.
@@ -453,7 +460,7 @@ All measurements are prints of 100,000 product pages.
 
 - The data code of all pages and common blocks is executed at each update. On the stand is 0.05–0.07 s on 200 thousand. An expensive data code, such as a request for each page, will be executed for each page. Many pages still need to be loaded with a single query in `getStaticPaths` or in the module.
 - Prints are considered for all pages and blocks: 0.1 s on 200 thousand.
-- The data itself is loaded entirely. You can not download them only if the source himself reports what has changed: [proposal](partial-reload.md).
+- The data itself is loaded entirely. You can not download them only if the source himself reports what has changed: [Data adapter](proposals/data-adapter.md).
 
 Calculating expressions, writing and rantime depends only on the size of the change.
 
@@ -477,9 +484,6 @@ Order of works:
 
 ## Open questions
 
-- Approve the final version: the fifth option with everything that is higher.
-- Approve the decision of the fifth option on the order of lines: in the order of the request, then by the key.
-- What should the query designer be able to do. How external sources get into the database is in [Data Adapter](data-adapter.md).
-- Do `props` from `getStaticPaths`: because of them, changing the line read by the route calculates all its pages - [Dynamic pages](dynamic-pages.md#open-questions).
-- Changing the project code calculates the entire site again. You can only calculate what the changed templates show.
-- **Comparisons and `limit` in readings.** Reading only remembers the values of equality. A condition like `where("rating", "<", 1)` and the window boundary `limit` it does not fall. Therefore, the request touches any row of the same table, which has changed the column used by it, even if it did not fit under the condition and does not fit. Other tables and columns that the request does not use do not touch it. Experience 21 November 2026 Years: 1,000 The film, on the page of each — five neighbors by rating (`rating` from r  0.5 up to r + 0.5); rating change of one film calculated all 1,000 pages and has changed 21. Suggestion: to store in the reading of the boundary conditions and windows, check them old and new line, and search for suitable readings by the interval index - module R*Tree SQLite It works and works in our driver.
+- What the query builder knows and what to add to it is [Data loading](../spec/data-loading.md). How external sources get into the database is [data Adapter Offer](proposals/data-adapter.md).
+- Do `props` from `getStaticPaths`: because of them, changing the line read by the route calculates all its pages - [Dynamic pages](../spec/dynamic-pages.md#open-questions).
+- Comparisons and `limit` in readings: the reading remembers only equality values, so the query with the comparison or with the window `limit` touches any row of the table that has changed the column used by it. Delayed while pages are asked for equality: [proposal](proposals/range-queries.md).

@@ -1,8 +1,8 @@
 # Shugo
 
-Shugo - framework for static sites. Pages are written in `.shugo` files similar to Astro: code on TypeScript and markup. The data of the site is in the database of SQLite project, and pages read them only through `Shugo.query`. Project code is executed when pages are calculated; the page visitor is given a server on Go that collects HTML from ready values and does not calculate anything.
+Shugo - framework for static sites. Pages, layouts and components are `.shugo` files, and each is a component of Svelte 5: `<script>`, markup, `<style>`. Shugo produces the same HTML that the Svelte server produces 5.59. The data of the site is in the database of the SQLite project, and the pages read them only through `Shugo.query`. Project code is executed when pages are calculated; the page visitor is given a server on Go that collects HTML from ready values and does not calculate anything.
 
-What is finally decided and what awaits approval is recorded in [specifications](spec/README.md).
+How to collect and run projects that are finally decided, and what awaits approval, in [specifications](spec/README.md). As Shugo arranged inside - in [docs](docs/README.md), offers - in [docs/proposals](docs/proposals/README.md).
 
 ## How it works
 
@@ -17,7 +17,7 @@ project Database ──► calculation (Bun or Node): eval.mjs reads lines via S
                                          └──► export: pages files that have changed
 ```
 
-1. **Compilation.** Two things are obtained from each template: JS, which counts the values of expressions, and the program is a markup with places for these values.
+1. **Compilation.** Two things are obtained from each template: JS, which counts the values of expressions, and the program is a markup with places for these values. The compiler parses the markup according to the rules of Svelte: spaces, nesting of elements, component styles.
 2. **Calculation.** JS executes the code of pages without waiting: the request to the database responds immediately. Each line that the request returned remembers which columns it read — in the page code, in the template, in functions, in components. Go compares the result to the storage and records only differences. A component called with simple parameters is calculated once and stored in a separate record: pages link to it.
 3. **Update.** Triggers in the database write each changed line to the journal. `shugo update` reads the journal, finds who has read the changed columns of these lines, and calculates only them.
 4. **Server.** There are no copies of the site in memory. For each request, the server reads from the storage the page record and the records of common blocks that it shows - one search per record, all from one state - and collects HTML.
@@ -43,16 +43,17 @@ bin/shugo export examples/basic       # site to files: examples/basic/_build/dis
 
 | Folder | What's up? |
 | --- | --- |
-| [spec/](spec/README.md) | specification: solutions, device, suggestions, open questions |
-| [docs/authoring.md](docs/authoring.md) | a memo for someone who writes a site on Shugo (in English, for agents) |
-| [examples/basic](examples/basic) | small site without a database: layout, components, slots, dynamic pages |
+| [spec/](spec/README.md) | specification: how to collect and run projects, solutions, open questions |
+| [spec/authoring.md](spec/authoring.md) | a memo for someone who writes a site on Shugo (in English, for agents) |
+| [docs/](docs/README.md) | how Shugo is arranged inside; [docs/proposals](docs/proposals/README.md) offers |
+| [examples/basic](examples/basic) | small site without a database: layout, components, snippets, dynamic pages |
 | [examples/catalog](examples/catalog/README.md) | store of any size with database and point update stand |
 | [examples/inside](examples/inside/README.md) | Shugo booth inside: all intermediate formats and connections in a small store |
 | [examples/tailwind](examples/tailwind) | styles through Tailwind |
 | `cmd/shugo` | `shugo` |
 | `cmd/inside` | booth program «Shugo inside» |
 | `internal/` | framework, by package per stage: `syntax`, `compile`, `jsrt`, `data`, `evaluate`, `store`, `record`, `render`, `server` |
-| `test/` | tests that run entire sites through all stages |
+| `test/` | tests that run entire sites through all stages; `test/svelte` are standards from the real Svelte |
 
 ## Tests
 
@@ -73,7 +74,7 @@ Store on 100,000 products, 104,202 pages and 100,009 common blocks, Bun, 8 cores
 | Update after price change of one product: page and card calculated, HTML changed to 7 pages | 28 ms, the whole team of 36 ms |
 | Update after changing column that no one reads, 5,000 products | 0.10 s, nothing calculated |
 | Update after changing the cap that is on all pages | 0.11–0.12 s: One record of the common block |
-| First export to files | 7.1 s |
+| First export to files | 3.5 s |
 | Export after the price change of one product | 8 ms: built by 7 pages |
 | Export after changing the header | 8.1–8.7 s: all files rewritten |
 | Assembly of the product page by the server from the storage | 58–67 µs |

@@ -9,10 +9,11 @@ Storage is what remains between the computation stage and the runtime: the proje
 - Several processes work with one storage: one updates, others give pages. The page is completely assembled from one state.
 - Expression values are written in a flat list in the order of the pattern.
 - Value tapes lie inside page records and shared blocks, not a separate table: the page is read by one search per record. Solved by 21 on November 2026 year.
+- SQLite driver is on pure Go, without cgo. Solved 21 November 2026 year.
 
 ## Implemented, pending approval
 
-The reasons are in [20](decisions.md#20-storage).
+The reasons are in [20](../spec/decisions.md#20-storage).
 
 ### Tables
 
@@ -37,12 +38,12 @@ The version grows with each update. The version of the record is the one in whic
 
 Record - a list of blocks and the block number from which the display begins. The block has the following entries:
 
-- template: file number and part number (0 is the template itself, then - the markup that it transfers to slots);
+- template: file number and part number (0 is the template itself, then its snippets and its `<svelte:head>`);
 - tape values;
-- blocks inside it, in order of display;
-- slots: name and blocks that are transferred to it.
+- blocks inside it in order of display: components and snippets with the parameters that he showed;
+- snippets without the parameters that the caller gave him: name and blocks. The blocks themselves lie in the same record as the caller's block.
 
-The block that stands in place of the common block stores the common block number and its slots instead.
+The block that stands in place of the shared block stores instead the common block number and the snippets that gave it that place. How the snippets get into the records is in [Blocks](blocks.md#snippets).
 
 The numbers are written in a compact way. In the store on 100,000 goods page recording together with tapes takes up an average of 399 bytes, the record of the common block is 75 bytes.
 
@@ -53,13 +54,19 @@ Tape - values of block expressions in a row. Before each value, its length is wr
 | Place in template | What's in the tape |
 | --- | --- |
 | `{expression}` | text |
-| `<g-html>` | text, inserted without shielding |
-| `attribute={expression}` | `-` (attribute no), `+` (name with no value) or `=` and text |
+| `{@html expression}` | text, inserted without shielding |
+| `attribute={expression}`, `class`, `style` | `-` (attribute no), `+` (name with no value) or `=` and text |
 | `{...attributes}` | number of attributes, then name and value of each |
-| `g-if` | number of selected branch from unit; `0` if none is selected |
-| `g-for` | number of elements, then the values of each element |
-| `<g-slot>` | `1`, if something is transferred to the slot, otherwise `0` and the values of the spare contents |
+| `{#if}`, `{:else if}`, `{:else}` | number of selected branch from unit; `0` if none is selected |
+| `{#await}` | `1` — branch to `{:then}`, `2` — branch to `{:then}` |
+| `{#each}` | number of elements, then the value of each element; if there are no elements, the value of the branch `{:else}` |
+| `{@render snippet()}` | `-` is a snippet (`snippet?.()`); `c` and number are calculated here, this is the next nested block; `f`, a number and name, for example `f0:children`, is a snippet without parameters that gave the caller |
+| `<head>` end in layout | same as `{@render}`: `f0:head` or `-` |
+| `<svelte:element this={tag}>` | tag name; empty - no element. Then the values of its attributes and contents |
+| `<svelte:component this={…}>` | `1` — component shown, `0` — value not available |
 | component Call | nothing: Attached blocks are recorded in the record, not in the tape |
+
+The numbers are needed because the snippet can show not the component to which it was given: `<Inner content={children} />`, but in `Inner` - `{@render content()}`. The number after `f` - how many components outside of the place `{@render}` is the one to whom the snippet was given: its block has written down what blocks the snippet has. The number after `c` is how many components outside the template in which the snippet is written: `{@render children()}` inside the snippet refers to this template. Rantime on these numbers finds whose blocks they are and with which snippets to show them.
 
 The same tapes of different records are stored each in its own record. Places for this take more than when stored under the hash, but there is no table of tapes and records, how many records use each: measurement - in [Rantime](runtime.md#sqlite-read-performance).
 
@@ -68,17 +75,17 @@ The same tapes of different records are stored each in its own record. Places fo
 The prototype tape knew three kinds of values: text, `1`/`0` for the condition and number for the cycle. For a full language it took:
 
 1. **An attribute that may not be.** One text is not enough: absence, name without value and empty value are different things.
-2. **Branch number instead of `1`/`0`** to chain with `g-else-if` occupying one value.
+2. **Branch number instead of `1`/`0`** to chain with `{:else if}` occupying one value.
 3. **The difference between “no value” and “one empty value”.** Each value has its own length, so the empty value is the length value of 0.
 4. **The symbols inside the value.** JS transmits entries in Go messages, separated characters with 0–3 codes. Inside the value JS shields them and the symbol 4, and Go removes the shielding. The value comes to the page as it was; corrupted shielding stops the update.
-5. **Attached blocks and slots outside the tape.** Otherwise, the tape would depend on the location of the block on the page.
+5. **Attached blocks and snippets outside the tape.** Otherwise, the tape would depend on the location of the block on the page.
 6. **Checking in.** Tape checks against template before writing to storage. The descending tape stops the update.
 
 What remains is a limitation: all values are text. If the runtime needs to distinguish a number from a string, the tape will have to be expanded.
 
 ### How the tape can not “fit” with the page
 
-Rantime follows the pattern program and takes values from the tape in order. The program says: here is the text, here is the branch number, here is the number of elements. The tape does not converge if the branch number is not a number, values are less or more than the template reads, or blocks inside are not so much as calls of components.
+Rantime follows the pattern program and takes values from the tape in order. The program says: here is the text, here is the branch number, here is the number of elements. The tape does not converge if the branch number is not in place of the number, values are less or more than the template reads, or blocks inside are not so much as calls of components and snippets calculated on the spot.
 
 When working properly, this does not happen. But the tape writes a stage that performs the project code, and this stage does not trust the runtime. Therefore, there are two checks: when accepting a record and when assembling a page. In the second case, the runtime responds with an error, and not with a corrupted HTML.
 
@@ -86,10 +93,10 @@ When working properly, this does not happen. But the tape writes a stage that pe
 
 The update only calculates what the changes touched and deletes in the same transaction:
 
-- pages that the route no longer gives;
+- pages that are no longer routed: the server responds to their 404 address, and the address and version fall into the `gone` table, where export deletes their files ([Runtime](runtime.md#decisions));
 - common blocks that no one else shows are on the `shows` table, without reading the rest of the site.
 
-When the project is compiled again, all records are written again: they contain the file numbers of this build.
+When the project is compiled again, all records are written again: they contain the file numbers of this build. So it is conceived: changing the code calculates the entire site ([Build pipeline](build-pipeline.md#decisions)).
 
 ### Size
 
@@ -97,6 +104,4 @@ The 100 000-page store: 104,202 pages, 100,009 common blocks - 140 MB file. Of t
 
 ## Open questions
 
-- SQLite driver. Now it is without cgo. The driver is faster on cgo, but complicates the assembly of the framework.
 - Reading the saved hashes at the beginning of the complete build takes 0.5 s on 100,000 pages.
-- File numbers in records. If replaced with permanent names, only the changed templates will be rewritten after recompilation.

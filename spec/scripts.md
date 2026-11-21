@@ -4,40 +4,45 @@ The document describes the code that is executed in the visitor's browser.
 
 ## Decisions
 
-So far, nothing. Script processing is related to what is done immediately after the base.
+- `<script>` inside the markup gets into the page as written; the curly brackets inside it are plain text (21 decision of November 2026 year).
+- The basis for the code in the browser is Svelte (21 solution November 2026 year). Later on it will appear islands Svelte.
 
 ## Implemented, pending approval
 
-```
+The top `<script>` of the `.shugo` file is a component code, it is executed when calculating a page and does not get into the browser. The code for the browser is written in `<script>` inside the element or in `<svelte:head>`, as in Svelte:
+
+```svelte
 <button id="menu">Menu</button>
-<script>
-  document.getElementById("menu").addEventListener("click", () => { … })
-</script>
-<script src="/js/slider.js" defer></script>
+<div>
+  <script>
+    document.getElementById("menu").addEventListener("click", () => { … })
+  </script>
+</div>
+
+<svelte:head>
+  <script src="/js/slider.js" defer></script>
+</svelte:head>
 ```
 
-- The contents of `<script>` fall into the page as written. The brackets inside it are plain text, expressions are not calculated.
+- The contents of such `<script>` fall into the page as written. Expressions in it are not calculated: `{x}` remains the text of `{x}`.
+- The attributes of the tag itself are common attributes: `defer` is displayed as `defer=""`, `src={…}` is calculated.
 - The script files are put into `public/` and connected to the address.
-- A component with `<script>` shown ten times will give ten identical scripts.
+- A component with a script that is shown ten times will give ten identical scripts.
+- Event handlers in markup (`onclick={…}`) do not get into the page, as on the Svelte server: there is no one to perform them on the static page.
 
 The value from the data is transferred to the script via the attribute:
 
-```
+```svelte
 <div id="map" data-lat={shop.lat} data-lon={shop.lon} data-places={JSON.stringify(places)}></div>
-<script>
-  const map = document.getElementById("map")
-  const places = JSON.parse(map.dataset.places)
-</script>
+<div>
+  <script>
+    const map = document.getElementById("map")
+    const places = JSON.parse(map.dataset.places)
+  </script>
+</div>
 ```
 
 ## Open questions
 
-As in Astro, `<script>` processing may include:
-
-- TypeScript and imports within `<script>`;
-- assembly of all site scripts into files with a hash in the name;
-- one instance of the script per page, no matter how many times the component is shown;
-- `<script is:inline>` for the script to be left as is;
-- transfer values from code to script (in Astro it is `define:vars`).
-
-The assembler already exists: the project styles and code are collected by esbuild. You need to decide which of these rules to take.
+- Svelte Islands: a component that works in the browser - with the same syntax as the rest of the project. As noted by the island, what gets into the browser and how it receives data.
+- Assembly of scripts for the browser via esbuild: TypeScript and imports, files with hash in the name, one instance per page. If the islands appear, the issue may be solved by them.

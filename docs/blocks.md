@@ -18,23 +18,38 @@ The document describes what the page is built of and how the change in data reac
 
 ### Page records
 
-- **Block** is one display of a single template: a page, layout, component or markup transferred to the slot.
+- **Block** is one display of one template: a page, layout, component or snippet.
 - **Tape** is the value of block expressions in the order of the template. There is no markup in the tape: it lies in the project program, one for all template impressions.
-- **Page Record** is a list of its blocks. The block has its template, its tape, the blocks inside it and what is transferred to its slots.
+- **Page Record** is a list of its blocks. The block has its template, its tape, the blocks inside it and the snippets that the caller gave it.
 - **Shared block** is a component that shows the same thing on any page. It has its own record under the name; pages link to that name.
 
+Product page in the store from [examples/catalog](../examples/catalog/README.md):
+
 ```
-page /products/jug
-├─ layout pages/+layout.shugo general: one for all pages
-│  ├─ Header general: one for the whole site
-│  └─ slot: Page
-│     ├─ feed page "Kuvshin", "$2,400", ...
-│     ├─ Variant  3 own tapes
-│     └─ ProductCard{id: p7} common: one to all pages with this product
-└─ slot head: <title>
+page entry /products/jug
+└─ src/pages/+layout.shugo{|children,head} layout common: one to all pages with <svelte:head>
+   ├─ end of <head>: snippet head in page entry: her <title>
+   ├─ Header general: one for the whole site
+   ├─ {@render children()}: page block in page entry
+   │  ├─ feed page "Kuvshin", "$2,400", ...
+   │  ├─ Badge{text: "from the oven"} common: one for all such icons
+   │  ├─ Variant  3 own tapes, in page record
+   │  └─ ProductCard{id: p7} General: one to all pages with this product
+   └─ Footer general: one for the whole site
 ```
 
-Tapes lie inside records, common blocks are separate records under their own name. The reasons are in [2](decisions.md#2-values-are-stored-by-content-and-shared-blocks-by-name) and [3](decisions.md#3-which-blocks-are-shared).
+The layout doesn’t read anything about the page, so it’s also a shared block. The page gives him two snippets: `children` is herself, and `head` is what is written in her `<svelte:head>`. Snippet names stand in the common block name after `|`: a page without `<svelte:head>` shows another common block, `src/pages/+layout.shugo{|children}`. The snippets themselves are calculated in the page and lie in its record; in the layout entry, in their place, there is a reference to "the snippet `children` of the one who showed me".
+
+Tapes lie inside records, common blocks are separate records under their own name. The reasons are in [2](../spec/decisions.md#2-values-are-stored-by-content-and-shared-blocks-by-name) and [3](../spec/decisions.md#3-which-blocks-are-shared).
+
+### Snippets
+
+The component receives markup from the caller in the same way as in Svelte: snippets. They are stored in two ways.
+
+- **Snippet without parameters, written inside the component tag**, including `children`, anything in the tag except `{#snippet}`. It is calculated where it is written, when the component call is calculated, whether its component shows or not. Its block is in the record of the caller, and the block component is written: a snippet with that name - these blocks. Therefore, a component with snippets without parameters remains a common block: from snippets in its record only names.
+- **Other snippets**with parameters and those declared in the template itself, rather than in the component tagare calculated where `{@render}` shows them: the values of snippet expressions with parameters depend on the arguments. Its block is the nested block of the one who showed it. The component to which such a snippet was passed is not a common block: the function cannot be named in the name.
+
+In place of `{@render}` in the tape stands, what is the case and how many components between it and the one who wrote the snippet. Details - in [Storage](storage.md#tape).
 
 ### Updates
 
@@ -43,7 +58,7 @@ Tapes lie inside records, common blocks are separate records under their own nam
 3. Go for each record counts the hash and compares it to the saved one. Match - the record is not touched.
 4. Different entries are checked and recorded. Common blocks that no one else shows, and pages that the route no longer gives, are deleted.
 
-Details are in [Analysis of data changes](change-tracking.md#final-version-waiting-for-approval) and [Assembly Sequences](build-pipeline.md#evaluation).
+All this is one transaction. If something falls, nothing is recorded: the site remains the same, and the next update will meet the same changes. Details - in [Analysis of data changes](change-tracking.md#final-implementation) and [Assembly Sequences](build-pipeline.md#evaluation).
 
 ### Effects of data changes
 
@@ -87,16 +102,14 @@ Now the header loads its data itself and is calculated once. The page stores its
 | --- | --- |
 | Dependency tree: what data fields each block reads | lines from the database themselves remember which columns they have read, more precisely the tree: with precision to the branch conditions and through functions and components ([Change tracking](change-tracking.md)) |
 | Accuracy rules: `a.b.c` - one field, method call - the whole object | the same |
-| List Item Key | the elements are not dependent on neighbors. |
+| List Item Key | the tape elements are not dependent on neighbors; key `{#each items as item (item.id)}` Svelte allows, Shugo takes it and does not use for anything |
 | “The Significance of the Entry Hash” | hash is taken from the record, not from the input |
 | Banning a component from calling itself | the limitation of the prototype |
 
 ### Update report
 
-After each update, we know how many data lines have changed; how many pages and common blocks have been calculated, added, modified and deleted, with the names of the first ones; how many pages have HTML changed; how long each step took. An example is in [Command Line](cli.md).
+After each update, we know how many data lines have changed; how many pages and common blocks have been calculated, added, modified and deleted, with the names of the first ones; how many pages have HTML changed; how long each step took. An example is in [Command Line](../spec/cli.md).
 
 ## Open questions
 
-- Approve [final Version](change-tracking.md#final-version-waiting-for-approval).
-- The key in `<g-for>`: is it needed for something else.
-- Memory for a common block with an object in parameters: now only calls with simple parameters are considered common.
+- Common block with object in parameters: now only calls with simple parameters are considered common. If you remember a block by the content of an object, the page that transmits it would depend on all column lines, not read ones.

@@ -2,7 +2,7 @@
 
 A shop with a configurable number of products, a page for each product, category listings of 24 products per page, a header with navigation and a featured product, and recommendations.
 
-The shop stores its data in SQLite. Pages use `Shugo.query`, and each row records which columns were read. The benchmark checks that a data change reevaluates only the readers of the changed columns in the changed rows. Export writes only pages whose HTML changed. See [how it works](../../README.md#how-it-works) and the [change tracking specification](../../spec/change-tracking.md).
+The shop stores its data in SQLite. Pages use `Shugo.query`, and each row records which columns were read. The benchmark checks that a data change reevaluates only the readers of the changed columns in the changed rows. Export writes only pages whose HTML changed. See [how it works](../../README.md#how-it-works) and the [change tracking design](../../docs/change-tracking.md).
 
 ## Run the benchmark
 

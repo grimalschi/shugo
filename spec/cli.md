@@ -3,6 +3,10 @@
 ## Decisions
 
 - Development mode is needed: reassembly when changing files and updating the page in the browser.
+- Changing the project code calculates the entire site anew, and this is correct. The development mode will receive a real Live Reload separately: [proposal](../docs/proposals/live-reload.md) (21 solution November 2026 year).
+- CLI messages and the specification use English so agents can read them and search for their wording. Confirmed November 21, 2026.
+- `shugo init` is needed: a new project with an example, `tsconfig.json`, types for the editor and a memo for the agent (21 solution November 2026 years). Not yet done.
+- Type check — a separate command `shugo check`, together with verification of component parameters (21 solution November 2026 year). Not yet done.
 
 ## Implemented, pending approval
 
@@ -26,6 +30,18 @@ A folder is a project; without it, the current one is taken.
 
 The option that the command does not use is an error ([27](decisions.md#27-commands)).
 
+### How Teams are Different
+
+| Command | Compiles | Calculates | Gives pages | Follows files |
+| --- | --- | --- | --- | --- |
+| `build` | always | all | none | none |
+| `update` | if the project has changed | what changes have occurred | none | none |
+| `serve` | none | none | from storage | none |
+| `export` | none | none | write to Files | none |
+| `dev` | if the project has changed | what changes have occurred | from storage | yes, and resets open pages |
+
+`dev` is `update` and `serve` together, plus tracking: after each file change, it makes `update` and says pages open in the browser to reboot. It calculates nothing of its own: the pages are the same as after `shugo update`.
+
 ### When a team
 
 - The data has changed — `shugo update`. It does not compile the project, but runs the already collected JS and calculates only what the changed lines read.
@@ -45,7 +61,7 @@ updated in 28 ms: 104202 pages, 100010 shared blocks
   pages: 0 added, 1 changed, 0 removed
     changed: /products/product-5
   shared blocks: 0 added, 1 changed, 0 removed
-    changed: components/ProductCard.shugo{"id":"p5"}
+    changed: src/components/ProductCard.shugo{"id":"p5"}
   the HTML differs on 7 pages: they show a shared block that has changed
 ```
 
@@ -61,7 +77,7 @@ In JSON, the same time of each step is in milliseconds:
   "computed": { "pages": 1, "shared": 1 },
   "blocks": 13,
   "pages": { "total": 104202, "added": 0, "changed": 1, "removed": 0, "changedNames": ["/products/product-5"] },
-  "shared": { "total": 100010, "added": 0, "changed": 1, "removed": 0, "changedNames": ["components/ProductCard.shugo{\"id\":\"p5\"}"] },
+  "shared": { "total": 100010, "added": 0, "changed": 1, "removed": 0, "changedNames": ["src/components/ProductCard.shugo{\"id\":\"p5\"}"] },
   "render": 7,
   "renderNames": ["/", "/categories/c5", "/products/product-5", "…"],
   "shadowed": 0,
@@ -80,7 +96,7 @@ In JSON, the same time of each step is in milliseconds:
 An error in the project is shown with the space in the project file and a line of code:
 
 ```
-error: pages/about.shugo:4:14: </div> does not close <span> opened at 4:3
+error: src/pages/about.shugo:4:14: </div> does not close <span> opened at 4:3
      3 | <div>
      4  <span>text</div>
        |              ^
@@ -90,8 +106,8 @@ The error during the calculation shows the page that was calculated and the plac
 
 ```
 error: Cannot read properties of undefined (reading 'title')
-  while computing the page /about (pages/about.shugo)
-  at pages/about.shugo:5:21
+  while computing the page /about (src/pages/about.shugo)
+  at src/pages/about.shugo:5:21
      4 | const first = products[10]
      5 | const title = first.title.toUpperCase()
        |                     ^
@@ -101,11 +117,8 @@ Node indicates the location accurately. Bun sometimes points to a nearby string:
 
 ### Development Mode
 
-`shugo dev` monitors all project files except `_build`, `node_modules` and hidden files. After the change, it does what `shugo update` did: the source code has changed compiles the project and calculates everything; the database has changed calculates what the changed lines have read; other files have changed calculates nothing. The pages are reloaded anyway.
+`shugo dev` monitors all project files except `_build`, `node_modules` and hidden files. After the change, it does what `shugo update` did: the source code has changed compiles the project and calculates everything; the database has changed calculates what the changed lines have read; other files have changed calculates nothing. The pages are reloaded anyway. What to improve in it - in [the Live Reload](../docs/proposals/live-reload.md).
 
 ## Open questions
 
-- `shugo init`: creating a new project with an example and a memo for the agent.
-- Project validation command without assembly.
-- Message language ([22](decisions.md#22-message-language)).
-- Installation: how the `shugo` gets on the machine (ready-made binary, npm package).
+- Installation: how the `shugo` gets on the machine. Hugo, also one file on Go, is distributed as follows: ready files for all systems in releases on GitHub, Homebrew, Snap, Winget, Scoop and Linux distribution packages, Docker image and `go install` for those who have Go. Through npm Hugo put other people's wrapping packages. esbuild is distributed by the npm package, which puts the finished file under the system. Tip: GitHub releases, npm package like esbuild — agents work in projects with `package.json` — and Homebrew.
