@@ -16,10 +16,11 @@ import (
 	"github.com/grimalschi/shugo/internal/server"
 )
 
-// dev builds the project, shows it, and builds it again whenever a file of
-// the project changes. When only the data database has changed, the site is
-// brought up to date the way `shugo update` does it. Pages open in a
-// browser reload themselves.
+// dev brings the site up to date the way `shugo update` does, shows it, and
+// brings it up to date again whenever a file of the project changes: a
+// change of the project compiles it again and computes every page, a change
+// of the data computes only what read the rows that changed. Pages open in
+// a browser reload themselves.
 func (c *command) dev() error {
 	st, err := c.open()
 	if err != nil {
@@ -43,18 +44,14 @@ func (c *command) dev() error {
 
 	// A mistake in the project is not the end of development: it is
 	// printed, and the last good site stays up until the next change.
-	build := func(sources bool) {
-		renew := c.renew
-		if sources {
-			renew = c.rebuild
-		}
-		if err := renew(st); err != nil {
+	renew := func() {
+		if err := c.renew(st); err != nil {
 			c.report(err)
 			return
 		}
 		live.Reload()
 	}
-	build(true)
+	renew()
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -67,7 +64,7 @@ func (c *command) dev() error {
 	go func() {
 		// Editors write a file in several steps; wait until they are done.
 		var settle <-chan time.Time
-		sources := false
+		files := false
 		for {
 			select {
 			case event, open := <-watcher.Events:
@@ -80,17 +77,17 @@ func (c *command) dev() error {
 				if event.Has(fsnotify.Create) {
 					watch(watcher, event.Name) // a new folder
 				}
-				sources = sources || !c.isData(event.Name)
+				files = files || !c.isData(event.Name)
 				settle = time.After(80 * time.Millisecond)
 			case <-settle:
 				settle = nil
 				// Shugo writes to the data database itself: it makes an
 				// index, it drops the lines of the journal it has read.
 				// Only what the journal has not told yet is a change.
-				if sources || c.moved(held) {
-					build(sources)
+				if files || c.moved(held) {
+					renew()
 				}
-				sources = false
+				files = false
 			case err, open := <-watcher.Errors:
 				if !open {
 					return

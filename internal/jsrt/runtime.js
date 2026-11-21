@@ -688,7 +688,7 @@ export async function run(modules) {
           break;
         case "C":
           run.compute(request.text.split("\x03"));
-          send("D", "{}");
+          send("D", "");
           break;
         case "K":
           // What the Go side knows from earlier runs: it needs no answer.

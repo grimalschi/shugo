@@ -47,10 +47,6 @@ CREATE TABLE plan   (question TEXT PRIMARY KEY) WITHOUT ROWID;
 CREATE INDEX page_route ON page (route);
 `
 
-// tables are the tables a store may hold: those of the schema, and those of
-// layouts before it that it has no more.
-var tables = []string{"meta", "page", "changed", "shared", "shows", "route", "shape", "reads", "plan", "value"}
-
 // Store is an open store.
 type Store struct {
 	// Reading and writing go through separate connections: a read sees the
@@ -72,8 +68,9 @@ type pooled struct {
 	queries
 }
 
-// queries are the statements that read one thing by its key.
-type queries struct{ meta, page, shared, users, readers *sql.Stmt }
+// queries are the statements that read one thing by its key: all that a
+// page is read with.
+type queries struct{ meta, page, shared *sql.Stmt }
 
 // preparer is a connection or a pool of them that statements are prepared on.
 type preparer interface {
@@ -82,11 +79,9 @@ type preparer interface {
 
 func prepare(db preparer) (q queries, err error) {
 	for statement, query := range map[**sql.Stmt]string{
-		&q.meta:    "SELECT value FROM meta WHERE name = ?",
-		&q.page:    "SELECT record FROM page WHERE path = ?",
-		&q.shared:  "SELECT record FROM shared WHERE id = ?",
-		&q.users:   "SELECT user FROM shows WHERE shared = ?",
-		&q.readers: "SELECT reader FROM reads WHERE shape = ? AND key = ?",
+		&q.meta:   "SELECT value FROM meta WHERE name = ?",
+		&q.page:   "SELECT record FROM page WHERE path = ?",
+		&q.shared: "SELECT record FROM shared WHERE id = ?",
 	} {
 		if *statement, err = db.PrepareContext(context.Background(), query); err != nil {
 			return q, err
@@ -148,8 +143,26 @@ func lay(db *sql.DB) error {
 		case err != nil && !errors.Is(err, sql.ErrNoRows):
 			return err
 		}
+		// Every table of the other layout goes, whatever it was.
+		rows, err := tx.Query("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'")
+		if err != nil {
+			return err
+		}
+		var tables []string
+		for rows.Next() {
+			var name string
+			if err := rows.Scan(&name); err != nil {
+				rows.Close()
+				return err
+			}
+			tables = append(tables, name)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
 		for _, table := range tables {
-			if _, err := tx.Exec("DROP TABLE IF EXISTS " + table); err != nil {
+			if _, err := tx.Exec(`DROP TABLE "` + strings.ReplaceAll(table, `"`, `""`) + `"`); err != nil {
 				return err
 			}
 		}
@@ -331,24 +344,6 @@ func (r *reader) each(query string, visit func(path string, record []byte) error
 	return rows.Err()
 }
 
-// SharedBlocks calls visit with the record of every shared block.
-func (r *reader) SharedBlocks(visit func(id int64, record []byte)) error {
-	rows, err := r.query("SELECT id, record FROM shared")
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var id int64
-		var data []byte
-		if err := rows.Scan(&id, &data); err != nil {
-			return err
-		}
-		visit(id, data)
-	}
-	return rows.Err()
-}
-
 // A user is who shows a shared block: a page, named by its address, or
 // another shared block, named by its number.
 
@@ -385,100 +380,6 @@ func ReaderRoute(reader string) (route int, is bool) {
 	return route, err == nil
 }
 
-// Users calls visit with everyone who shows a shared block.
-func (r *reader) Users(shared int64, visit func(user string)) error {
-	rows, err := r.users.Query(shared)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var user string
-		if err := rows.Scan(&user); err != nil {
-			return err
-		}
-		visit(user)
-	}
-	return rows.Err()
-}
-
-// Readers calls visit with everyone who made a reading: see Read.
-func (r *reader) Readers(shape int64, key []byte, visit func(reader string)) error {
-	rows, err := r.readers.Query(shape, orEmpty(key))
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var reader string
-		if err := rows.Scan(&reader); err != nil {
-			return err
-		}
-		visit(reader)
-	}
-	return rows.Err()
-}
-
-// Plans calls visit with every question the project's code has asked an
-// index for.
-func (r *reader) Plans(visit func(question string)) error {
-	rows, err := r.query("SELECT question FROM plan")
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var question string
-		if err := rows.Scan(&question); err != nil {
-			return err
-		}
-		visit(question)
-	}
-	return rows.Err()
-}
-
-// Shapes calls visit with every shape of readings the store knows: see Read.
-func (r *reader) Shapes(visit func(id int64, spec string)) error {
-	rows, err := r.query("SELECT id, spec FROM shape")
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var id int64
-		var spec string
-		if err := rows.Scan(&id, &spec); err != nil {
-			return err
-		}
-		visit(id, spec)
-	}
-	return rows.Err()
-}
-
-// RoutePages calls visit with the address of every page a route gave.
-func (r *reader) RoutePages(route int, visit func(path string)) error {
-	rows, err := r.query("SELECT path FROM page WHERE route = ?", route)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var path string
-		if err := rows.Scan(&path); err != nil {
-			return err
-		}
-		visit(path)
-	}
-	return rows.Err()
-}
-
-// Data returns what an update noted about the state of the data database
-// its records were computed from; nothing, if none did.
-func (r *reader) Data() (string, error) {
-	state, _, err := r.blob(r.meta, metaData)
-	return string(state), err
-}
-
 // Totals counts what the store holds.
 type Totals struct{ Pages, Shared int }
 
@@ -498,7 +399,7 @@ func (r *reader) Totals() (Totals, error) {
 
 // within returns statements that run inside a transaction.
 func (q queries) within(tx *sql.Tx) reader {
-	return reader{tx, queries{tx.Stmt(q.meta), tx.Stmt(q.page), tx.Stmt(q.shared), tx.Stmt(q.users), tx.Stmt(q.readers)}}
+	return reader{tx, queries{tx.Stmt(q.meta), tx.Stmt(q.page), tx.Stmt(q.shared)}}
 }
 
 // View is one state of the store being read.
@@ -535,8 +436,8 @@ type Update struct {
 	write                                     *sql.Tx
 	number                                    int64 // the version of the store it makes
 	keptPage, named, name, putPage, putShared *sql.Stmt
-	show, unshow, shown                       *sql.Stmt
-	read, unread, changed                     *sql.Stmt
+	show, unshow, shown, users                *sql.Stmt
+	read, unread, readers, changed            *sql.Stmt
 }
 
 // Update starts a change. It waits for an update that is under way.
@@ -563,6 +464,8 @@ func (s *Store) Update() (*Update, error) {
 		&u.show:      "INSERT OR IGNORE INTO shows (shared, user) VALUES (?, ?)",
 		&u.unshow:    "DELETE FROM shows WHERE shared = ? AND user = ?",
 		&u.shown:     "SELECT 1 FROM shows WHERE shared = ? LIMIT 1",
+		&u.users:     "SELECT user FROM shows WHERE shared = ?",
+		&u.readers:   "SELECT reader FROM reads WHERE shape = ? AND key = ?",
 		&u.changed:   "INSERT INTO changed (path, version) VALUES (?, ?) ON CONFLICT (path) DO UPDATE SET version = excluded.version",
 	} {
 		if *statement, err = tx.Prepare(query); err != nil {
@@ -766,6 +669,13 @@ func (u *Update) Unread(shape int64, key []byte, reader string) error {
 	return err
 }
 
+// Data returns what an update noted about the state of the data database
+// its records were computed from; nothing, if none did.
+func (u *Update) Data() (string, error) {
+	state, _, err := u.blob(u.meta, metaData)
+	return string(state), err
+}
+
 // SetData notes the state of the data database the records were computed from.
 func (u *Update) SetData(state string) error {
 	_, err := u.write.Exec(put, metaData, []byte(state))
@@ -806,6 +716,65 @@ func (u *Update) Shown(shared int64) (bool, error) {
 		return false, nil
 	}
 	return err == nil, err
+}
+
+// Users calls visit with everyone who shows a shared block.
+func (u *Update) Users(shared int64, visit func(user string)) error {
+	rows, err := u.users.Query(shared)
+	return column(rows, err, visit)
+}
+
+// Readers calls visit with everyone who made a reading: see Read.
+func (u *Update) Readers(shape int64, key []byte, visit func(reader string)) error {
+	rows, err := u.readers.Query(shape, orEmpty(key))
+	return column(rows, err, visit)
+}
+
+// Plans calls visit with every question the project's code has asked an
+// index for.
+func (u *Update) Plans(visit func(question string)) error {
+	rows, err := u.write.Query("SELECT question FROM plan")
+	return column(rows, err, visit)
+}
+
+// RoutePages calls visit with the address of every page a route gave.
+func (u *Update) RoutePages(route int, visit func(path string)) error {
+	rows, err := u.write.Query("SELECT path FROM page WHERE route = ?", route)
+	return column(rows, err, visit)
+}
+
+// Shapes calls visit with every shape of readings the store knows: see Read.
+func (u *Update) Shapes(visit func(id int64, spec string)) error {
+	rows, err := u.write.Query("SELECT id, spec FROM shape")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var spec string
+		if err := rows.Scan(&id, &spec); err != nil {
+			return err
+		}
+		visit(id, spec)
+	}
+	return rows.Err()
+}
+
+// column calls visit with the one column of every row a query gave.
+func column[T any](rows *sql.Rows, err error, visit func(T)) error {
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var value T
+		if err := rows.Scan(&value); err != nil {
+			return err
+		}
+		visit(value)
+	}
+	return rows.Err()
 }
 
 // ClearRecords drops the records of all pages and shared blocks with what

@@ -142,15 +142,11 @@ func Run(p *project.Project, compiled *compile.Result, st *store.Store, options 
 		return nil, err
 	}
 	defer u.Rollback()
-	site, err := compiled.Site.Encode()
-	if err != nil {
-		return nil, err
-	}
 	k, err := newKeeper(compiled.Site, u, report, options.Names)
 	if err != nil {
 		return nil, err
 	}
-	kept, _, err := u.Build()
+	kept, err := u.BuildID()
 	if err != nil {
 		return nil, err
 	}
@@ -194,8 +190,14 @@ func Run(p *project.Project, compiled *compile.Result, st *store.Store, options 
 		}
 		return nil, err
 	}
-	if err := u.SetBuild(compiled.ID, site); err != nil {
-		return nil, err
+	if kept != compiled.ID {
+		site, err := compiled.Site.Encode()
+		if err != nil {
+			return nil, err
+		}
+		if err := u.SetBuild(compiled.ID, site); err != nil {
+			return nil, err
+		}
 	}
 	if err := u.Commit(); err != nil {
 		return nil, err
@@ -213,13 +215,9 @@ func everything(w *worker, k *keeper, took func(string)) error {
 		return err
 	}
 	took("list")
-	// The whole site is compared, so the whole of what the store has is
-	// read at once.
-	if err := k.preload(); err != nil {
+	if err := k.computeAll(); err != nil {
 		return err
 	}
-	k.again = func(string, bool) bool { return true }
-	k.strict = true
 
 	units := make([]unit, len(pages))
 	there := make(map[string]struct{}, len(pages))

@@ -27,7 +27,7 @@ import (
 
 // The files a compiled project consists of, under the output folder.
 const (
-	Bundle  = "eval.mjs"     // loads the data and computes the values of all pages
+	Bundle  = "eval.mjs"     // the code of the project: computes the values of the pages it is asked for
 	Site    = "site.json"    // the program of the site: templates and routes
 	Assets  = "assets"       // style sheets, published under AssetsURL
 	Sources = "sources.json" // what the project was compiled from
@@ -291,7 +291,7 @@ func (b *builder) routes() ([]program.Route, error) {
 			}
 		}
 		if dynamic && !u.script.paths {
-			errs = append(errs, u.file.Errorf(0, "the name of this page has a parameter, so its script must say which pages there are: export async function getStaticPaths() { return [{ params: { … } }] }"))
+			errs = append(errs, u.file.Errorf(0, "the name of this page has a parameter, so its script must say which pages there are: export function getStaticPaths({ query }) { return query(\"products\").select(\"slug\").all().map((row) => ({ params: { slug: row.slug } })) }; without a data database, return the list itself: [{ params: { … } }]"))
 		}
 		// Every folder from pages/ down to the page may hold a layout.
 		for dir := project.Pages; ; {

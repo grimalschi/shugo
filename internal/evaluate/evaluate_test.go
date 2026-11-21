@@ -3,6 +3,7 @@ package evaluate
 import (
 	"bufio"
 	"bytes"
+	"database/sql"
 	"encoding/binary"
 	"io"
 	"path/filepath"
@@ -62,17 +63,19 @@ func wrapRecord(name, text, shared string) string {
 // A lab is a store with updates run against it by hand.
 type lab struct {
 	t     *testing.T
+	path  string
 	store *store.Store
 }
 
 func newLab(t *testing.T) *lab {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "store.db"))
+	path := filepath.Join(t.TempDir(), "store.db")
+	st, err := store.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	return &lab{t, st}
+	return &lab{t, path, st}
 }
 
 // update runs one update: do feeds records to the keeper, and the update is
@@ -130,8 +133,14 @@ func (l *lab) held() (pages []string) {
 		if err != nil {
 			return err
 		}
-		count := 0
-		if err := v.SharedBlocks(func(int64, []byte) { count++ }); err != nil {
+		// The store has no reading of all shared blocks: the file is asked.
+		db, err := sql.Open("sqlite", l.path)
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+		var count int
+		if err := db.QueryRow("SELECT count(*) FROM shared").Scan(&count); err != nil {
 			return err
 		}
 		if totals.Pages != len(pages) || totals.Shared != count {
@@ -208,7 +217,7 @@ func TestList(t *testing.T) {
 
 func TestCompute(t *testing.T) {
 	l := newLab(t)
-	stream := append(frame('R', pageRecord("/", "home")+"\x03"+pageRecord("/about", "about")), frame('D', `{}`)...)
+	stream := append(frame('R', pageRecord("/", "home")+"\x03"+pageRecord("/about", "about")), frame('D', "")...)
 	report, err := l.update(func(k *keeper) error {
 		return talk(stream).compute([]unit{{name: "/"}, {name: "/about"}}, k)
 	})
@@ -224,7 +233,7 @@ func TestCompute(t *testing.T) {
 // result is an error and nothing else.
 func TestComputeRejects(t *testing.T) {
 	good := pageRecord("/", "home")
-	done := string(frame('D', "{}"))
+	done := string(frame('D', ""))
 	cases := map[string][]byte{
 		"a cut header":                     frame('R', good)[:3],
 		"a cut message":                    frame('R', good)[:20],
@@ -332,7 +341,7 @@ func TestSharedBlocksAreAskedFor(t *testing.T) {
 	}
 
 	// A later update that computes one page does not ask for a shared block
-	// the store has, unless told to.
+	// the store has, unless it computes the whole site.
 	_, err = l.update(func(k *keeper) error {
 		if err := k.put([]byte(pageWith("/", "home again", "card{}"))); err != nil {
 			return err
@@ -346,7 +355,9 @@ func TestSharedBlocksAreAskedFor(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = l.update(func(k *keeper) error {
-		k.again = func(string, bool) bool { return true }
+		if err := k.computeAll(); err != nil {
+			return err
+		}
 		if err := k.put([]byte(pageWith("/", "home once more", "card{}"))); err != nil {
 			return err
 		}

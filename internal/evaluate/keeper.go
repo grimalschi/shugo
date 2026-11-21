@@ -25,9 +25,17 @@ type keeper struct {
 	report *Report
 	limit  int // how many names a report lists
 
-	// again tells whether a shared block that a record of this run shows is
-	// to be computed in this run too. known says that the store has it.
-	again func(name string, known bool) bool
+	// all tells that the run computes the whole site: every shared block a
+	// record shows is computed too, one that fails ends the run at once, and
+	// what the store has of every page and shared block is read at the start
+	// into pages and shared, since all of it is compared anyway. Otherwise a
+	// shared block the store has is left as it is, and the store is asked
+	// one record at a time.
+	all    bool
+	pages  map[string]store.Kept
+	shared map[string]store.Kept
+	totals store.Totals
+
 	// check tells that the run computes everything to see whether an
 	// update that follows the journal would have been right: a record that
 	// differs although nothing told so is noted in the report. reached are
@@ -35,18 +43,6 @@ type keeper struct {
 	// users they are, and the lists of pages of routes.
 	check   bool
 	reached map[string]struct{}
-	// strict tells that a shared block which fails ends the run at once. It
-	// does where everything is computed: what was asked for is shown.
-	strict bool
-
-	// What the store had before the run, if the whole of it was read at
-	// once: see preload. Otherwise the store is asked one record at a time.
-	pages  map[string]store.Kept
-	shared map[string]store.Kept
-	whole  bool
-	// anew tells that the records of another compiled project were dropped.
-	anew   bool
-	totals store.Totals
 
 	// What the run has computed.
 	seenPages  map[string]struct{}
@@ -100,7 +96,6 @@ func newKeeper(site *program.Site, u *store.Update, report *Report, limit int) (
 	return &keeper{
 		plans: map[string]bool{},
 		site:  site, update: u, report: report, limit: limit, totals: totals,
-		again:     func(string, bool) bool { return false },
 		seenPages: map[string]struct{}{}, seenShared: map[int64]struct{}{}, failed: map[int64]*ScriptError{},
 		met: map[string]met{}, named: map[int64]string{}, asked: map[int64]struct{}{}, blank: map[int64]struct{}{},
 		touched: map[string]bool{}, fresh: map[int64]bool{}, uses: map[int64][]int64{}, loose: map[int64]struct{}{},
@@ -113,23 +108,22 @@ func newKeeper(site *program.Site, u *store.Update, report *Report, limit int) (
 
 // clear drops the records of another compiled project.
 func (k *keeper) clear() error {
-	k.anew, k.totals = true, store.Totals{}
+	k.totals = store.Totals{}
 	return k.update.ClearRecords()
 }
 
-// preload reads at once what the store has of every page and shared block.
-// A run that computes most of the site compares all of it anyway.
-func (k *keeper) preload() (err error) {
+// computeAll makes the run one that computes the whole site: see all.
+func (k *keeper) computeAll() (err error) {
 	if k.pages, err = k.update.KeptPages(); err != nil {
 		return err
 	}
 	k.shared, err = k.update.KeptShared()
-	k.whole = err == nil
+	k.all = err == nil
 	return err
 }
 
 func (k *keeper) page(path string) (kept store.Kept, known bool, err error) {
-	if k.whole {
+	if k.all {
 		kept, known = k.pages[path]
 		return kept, known, nil
 	}
@@ -143,7 +137,7 @@ func (k *keeper) meet(name string) (met, error) {
 		return m, nil
 	}
 	kept, known := k.shared[name]
-	if !k.whole {
+	if !k.all {
 		var err error
 		if kept, known, err = k.update.SharedNamed(name); err != nil {
 			return met{}, err
@@ -193,7 +187,7 @@ func (k *keeper) fail(name string, failure *ScriptError) error {
 	if err != nil {
 		return err
 	}
-	if _, blank := k.blank[m.id]; blank || k.strict {
+	if _, blank := k.blank[m.id]; blank || k.all {
 		return failure
 	}
 	k.failed[m.id] = failure
@@ -371,7 +365,7 @@ func (k *keeper) block(data []byte) (record.Block, error) {
 		// The run computes a shared block it has met at most once, and one
 		// the store has no record of in any case.
 		_, seen := k.seenShared[shown.id]
-		if _, waits := k.asked[shown.id]; !seen && !waits && (!shown.known || k.again(name, shown.known)) {
+		if _, waits := k.asked[shown.id]; !seen && !waits && (!shown.known || k.all) {
 			k.asked[shown.id] = struct{}{}
 			k.next = append(k.next, name)
 		}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -16,7 +17,8 @@ import (
 func shugo(t *testing.T, arguments ...string) (stdout, stderr string, status int) {
 	t.Helper()
 	var out, errs bytes.Buffer
-	if runtime := os.Getenv("SHUGO_RUNTIME"); runtime != "" {
+	// Only the commands that run the project's code take a runtime.
+	if runtime := os.Getenv("SHUGO_RUNTIME"); runtime != "" && slices.Contains([]string{"build", "update", "dev"}, arguments[0]) {
 		arguments = append(arguments, "-runtime", runtime)
 	}
 	status = cli.Main(arguments, &out, &errs)
@@ -61,7 +63,7 @@ func TestCommands(t *testing.T) {
 		t.Errorf("the exported page: %s", html)
 	}
 
-	for _, wrong := range [][]string{{"nonsense"}, {"build", "a", "b"}, {"build", "-nonsense"}} {
+	for _, wrong := range [][]string{{"nonsense"}, {"build", "a", "b"}, {"build", "-nonsense"}, {"export", "-check"}, {"serve", "-out", "x"}} {
 		if _, _, status := shugo(t, wrong...); status != 2 {
 			t.Errorf("shugo %v: status %d", wrong, status)
 		}

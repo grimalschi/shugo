@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -24,12 +25,14 @@ import (
 const usage = `shugo builds a static site and shows it.
 
   shugo build  [folder]   compile the project and compute every page
-  shugo update [folder]   bring the site up to date after the data has changed:
-                          with a data database, only what read a changed row
-                          is computed; without one, everything is
+  shugo update [folder]   bring the site up to date: after a change of the data,
+                          only what read a changed row is computed; after a
+                          change of the project, it is compiled again and
+                          every page is computed
   shugo serve  [folder]   show the site, building every page on request
-  shugo export [folder]   write the site as files for any web server
-  shugo dev    [folder]   build, show, and build again whenever a file changes
+  shugo export [folder]   write the site as files for any web server; after the
+                          first time, only what has changed since
+  shugo dev    [folder]   update, show, and update again whenever a file changes
 
 The folder is the project; without it, the current one. Options:
 
@@ -45,6 +48,15 @@ The folder is the project; without it, the current one. Options:
 
 // Store is the file inside the output folder where the computed site is kept.
 const Store = "store.db"
+
+// options are the options every command takes.
+var options = map[string][]string{
+	"build":  {"json", "runtime"},
+	"update": {"json", "check", "runtime"},
+	"serve":  {"addr"},
+	"export": {"json", "out"},
+	"dev":    {"addr", "runtime"},
+}
 
 // Main runs the command and returns its exit status.
 func Main(arguments []string, stdout, stderr io.Writer) int {
@@ -86,6 +98,17 @@ func Main(arguments []string, stdout, stderr io.Writer) int {
 	run := map[string]func() error{"build": c.build, "update": c.update, "serve": c.serve, "export": c.export, "dev": c.dev}[arguments[0]]
 	if run == nil {
 		fmt.Fprintf(stderr, "shugo: there is no command %q\n\n%s", arguments[0], usage)
+		return 2
+	}
+	// An option the command does not use is a mistake, not a wish to ignore.
+	var stray []string
+	flags.Visit(func(f *flag.Flag) {
+		if !slices.Contains(options[arguments[0]], f.Name) {
+			stray = append(stray, "-"+f.Name)
+		}
+	})
+	if len(stray) > 0 {
+		fmt.Fprintf(stderr, "shugo %s does not take %s\n", arguments[0], strings.Join(stray, ", "))
 		return 2
 	}
 	var err error
