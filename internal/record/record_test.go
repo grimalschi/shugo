@@ -7,11 +7,11 @@ import (
 
 func sample() *Record {
 	return &Record{Top: 3, Blocks: []Block{
-		{File: 5, Part: 0, Values: HashOf([]byte("page")), Children: []int{1}},
-		{File: 0, Part: 0, Values: HashOf([]byte("card")), Slots: []Slot{{"default", []int{2}}}},
-		{File: 5, Part: 2, Values: HashOf(nil)},
+		{File: 5, Part: 0, Values: Tape(nil).Append([]byte("page")), Children: []int{1}},
+		{File: 0, Part: 0, Values: Tape(nil).Append([]byte("card")), Slots: []Slot{{"default", []int{2}}}},
+		{File: 5, Part: 2, Values: nil},
 		{Use: true, Shared: 7, Slots: []Slot{{"default", []int{0}}, {"head", []int{4}}}},
-		{File: 5, Part: 1, Values: HashOf([]byte("title"))},
+		{File: 5, Part: 1, Values: Tape(nil).Append([]byte("title")).Append([]byte("x\x00y"))},
 	}}
 }
 

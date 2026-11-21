@@ -7,6 +7,7 @@ import (
 	"io"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -122,7 +123,11 @@ func (l *lab) held() (pages []string) {
 		if err != nil {
 			return err
 		}
-		if err := v.Pages(func(path string, _ []byte) { pages = append(pages, path) }); err != nil {
+		err = v.Pages(0, func(path string, _ []byte) error {
+			pages = append(pages, path)
+			return nil
+		})
+		if err != nil {
 			return err
 		}
 		count := 0
@@ -137,6 +142,39 @@ func (l *lab) held() (pages []string) {
 	if err != nil {
 		l.t.Fatal(err)
 	}
+	return pages
+}
+
+// version returns the version of the store.
+func (l *lab) version() (version int64) {
+	l.t.Helper()
+	err := l.store.View(func(v *store.View) error {
+		mark, err := v.Mark()
+		version = mark.Version
+		return err
+	})
+	if err != nil {
+		l.t.Fatal(err)
+	}
+	return version
+}
+
+// exported returns the pages an export made at version since would build
+// again: those whose HTML has changed after it.
+func (l *lab) exported(since int64) (pages []string) {
+	l.t.Helper()
+	err := l.store.View(func(v *store.View) error {
+		return v.Pages(since, func(path string, record []byte) error {
+			if record != nil {
+				pages = append(pages, path)
+			}
+			return nil
+		})
+	})
+	if err != nil {
+		l.t.Fatal(err)
+	}
+	sort.Strings(pages)
 	return pages
 }
 
@@ -174,7 +212,7 @@ func TestCompute(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Computed.Pages != 2 || report.Pages.Added != 2 || report.Pages.Total != 2 || report.Blocks != 4 || report.Values.Added != 3 || report.Values.Total != 3 || report.Render != 2 {
+	if report.Computed.Pages != 2 || report.Pages.Added != 2 || report.Pages.Total != 2 || report.Blocks != 4 || report.Render != 2 {
 		t.Errorf("report: %+v", report)
 	}
 }
@@ -332,23 +370,31 @@ func TestPartOfTheSite(t *testing.T) {
 		pageWith("/", "home", "card{}"), pageWith("/a", "a", "card{}"), pageRecord("/b", "b"),
 		leafRecord("card{}", "card"),
 	)
-	if first.Pages.Total != 3 || first.Shared.Total != 1 || first.Values.Total != 5 || first.Render != 3 {
+	if first.Pages.Total != 3 || first.Shared.Total != 1 || first.Render != 3 {
 		t.Errorf("first: %+v", first)
 	}
 
 	// Nothing is computed: nothing changes.
 	none := l.must()
-	if none.Pages.Total != 3 || none.Shared.Total != 1 || none.Values.Total != 5 || none.Render != 0 {
+	if none.Pages.Total != 3 || none.Shared.Total != 1 || none.Render != 0 {
 		t.Errorf("nothing computed: %+v", none)
 	}
 
-	// The shared block alone: two pages show it.
+	// The shared block alone: two pages show it, and an export writes them
+	// and no others.
+	before := l.version()
 	card := l.must(leafRecord("card{}", "new card"))
-	if card.Computed.Shared != 1 || card.Shared.Changed != 1 || card.Pages.Changed != 0 || card.Values.Added != 1 || card.Values.Removed != 1 {
+	if card.Computed.Shared != 1 || card.Shared.Changed != 1 || card.Pages.Changed != 0 {
 		t.Errorf("the card: %+v", card)
 	}
 	if want := []string{"/", "/a"}; !reflect.DeepEqual(card.RenderNames, want) {
 		t.Errorf("pages with new HTML: %v, want %v", card.RenderNames, want)
+	}
+	if want, got := []string{"/", "/a"}, l.exported(before); !reflect.DeepEqual(got, want) {
+		t.Errorf("an export builds %v, want %v", got, want)
+	}
+	if got := l.exported(0); len(got) != 3 {
+		t.Errorf("an export from scratch builds %v", got)
 	}
 
 	// The same record again is no change.
@@ -362,15 +408,15 @@ func TestPartOfTheSite(t *testing.T) {
 	if one.Pages.Changed != 1 || one.Shared.Removed != 0 || one.Shared.Total != 1 {
 		t.Errorf("one page lets go: %+v", one)
 	}
-	// "leaf" is used by /a and /b now: dropping /b's use of it keeps it.
+	// Another page takes it up.
 	other := l.must(pageWith("/b", "b", "card{}"))
-	if other.Values.Removed != 0 || other.Values.Total != 5 {
-		t.Errorf("values that another page still has: %+v", other)
+	if other.Pages.Changed != 1 || other.Shared.Total != 1 {
+		t.Errorf("another page shows it: %+v", other)
 	}
 
-	// The last pages let go: the block goes, and its values with it.
+	// The last pages let go: the block goes.
 	last := l.must(pageRecord("/", "home"), pageRecord("/b", "b"))
-	if last.Shared.Removed != 1 || last.Shared.Total != 0 || !reflect.DeepEqual(last.Shared.RemovedNames, []string{"card{}"}) || last.Values.Removed != 1 || last.Values.Total != 4 {
+	if last.Shared.Removed != 1 || last.Shared.Total != 0 || !reflect.DeepEqual(last.Shared.RemovedNames, []string{"card{}"}) {
 		t.Errorf("the last pages let go: %+v", last)
 	}
 }
@@ -382,7 +428,7 @@ func TestRemovedPage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Pages.Removed != 1 || report.Pages.Total != 1 || report.Shared.Removed != 1 || report.Values.Removed != 2 || report.Values.Total != 2 || report.Render != 0 {
+	if report.Pages.Removed != 1 || report.Pages.Total != 1 || report.Shared.Removed != 1 || report.Render != 0 {
 		t.Errorf("%+v", report)
 	}
 	if pages := l.held(); !reflect.DeepEqual(pages, []string{"/a"}) {
@@ -424,8 +470,8 @@ func TestSharedBlockThatShowsItself(t *testing.T) {
 	}
 }
 
-// Records of another compiled project are dropped; values that are computed
-// again as they were are not written again.
+// Records of another compiled project are dropped, and the pages computed
+// again are all written by the next export.
 func TestRecordsOfAnotherProject(t *testing.T) {
 	l := newLab(t)
 	l.must(pageRecord("/", "home"), pageRecord("/gone", "gone"))
@@ -438,8 +484,11 @@ func TestRecordsOfAnotherProject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Pages.Added != 1 || report.Pages.Total != 1 || report.Values.Added != 0 || report.Values.Removed != 1 || report.Values.Total != 2 {
+	if report.Pages.Added != 1 || report.Pages.Total != 1 {
 		t.Errorf("%+v", report)
+	}
+	if pages := l.exported(l.version() - 1); !reflect.DeepEqual(pages, []string{"/"}) {
+		t.Errorf("an export builds %v", pages)
 	}
 }
 

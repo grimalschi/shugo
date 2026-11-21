@@ -138,18 +138,21 @@ func TestServerSeesUpdates(t *testing.T) {
 	}
 }
 
+// export writes the site into the folder out.
+func (s *site) export(out string) server.Exported {
+	s.t.Helper()
+	done, err := server.Export(s.pages, filepath.Join(s.root, project.Public), filepath.Join(s.root, project.Output, compile.Assets), out)
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	return done
+}
+
 func TestExport(t *testing.T) {
 	s := newSite(t, small)
 	s.build()
 	out := filepath.Join(s.root, "dist")
-	export := func() server.Exported {
-		t.Helper()
-		done, err := server.Export(s.pages, filepath.Join(s.root, project.Public), filepath.Join(s.root, project.Output, compile.Assets), out)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return done
-	}
+	export := func() server.Exported { return s.export(out) }
 	// Four pages, two public files and the style sheet.
 	if done := export(); done.Pages != 4 || done.Files != 7 || done.Written != 7 {
 		t.Errorf("first export: %+v", done)
@@ -171,6 +174,51 @@ func TestExport(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(out, "café au lait", "index.html")); err == nil {
 		t.Error("the file of the removed page is still there")
+	}
+}
+
+// After a change of the data, an export builds the pages whose HTML may
+// differ, and no others.
+func TestExportAfterUpdate(t *testing.T) {
+	s := newShop(t)
+	s.build()
+	out := filepath.Join(s.root, "dist")
+	if done := s.export(out); done.Pages != 5 || done.Built != 5 || done.Written != 5 {
+		t.Errorf("first export: %+v", done)
+	}
+	if done := s.export(out); done.Built != 0 || done.Written != 0 {
+		t.Errorf("an export with nothing new: %+v", done)
+	}
+
+	// The cup has its own page, and its card is on the main page and on
+	// the page of the jug.
+	s.sql(`UPDATE products SET price = 6 WHERE slug = 'cup'`)
+	s.update()
+	if done := s.export(out); done.Pages != 5 || done.Built != 3 || done.Written != 3 || done.Removed != 0 {
+		t.Errorf("after a new price: %+v", done)
+	}
+	if jug, err := os.ReadFile(filepath.Join(out, "products", "jug", "index.html")); err != nil || !strings.Contains(string(jug), "Cup — 6") {
+		t.Errorf("the page of the jug: %s %v", jug, err)
+	}
+
+	// The header counts the products, so a product that goes changes every
+	// page, and its own is removed.
+	s.sql(`DELETE FROM related WHERE other = 'tray'`)
+	s.sql(`DELETE FROM products WHERE slug = 'tray'`)
+	s.update()
+	if done := s.export(out); done.Pages != 4 || done.Built != 4 || done.Removed != 1 {
+		t.Errorf("after a product is gone: %+v", done)
+	}
+
+	// Another store says nothing about what is written: every page is
+	// built, and only what differs is written.
+	other := newShop(t)
+	other.build()
+	if done := other.export(out); done.Built != 5 || done.Written != 5 || done.Removed != 0 {
+		t.Errorf("from another store: %+v", done)
+	}
+	if done := s.export(out); done.Built != 4 || done.Written != 4 || done.Removed != 1 {
+		t.Errorf("back from another store: %+v", done)
 	}
 }
 

@@ -139,7 +139,10 @@ func (s *site) addresses() []string {
 	s.t.Helper()
 	var out []string
 	err := s.store.View(func(v *store.View) error {
-		return v.Pages(func(path string, _ []byte) { out = append(out, path) })
+		return v.Pages(0, func(path string, _ []byte) error {
+			out = append(out, path)
+			return nil
+		})
 	})
 	if err != nil {
 		s.t.Fatal(err)
@@ -290,7 +293,6 @@ func (s *site) run(options evaluate.Options) (*evaluate.Report, error) {
 	if err != nil {
 		s.t.Fatal(err)
 	}
-	defer s.pages.Refresh()
 	options.Log = &s.printed
 	return evaluate.Run(p, compiled, s.store, options)
 }

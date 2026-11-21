@@ -214,7 +214,7 @@ func (c *command) print(report any, words func() string) error {
 // summary says in a few lines what an update did.
 func summary(verb string, r *evaluate.Report) string {
 	var out strings.Builder
-	fmt.Fprintf(&out, "%s in %.0f ms: %d pages, %d shared blocks, %d values", verb, r.Time["total"], r.Pages.Total, r.Shared.Total, r.Values.Total)
+	fmt.Fprintf(&out, "%s in %.0f ms: %d pages, %d shared blocks", verb, r.Time["total"], r.Pages.Total, r.Shared.Total)
 	fmt.Fprintf(&out, "\n  computed %d pages and %d shared blocks, %d blocks in all", r.Computed.Pages, r.Computed.Shared, r.Blocks)
 	if r.Data != nil && !r.Data.Whole {
 		fmt.Fprintf(&out, "\n  %d rows of the data have changed", r.Data.Rows)
@@ -294,8 +294,8 @@ func (c *command) export() error {
 		return err
 	}
 	return c.print(done, func() string {
-		return fmt.Sprintf("exported to %s in %.0f ms: %d pages, %d files; %d written, %d removed",
-			out, float64(time.Since(started).Microseconds())/1000, done.Pages, done.Files, done.Written, done.Removed)
+		return fmt.Sprintf("exported to %s in %.0f ms: %d pages, %d of them built; %d files, %d written, %d removed",
+			out, float64(time.Since(started).Microseconds())/1000, done.Pages, done.Built, done.Files, done.Written, done.Removed)
 	})
 }
 

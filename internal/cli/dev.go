@@ -52,7 +52,6 @@ func (c *command) dev() error {
 			c.report(err)
 			return
 		}
-		pages.Refresh()
 		live.Reload()
 	}
 	build(true)

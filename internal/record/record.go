@@ -1,7 +1,8 @@
 // Package record is what the runtime keeps for one page or for one shared
-// block: its blocks, each naming its template, its values and the blocks
-// shown inside it. A record holds no values itself: values are kept by their
-// content, so that equal ones are kept once however many blocks have them.
+// block: its blocks, each with its template, the values of its expressions
+// and the blocks shown inside it. A record holds everything a page needs but
+// the shared blocks it shows, so a page is read with one lookup and one more
+// for every shared block on it.
 package record
 
 import (
@@ -11,12 +12,13 @@ import (
 	"fmt"
 )
 
-// Hash names the values of a block by their content.
+// Hash names a record by its content: two records that hash alike are the
+// same, and an update writes only a record whose hash has changed.
 type Hash [16]byte
 
-// HashOf returns the name of values.
-func HashOf(values []byte) Hash {
-	sum := sha256.Sum256(values)
+// HashOf returns the hash of an encoded record.
+func HashOf(data []byte) Hash {
+	sum := sha256.Sum256(data)
 	return Hash(sum[:16])
 }
 
@@ -35,9 +37,43 @@ type Block struct {
 	Shared int64
 
 	File, Part int   // the template: a file and a part of it
-	Values     Hash  // the values of its expressions, in the order of the template
+	Values     Tape  // the values of its expressions, in the order of the template
 	Children   []int // the components it shows, in the order it reaches them
 	Slots      []Slot
+}
+
+// Tape is the values of a block one after another: each is its length in
+// bytes, written as a varint, and then the bytes. A value may hold any byte.
+type Tape []byte
+
+// Append adds a value to the end of the tape.
+func (t Tape) Append(value []byte) Tape {
+	t = binary.AppendUvarint(t, uint64(len(value)))
+	return append(t, value...)
+}
+
+// Next returns the first value of the tape and the tape after it; ok is
+// false when the tape is empty or damaged.
+func (t Tape) Next() (value []byte, rest Tape, ok bool) {
+	size, n := binary.Uvarint(t)
+	if n <= 0 || uint64(len(t)-n) < size {
+		return nil, t, false
+	}
+	return t[n : n+int(size)], t[n+int(size):], true
+}
+
+// Strings returns the values of the tape as texts.
+func (t Tape) Strings() []string {
+	var out []string
+	for len(t) > 0 {
+		value, rest, ok := t.Next()
+		if !ok {
+			break
+		}
+		out = append(out, string(value))
+		t = rest
+	}
+	return out
 }
 
 // Slot is what was put into one slot of a component: blocks of the same record.
@@ -70,7 +106,8 @@ func (r *Record) Encode() []byte {
 		} else {
 			out = binary.AppendUvarint(out, uint64(b.File)+1)
 			out = binary.AppendUvarint(out, uint64(b.Part))
-			out = append(out, b.Values[:]...)
+			out = binary.AppendUvarint(out, uint64(len(b.Values)))
+			out = append(out, b.Values...)
 			out = appendList(out, b.Children)
 		}
 		out = binary.AppendUvarint(out, uint64(len(b.Slots)))
@@ -93,7 +130,9 @@ func appendList(out []byte, list []int) []byte {
 
 var errDamaged = errors.New("record: damaged data")
 
-// Decode reads what Encode wrote. It never trusts a length it reads.
+// Decode reads what Encode wrote. It never trusts a length it reads. The
+// values of the blocks stay in data: data must not change while the record
+// is in use.
 func Decode(data []byte) (*Record, error) {
 	d := decoder{data: data}
 	r := &Record{Top: d.number()}
@@ -108,7 +147,9 @@ func Decode(data []byte) (*Record, error) {
 			b.Use, b.Shared = true, int64(d.number())
 		} else {
 			b.File, b.Part = file-1, d.number()
-			copy(b.Values[:], d.bytes(len(b.Values)))
+			if values := d.bytes(d.number()); len(values) > 0 {
+				b.Values = values
+			}
 			b.Children = d.list(count)
 		}
 		if slots := d.number(); slots > 0 && slots <= len(d.data) {

@@ -1,13 +1,12 @@
 // Package store keeps what the runtime shows pages from: the program of the
-// site, the record of every page and of every shared block, and the values
-// of blocks by their content. All of it is one SQLite file, so that a server
-// reads one consistent state while an update writes the next one.
+// site and the record of every page and of every shared block, with the
+// values of its blocks inside. All of it is one SQLite file, so that a
+// server reads one consistent state while an update writes the next one.
 //
 // The store also knows who shows what: which pages and shared blocks show a
-// shared block, and how many records use the values kept under a name. An
-// update that computed a part of the site can therefore say on which pages
-// the HTML differs and drop what nothing shows any more, without reading
-// the rest.
+// shared block. An update that computed a part of the site can therefore say
+// on which pages the HTML differs and drop what nothing shows any more,
+// without reading the rest.
 //
 // And it knows who read what from the data database of the project: see
 // Read. A row of the data that has changed finds there the pages and shared
@@ -16,10 +15,12 @@ package store
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"errors"
 	"fmt"
 	"net/url"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -30,13 +31,13 @@ import (
 
 // layout names the set of tables below. A store laid out in another way is
 // emptied: it holds nothing that a build cannot make again.
-const layout = "4"
+const layout = "5"
 
 const schema = `
 CREATE TABLE meta   (name TEXT PRIMARY KEY, value BLOB NOT NULL) WITHOUT ROWID;
 CREATE TABLE page   (path TEXT PRIMARY KEY, hash BLOB NOT NULL, record BLOB NOT NULL, route INTEGER NOT NULL, reads BLOB NOT NULL) WITHOUT ROWID;
+CREATE TABLE changed (path TEXT PRIMARY KEY, version INTEGER NOT NULL) WITHOUT ROWID;
 CREATE TABLE shared (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, hash BLOB NOT NULL, record BLOB NOT NULL, reads BLOB NOT NULL);
-CREATE TABLE value  (hash BLOB PRIMARY KEY, data BLOB NOT NULL, uses INTEGER NOT NULL) WITHOUT ROWID;
 CREATE TABLE shows  (shared INTEGER NOT NULL, user TEXT NOT NULL, PRIMARY KEY (shared, user)) WITHOUT ROWID;
 CREATE TABLE route  (id INTEGER PRIMARY KEY, props INTEGER NOT NULL, reads BLOB NOT NULL);
 CREATE TABLE shape  (id INTEGER PRIMARY KEY, spec TEXT NOT NULL UNIQUE);
@@ -45,8 +46,9 @@ CREATE TABLE plan   (question TEXT PRIMARY KEY) WITHOUT ROWID;
 CREATE INDEX page_route ON page (route);
 `
 
-// tables are the tables of the schema.
-var tables = []string{"meta", "page", "shared", "value", "shows", "route", "shape", "reads", "plan"}
+// tables are the tables a store may hold: those of the schema, and those of
+// layouts before it that it has no more.
+var tables = []string{"meta", "page", "changed", "shared", "shows", "route", "shape", "reads", "plan", "value"}
 
 // Store is an open store.
 type Store struct {
@@ -55,22 +57,37 @@ type Store struct {
 	// start, so that two updates go one after the other and neither fails
 	// halfway for the other's sake.
 	read, write *sql.DB
-	reads       [2]queries // the statements of reading, for either connection
+	// readers are connections of reading, each with its statements ready:
+	// a page is read with a few lookups by key, and preparing them anew for
+	// every read would cost more than the lookups.
+	readers chan *pooled
+	opened  chan struct{} // a token for every connection that may still be opened
+	writes  queries       // the statements of reading, for the connection of writing
+}
+
+// pooled is a connection of reading with its statements.
+type pooled struct {
+	conn *sql.Conn
+	queries
 }
 
 // queries are the statements that read one thing by its key.
-type queries struct{ meta, page, shared, value, users, readers *sql.Stmt }
+type queries struct{ meta, page, shared, users, readers *sql.Stmt }
 
-func prepare(db *sql.DB) (q queries, err error) {
+// preparer is a connection or a pool of them that statements are prepared on.
+type preparer interface {
+	PrepareContext(ctx context.Context, query string) (*sql.Stmt, error)
+}
+
+func prepare(db preparer) (q queries, err error) {
 	for statement, query := range map[**sql.Stmt]string{
 		&q.meta:    "SELECT value FROM meta WHERE name = ?",
 		&q.page:    "SELECT record FROM page WHERE path = ?",
 		&q.shared:  "SELECT record FROM shared WHERE id = ?",
-		&q.value:   "SELECT data FROM value WHERE hash = ?",
 		&q.users:   "SELECT user FROM shows WHERE shared = ?",
 		&q.readers: "SELECT reader FROM reads WHERE shape = ? AND key = ?",
 	} {
-		if *statement, err = db.Prepare(query); err != nil {
+		if *statement, err = db.PrepareContext(context.Background(), query); err != nil {
 			return q, err
 		}
 	}
@@ -79,8 +96,8 @@ func prepare(db *sql.DB) (q queries, err error) {
 
 // Open opens the store at path and creates it if it is not there.
 func Open(path string) (*Store, error) {
-	open := func(lock string) (*sql.DB, error) {
-		options := url.Values{"_pragma": {"busy_timeout(10000)", "journal_mode(WAL)", "synchronous(NORMAL)"}, "_txlock": {lock}}
+	open := func(lock string, pragmas ...string) (*sql.DB, error) {
+		options := url.Values{"_pragma": append([]string{"busy_timeout(10000)", "journal_mode(WAL)", "synchronous(NORMAL)"}, pragmas...), "_txlock": {lock}}
 		return sql.Open("sqlite", "file:"+path+"?"+options.Encode())
 	}
 	s := &Store{}
@@ -93,15 +110,20 @@ func Open(path string) (*Store, error) {
 		s.write.Close()
 		return nil, fmt.Errorf("store %s: %w", path, err)
 	}
-	if s.read, err = open("deferred"); err != nil {
+	if s.writes, err = prepare(s.write); err != nil {
 		s.write.Close()
 		return nil, err
 	}
-	for i, db := range []*sql.DB{s.read, s.write} {
-		if s.reads[i], err = prepare(db); err != nil {
-			s.Close()
-			return nil, err
-		}
+	// Reading maps the file into memory: SQLite then reads its pages where
+	// the system keeps them, without copying them in first.
+	if s.read, err = open("deferred", "mmap_size(1073741824)"); err != nil {
+		s.write.Close()
+		return nil, err
+	}
+	readers := 2 * runtime.GOMAXPROCS(0)
+	s.readers, s.opened = make(chan *pooled, readers), make(chan struct{}, readers)
+	for range readers {
+		s.opened <- struct{}{}
 	}
 	return s, nil
 }
@@ -137,29 +159,79 @@ func lay(db *sql.DB) error {
 	if _, err := tx.Exec("INSERT INTO meta (name, value) VALUES (?, ?)", metaLayout, []byte(layout)); err != nil {
 		return err
 	}
+	if _, err := tx.Exec("INSERT INTO meta (name, value) VALUES (?, ?)", metaStore, []byte(rand.Text())); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
 // Close closes the store.
 func (s *Store) Close() error {
-	return errors.Join(s.read.Close(), s.write.Close())
+	var errs []error
+	for drained := false; !drained; {
+		select {
+		case p := <-s.readers:
+			errs = append(errs, p.conn.Close())
+		default:
+			drained = true
+		}
+	}
+	return errors.Join(append(errs, s.read.Close(), s.write.Close())...)
+}
+
+// reading takes a connection of reading: a free one, a new one while there
+// may be more, or the next one that is let go.
+func (s *Store) reading() (*pooled, error) {
+	select {
+	case p := <-s.readers:
+		return p, nil
+	default:
+	}
+	select {
+	case p := <-s.readers:
+		return p, nil
+	case <-s.opened:
+		conn, err := s.read.Conn(context.Background())
+		if err != nil {
+			s.opened <- struct{}{}
+			return nil, err
+		}
+		q, err := prepare(conn)
+		if err != nil {
+			conn.Close()
+			s.opened <- struct{}{}
+			return nil, err
+		}
+		return &pooled{conn, q}, nil
+	}
 }
 
 // Names of what meta holds.
 const (
 	metaLayout  = "layout"  // how the tables are laid out
+	metaStore   = "store"   // which store this is: chosen at random when the tables are laid out
 	metaBuild   = "build"   // which compiled project the records belong to
 	metaSite    = "site"    // the program of that project
 	metaVersion = "version" // grows with every update
-	metaTotals  = "totals"  // how many pages, shared blocks and values there are
+	metaTotals  = "totals"  // how many pages and shared blocks there are
 	metaData    = "data"    // which state of the data database the records were computed from
 )
 
 // reader reads through one transaction, so everything it returns belongs to
 // one state of the store.
 type reader struct {
-	tx *sql.Tx
+	db querier
 	queries
+}
+
+// querier runs a statement written out: a transaction or a connection in one.
+type querier interface {
+	QueryContext(ctx context.Context, query string, arguments ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, arguments ...any) *sql.Row
+}
+
+func (r *reader) query(text string, arguments ...any) (*sql.Rows, error) {
+	return r.db.QueryContext(context.Background(), text, arguments...)
 }
 
 func (r *reader) blob(statement *sql.Stmt, key any) ([]byte, bool, error) {
@@ -174,22 +246,38 @@ func (r *reader) blob(statement *sql.Stmt, key any) ([]byte, bool, error) {
 // Build returns the name of the compiled project the records were computed
 // by, and its program. The name is empty for a store that holds nothing yet.
 func (r *reader) Build() (id string, site []byte, err error) {
-	build, found, err := r.blob(r.meta, metaBuild)
-	if err != nil || !found {
-		return "", nil, err
+	if id, err = r.BuildID(); err != nil || id == "" {
+		return id, nil, err
 	}
 	site, _, err = r.blob(r.meta, metaSite)
-	return string(build), site, err
+	return id, site, err
 }
 
-// Version returns a number that grows with every update of the store.
-func (r *reader) Version() (int64, error) {
-	var version int64
-	err := r.meta.QueryRow(metaVersion).Scan(&version)
-	if errors.Is(err, sql.ErrNoRows) {
-		return 0, nil
+// BuildID returns the name of the compiled project alone.
+func (r *reader) BuildID() (string, error) {
+	build, _, err := r.blob(r.meta, metaBuild)
+	return string(build), err
+}
+
+// Mark names one state of one store. Versions are counted within a store,
+// and a store laid out anew is another one, even in the same file.
+type Mark struct {
+	Store   string `json:"store"`
+	Version int64  `json:"version"` // grows with every update; 0 before the first
+}
+
+// Mark returns which store this is and its version.
+func (r *reader) Mark() (Mark, error) {
+	store, _, err := r.blob(r.meta, metaStore)
+	if err != nil {
+		return Mark{}, err
 	}
-	return version, err
+	mark := Mark{Store: string(store)}
+	err = r.meta.QueryRow(metaVersion).Scan(&mark.Version)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = nil
+	}
+	return mark, err
 }
 
 // Page returns the record of the page at path.
@@ -202,14 +290,13 @@ func (r *reader) Shared(id int64) (data []byte, found bool, err error) {
 	return r.blob(r.shared, id)
 }
 
-// Values returns the values kept under a name.
-func (r *reader) Values(hash record.Hash) (data []byte, found bool, err error) {
-	return r.blob(r.value, hash[:])
-}
-
-// Pages calls visit with the record of every page.
-func (r *reader) Pages(visit func(path string, record []byte)) error {
-	rows, err := r.tx.Query("SELECT path, record FROM page")
+// Pages calls visit with the address of every page, and with its record if
+// the HTML of the page has changed after version since of the store, nil if
+// not: since 0 gives every record. It stops at the first error of visit.
+func (r *reader) Pages(since int64, visit func(path string, record []byte) error) error {
+	// The records of the other pages are not read at all. A page with no
+	// version is taken to have changed.
+	rows, err := r.query("SELECT page.path, CASE WHEN changed.version <= ? THEN NULL ELSE page.record END FROM page LEFT JOIN changed ON changed.path = page.path", since)
 	if err != nil {
 		return err
 	}
@@ -220,14 +307,16 @@ func (r *reader) Pages(visit func(path string, record []byte)) error {
 		if err := rows.Scan(&path, &data); err != nil {
 			return err
 		}
-		visit(path, data)
+		if err := visit(path, data); err != nil {
+			return err
+		}
 	}
 	return rows.Err()
 }
 
 // SharedBlocks calls visit with the record of every shared block.
 func (r *reader) SharedBlocks(visit func(id int64, record []byte)) error {
-	rows, err := r.tx.Query("SELECT id, record FROM shared")
+	rows, err := r.query("SELECT id, record FROM shared")
 	if err != nil {
 		return err
 	}
@@ -316,7 +405,7 @@ func (r *reader) Readers(shape int64, key []byte, visit func(reader string)) err
 // Plans calls visit with every question the project's code has asked an
 // index for.
 func (r *reader) Plans(visit func(question string)) error {
-	rows, err := r.tx.Query("SELECT question FROM plan")
+	rows, err := r.query("SELECT question FROM plan")
 	if err != nil {
 		return err
 	}
@@ -333,7 +422,7 @@ func (r *reader) Plans(visit func(question string)) error {
 
 // Shapes calls visit with every shape of readings the store knows: see Read.
 func (r *reader) Shapes(visit func(id int64, spec string)) error {
-	rows, err := r.tx.Query("SELECT id, spec FROM shape")
+	rows, err := r.query("SELECT id, spec FROM shape")
 	if err != nil {
 		return err
 	}
@@ -351,7 +440,7 @@ func (r *reader) Shapes(visit func(id int64, spec string)) error {
 
 // RoutePages calls visit with the address of every page a route gave.
 func (r *reader) RoutePages(route int, visit func(path string)) error {
-	rows, err := r.tx.Query("SELECT path FROM page WHERE route = ?", route)
+	rows, err := r.query("SELECT path FROM page WHERE route = ?", route)
 	if err != nil {
 		return err
 	}
@@ -374,7 +463,7 @@ func (r *reader) Data() (string, error) {
 }
 
 // Totals counts what the store holds.
-type Totals struct{ Pages, Shared, Values int }
+type Totals struct{ Pages, Shared int }
 
 // Totals returns how much the store held after its latest update.
 func (r *reader) Totals() (Totals, error) {
@@ -386,24 +475,13 @@ func (r *reader) Totals() (Totals, error) {
 	} else if err != nil {
 		return t, err
 	}
-	_, err = fmt.Sscanf(string(text), "%d %d %d", &t.Pages, &t.Shared, &t.Values)
+	_, err = fmt.Sscanf(string(text), "%d %d", &t.Pages, &t.Shared)
 	return t, err
 }
 
 // within returns statements that run inside a transaction.
 func (q queries) within(tx *sql.Tx) reader {
-	return reader{tx, queries{tx.Stmt(q.meta), tx.Stmt(q.page), tx.Stmt(q.shared), tx.Stmt(q.value), tx.Stmt(q.users), tx.Stmt(q.readers)}}
-}
-
-// Version returns the number of the latest update, as of now.
-func (s *Store) Version() (int64, error) {
-	return (&reader{queries: s.reads[0]}).Version()
-}
-
-// Values returns the values kept under a name, as of now. Values never
-// change under their name; they only go away when no record names them.
-func (s *Store) Values(hash record.Hash) (data []byte, found bool, err error) {
-	return (&reader{queries: s.reads[0]}).Values(hash)
+	return reader{tx, queries{tx.Stmt(q.meta), tx.Stmt(q.page), tx.Stmt(q.shared), tx.Stmt(q.users), tx.Stmt(q.readers)}}
 }
 
 // View is one state of the store being read.
@@ -412,22 +490,36 @@ type View struct{ reader }
 // View runs read with one state of the store: an update that ends meanwhile
 // is not seen by it.
 func (s *Store) View(read func(*View) error) error {
-	tx, err := s.read.BeginTx(context.Background(), &sql.TxOptions{ReadOnly: true})
+	p, err := s.reading()
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
-	return read(&View{s.reads[0].within(tx)})
+	ctx := context.Background()
+	if _, err := p.conn.ExecContext(ctx, "BEGIN"); err != nil {
+		p.conn.Close()
+		s.opened <- struct{}{}
+		return err
+	}
+	err = read(&View{reader{p.conn, p.queries}})
+	if _, done := p.conn.ExecContext(ctx, "ROLLBACK"); done != nil {
+		// A connection in an unknown state is not given out again.
+		p.conn.Close()
+		s.opened <- struct{}{}
+		return errors.Join(err, done)
+	}
+	s.readers <- p
+	return err
 }
 
 // Update is a change of the store being made. Nothing of it is seen by
 // anyone else until Commit, and nothing remains of it after Rollback.
 type Update struct {
 	reader
+	write                                     *sql.Tx
+	number                                    int64 // the version of the store it makes
 	keptPage, named, name, putPage, putShared *sql.Stmt
 	show, unshow, shown                       *sql.Stmt
-	useKept, newValues, dropUses, dropKept    *sql.Stmt
-	read, unread                              *sql.Stmt
+	read, unread, changed                     *sql.Stmt
 }
 
 // Update starts a change. It waits for an update that is under way.
@@ -436,7 +528,13 @@ func (s *Store) Update() (*Update, error) {
 	if err != nil {
 		return nil, err
 	}
-	u := &Update{reader: s.reads[1].within(tx)}
+	u := &Update{reader: s.writes.within(tx), write: tx}
+	mark, err := u.Mark()
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	u.number = mark.Version + 1
 	for statement, query := range map[**sql.Stmt]string{
 		&u.keptPage:  "SELECT hash, route, reads FROM page WHERE path = ?",
 		&u.named:     "SELECT id, hash, reads FROM shared WHERE name = ?",
@@ -448,10 +546,7 @@ func (s *Store) Update() (*Update, error) {
 		&u.show:      "INSERT OR IGNORE INTO shows (shared, user) VALUES (?, ?)",
 		&u.unshow:    "DELETE FROM shows WHERE shared = ? AND user = ?",
 		&u.shown:     "SELECT 1 FROM shows WHERE shared = ? LIMIT 1",
-		&u.useKept:   "UPDATE value SET uses = uses + ? WHERE hash = ?",
-		&u.newValues: "INSERT INTO value (hash, data, uses) VALUES (?, ?, ?)",
-		&u.dropUses:  "UPDATE value SET uses = uses - ? WHERE hash = ?",
-		&u.dropKept:  "DELETE FROM value WHERE hash = ? AND uses <= 0",
+		&u.changed:   "INSERT INTO changed (path, version) VALUES (?, ?) ON CONFLICT (path) DO UPDATE SET version = excluded.version",
 	} {
 		if *statement, err = tx.Prepare(query); err != nil {
 			tx.Rollback()
@@ -484,7 +579,7 @@ func (u *Update) KeptShared() (map[string]Kept, error) {
 }
 
 func (u *Update) each(query string) (map[string]Kept, error) {
-	rows, err := u.tx.Query(query)
+	rows, err := u.write.Query(query)
 	if err != nil {
 		return nil, err
 	}
@@ -549,7 +644,7 @@ func (u *Update) SharedName(id int64) (name string, err error) {
 }
 
 func (u *Update) SharedReads(id int64) (reads []byte, err error) {
-	err = u.tx.QueryRow("SELECT reads FROM shared WHERE id = ?", id).Scan(&reads)
+	err = u.write.QueryRow("SELECT reads FROM shared WHERE id = ?", id).Scan(&reads)
 	return reads, err
 }
 
@@ -563,7 +658,7 @@ func (u *Update) PutPage(path string, hash record.Hash, data []byte, route int, 
 // SetPageReads keeps what a page read and which route gave it, when its
 // record is what it was.
 func (u *Update) SetPageReads(path string, route int, reads []byte) error {
-	_, err := u.tx.Exec("UPDATE page SET route = ?, reads = ? WHERE path = ?", route, orEmpty(reads), path)
+	_, err := u.write.Exec("UPDATE page SET route = ?, reads = ? WHERE path = ?", route, orEmpty(reads), path)
 	return err
 }
 
@@ -578,7 +673,7 @@ func orEmpty(data []byte) []byte {
 // NewShared gives a number to a shared block that the store has not had.
 // Its record follows with PutShared.
 func (u *Update) NewShared(name string) (int64, error) {
-	result, err := u.tx.Exec("INSERT INTO shared (name, hash, record, reads) VALUES (?, x'', x'', x'')", name)
+	result, err := u.write.Exec("INSERT INTO shared (name, hash, record, reads) VALUES (?, x'', x'', x'')", name)
 	if err != nil {
 		return 0, err
 	}
@@ -594,7 +689,7 @@ func (u *Update) PutShared(id int64, hash record.Hash, data []byte, reads []byte
 
 // SetSharedReads keeps what a shared block read, when its record is what it was.
 func (u *Update) SetSharedReads(id int64, reads []byte) error {
-	_, err := u.tx.Exec("UPDATE shared SET reads = ? WHERE id = ?", orEmpty(reads), id)
+	_, err := u.write.Exec("UPDATE shared SET reads = ? WHERE id = ?", orEmpty(reads), id)
 	return err
 }
 
@@ -602,7 +697,7 @@ func (u *Update) SetSharedReads(id int64, reads []byte) error {
 // the route gave its pages more than their addresses, and what the listing
 // read from the data.
 func (u *Update) Route(route int) (props bool, reads []byte, found bool, err error) {
-	err = u.tx.QueryRow("SELECT props, reads FROM route WHERE id = ?", route).Scan(&props, &reads)
+	err = u.write.QueryRow("SELECT props, reads FROM route WHERE id = ?", route).Scan(&props, &reads)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil, false, nil
 	}
@@ -611,7 +706,7 @@ func (u *Update) Route(route int) (props bool, reads []byte, found bool, err err
 
 // PutRoute keeps the same of a route.
 func (u *Update) PutRoute(route int, props bool, reads []byte) error {
-	_, err := u.tx.Exec("INSERT INTO route (id, props, reads) VALUES (?, ?, ?) ON CONFLICT (id) DO UPDATE SET props = excluded.props, reads = excluded.reads", route, props, orEmpty(reads))
+	_, err := u.write.Exec("INSERT INTO route (id, props, reads) VALUES (?, ?, ?) ON CONFLICT (id) DO UPDATE SET props = excluded.props, reads = excluded.reads", route, props, orEmpty(reads))
 	return err
 }
 
@@ -626,17 +721,17 @@ func (u *Update) PutRoute(route int, props bool, reads []byte) error {
 // PutPlan keeps a question the project's code asked an index for; DropPlan
 // forgets one that can no longer be asked.
 func (u *Update) PutPlan(question string) error {
-	_, err := u.tx.Exec("INSERT OR IGNORE INTO plan (question) VALUES (?)", question)
+	_, err := u.write.Exec("INSERT OR IGNORE INTO plan (question) VALUES (?)", question)
 	return err
 }
 
 func (u *Update) DropPlan(question string) error {
-	_, err := u.tx.Exec("DELETE FROM plan WHERE question = ?", question)
+	_, err := u.write.Exec("DELETE FROM plan WHERE question = ?", question)
 	return err
 }
 
 func (u *Update) NewShape(spec string) (int64, error) {
-	result, err := u.tx.Exec("INSERT INTO shape (spec) VALUES (?)", spec)
+	result, err := u.write.Exec("INSERT INTO shape (spec) VALUES (?)", spec)
 	if err != nil {
 		return 0, err
 	}
@@ -656,19 +751,22 @@ func (u *Update) Unread(shape int64, key []byte, reader string) error {
 
 // SetData notes the state of the data database the records were computed from.
 func (u *Update) SetData(state string) error {
-	_, err := u.tx.Exec(put, metaData, []byte(state))
+	_, err := u.write.Exec(put, metaData, []byte(state))
 	return err
 }
 
-// DeletePage and DeleteShared drop a record. What the record showed is told
-// apart with Unshow and DropValues.
+// DeletePage and DeleteShared drop a record. Who no longer shows a shared
+// block is told with Unshow.
 func (u *Update) DeletePage(path string) error {
-	_, err := u.tx.Exec("DELETE FROM page WHERE path = ?", path)
+	if _, err := u.write.Exec("DELETE FROM page WHERE path = ?", path); err != nil {
+		return err
+	}
+	_, err := u.write.Exec("DELETE FROM changed WHERE path = ?", path)
 	return err
 }
 
 func (u *Update) DeleteShared(id int64) error {
-	_, err := u.tx.Exec("DELETE FROM shared WHERE id = ?", id)
+	_, err := u.write.Exec("DELETE FROM shared WHERE id = ?", id)
 	return err
 }
 
@@ -693,95 +791,47 @@ func (u *Update) Shown(shared int64) (bool, error) {
 	return err == nil, err
 }
 
-// UseValues notes that more records use the values kept under a name, and
-// keeps the values if the store did not have them. It tells whether it did
-// not. Many values are kept fastest in the order of their names.
-func (u *Update) UseValues(hash record.Hash, data []byte, more int) (fresh bool, err error) {
-	result, err := u.useKept.Exec(more, hash[:])
-	if err != nil {
-		return false, err
-	}
-	if kept, err := result.RowsAffected(); err != nil || kept > 0 {
-		return false, err
-	}
-	_, err = u.newValues.Exec(hash[:], data, more)
-	return true, err
-}
-
-// DropValues notes that fewer records use the values kept under a name, and
-// drops the values that none uses. It tells whether it dropped them.
-func (u *Update) DropValues(hash record.Hash, fewer int) (gone bool, err error) {
-	result, err := u.dropUses.Exec(fewer, hash[:])
-	if err != nil {
-		return false, err
-	}
-	if kept, err := result.RowsAffected(); err != nil {
-		return false, err
-	} else if kept == 0 {
-		return false, errors.New("store: values that a record names are not kept")
-	}
-	if result, err = u.dropKept.Exec(hash[:]); err != nil {
-		return false, err
-	}
-	dropped, err := result.RowsAffected()
-	return dropped > 0, err
-}
-
 // ClearRecords drops the records of all pages and shared blocks with what
 // they read: those computed by another compiled project say nothing to this
-// one. Values stay, used by nothing: most of them will be computed again as
-// they were.
-// SweepValues drops the rest once the records are back.
+// one.
 func (u *Update) ClearRecords() error {
-	_, err := u.tx.Exec("DELETE FROM page; DELETE FROM shared; DELETE FROM shows; DELETE FROM route; DELETE FROM shape; DELETE FROM reads; DELETE FROM plan; UPDATE value SET uses = 0")
+	_, err := u.write.Exec("DELETE FROM page; DELETE FROM changed; DELETE FROM shared; DELETE FROM shows; DELETE FROM route; DELETE FROM shape; DELETE FROM reads; DELETE FROM plan")
 	return err
-}
-
-// SweepValues drops the values that no record uses after ClearRecords, and
-// tells how many values went and how many are left.
-func (u *Update) SweepValues() (dropped, left int, err error) {
-	result, err := u.tx.Exec("DELETE FROM value WHERE uses = 0")
-	if err != nil {
-		return 0, 0, err
-	}
-	gone, err := result.RowsAffected()
-	if err != nil {
-		return 0, 0, err
-	}
-	err = u.tx.QueryRow("SELECT count(*) FROM value").Scan(&left)
-	return int(gone), left, err
 }
 
 const put = "INSERT INTO meta (name, value) VALUES (?, ?) ON CONFLICT (name) DO UPDATE SET value = excluded.value"
 
 // SetTotals keeps how much the store holds.
 func (u *Update) SetTotals(t Totals) error {
-	_, err := u.tx.Exec(put, metaTotals, fmt.Appendf(nil, "%d %d %d", t.Pages, t.Shared, t.Values))
+	_, err := u.write.Exec(put, metaTotals, fmt.Appendf(nil, "%d %d", t.Pages, t.Shared))
 	return err
 }
 
 // SetBuild names the compiled project the records belong to and keeps its program.
 func (u *Update) SetBuild(id string, site []byte) error {
-	if _, err := u.tx.Exec(put, metaBuild, []byte(id)); err != nil {
+	if _, err := u.write.Exec(put, metaBuild, []byte(id)); err != nil {
 		return err
 	}
-	_, err := u.tx.Exec(put, metaSite, site)
+	_, err := u.write.Exec(put, metaSite, site)
+	return err
+}
+
+// Changed notes that the HTML of a page is other than it was: an export
+// that follows an earlier version builds the page again. It is kept apart
+// from the record, which is not written again for it.
+func (u *Update) Changed(path string) error {
+	_, err := u.changed.Exec(path, u.number)
 	return err
 }
 
 // Commit makes the change, all of it at once.
 func (u *Update) Commit() error {
-	version, err := u.Version()
-	if err != nil {
-		u.tx.Rollback()
+	if _, err := u.write.Exec(put, metaVersion, u.number); err != nil {
+		u.write.Rollback()
 		return err
 	}
-	if _, err := u.tx.Exec(put, metaVersion, version+1); err != nil {
-		u.tx.Rollback()
-		return err
-	}
-	return u.tx.Commit()
+	return u.write.Commit()
 }
 
 // Rollback drops the change. After Commit it does nothing.
-func (u *Update) Rollback() { u.tx.Rollback() }
+func (u *Update) Rollback() { u.write.Rollback() }

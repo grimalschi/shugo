@@ -11,16 +11,7 @@ import (
 
 // memory is a source kept in a test.
 type memory struct {
-	values map[record.Hash][]byte
 	shared map[int64]*record.Record
-}
-
-func (m *memory) Values(hash record.Hash) ([]byte, error) {
-	data, ok := m.values[hash]
-	if !ok {
-		return nil, fmt.Errorf("no values %x", hash)
-	}
-	return data, nil
 }
 
 func (m *memory) Shared(id int64) (*record.Record, error) {
@@ -31,18 +22,13 @@ func (m *memory) Shared(id int64) (*record.Record, error) {
 	return rec, nil
 }
 
-// tape writes values the way the JavaScript side does: each after a zero byte.
-func (m *memory) tape(values ...string) record.Hash {
-	var data []byte
+// tape writes the values of a block.
+func tape(values ...string) record.Tape {
+	var t record.Tape
 	for _, value := range values {
-		data = append(append(data, 0), value...)
+		t = t.Append([]byte(value))
 	}
-	hash := record.HashOf(data)
-	if m.values == nil {
-		m.values = map[record.Hash][]byte{}
-	}
-	m.values[hash] = data
-	return hash
+	return t
 }
 
 func op(kind program.Kind, text string, bodies ...[]program.Op) program.Op {
@@ -76,11 +62,11 @@ var site = &program.Site{Files: []program.File{
 
 // page builds a record of the page with its card and a shared header.
 func page(m *memory, values ...string) *record.Record {
-	m.shared = map[int64]*record.Record{7: {Blocks: []record.Block{{File: 2, Values: m.tape("Shop & Co")}}}}
+	m.shared = map[int64]*record.Record{7: {Blocks: []record.Block{{File: 2, Values: tape("Shop & Co")}}}}
 	return &record.Record{Blocks: []record.Block{
-		{File: 0, Values: m.tape(values...), Children: []int{2, 3}},
-		{File: 0, Part: 1, Values: m.tape("fill")},
-		{File: 1, Values: m.tape("1", "0"), Slots: []record.Slot{{Name: "default", Blocks: []int{1}}}},
+		{File: 0, Values: tape(values...), Children: []int{2, 3}},
+		{File: 0, Part: 1, Values: tape("fill")},
+		{File: 1, Values: tape("1", "0"), Slots: []record.Slot{{Name: "default", Blocks: []int{1}}}},
 		{Use: true, Shared: 7},
 	}}
 }
@@ -105,7 +91,7 @@ func TestSlotFallbackAndMissingFill(t *testing.T) {
 	rec := &record.Record{Blocks: []record.Block{
 		// The card says its default slot is empty and its footer is filled,
 		// and nobody filled the footer: it shows nothing there.
-		{File: 1, Values: m.tape("0", "nothing", "1")},
+		{File: 1, Values: tape("0", "nothing", "1")},
 	}}
 	html, err := Page(nil, site, rec, m)
 	if err != nil || string(html) != "<section>empty:nothing</section>" {
@@ -153,11 +139,11 @@ func TestRecordsThatDoNotFit(t *testing.T) {
 		"an unknown template":   func(_ *memory, rec *record.Record) { rec.Blocks[2].File = 9 },
 		"an unknown part":       func(_ *memory, rec *record.Record) { rec.Blocks[1].Part = 5 },
 		"a lost shared block":   func(m *memory, _ *record.Record) { delete(m.shared, 7) },
-		"lost values":           func(m *memory, rec *record.Record) { delete(m.values, rec.Blocks[1].Values) },
+		"damaged values":        func(_ *memory, rec *record.Record) { rec.Blocks[1].Values = record.Tape{9, 'x'} },
 		"a top out of range":    func(_ *memory, rec *record.Record) { rec.Top = 9 },
 		"a block inside itself": func(_ *memory, rec *record.Record) { rec.Blocks[2].Slots[0].Blocks = []int{2} },
 		"a shared block inside itself": func(m *memory, _ *record.Record) {
-			m.shared[7] = &record.Record{Blocks: []record.Block{{File: 1, Values: m.tape("1", "0"), Slots: nil}, {Use: true, Shared: 7}}, Top: 1}
+			m.shared[7] = &record.Record{Blocks: []record.Block{{File: 1, Values: tape("1", "0"), Slots: nil}, {Use: true, Shared: 7}}, Top: 1}
 		},
 	}
 	for name, damage := range cases {
@@ -175,17 +161,18 @@ func TestCheck(t *testing.T) {
 	rec := page(m, good...)
 	for i := range rec.Blocks {
 		if b := &rec.Blocks[i]; !b.Use {
-			if err := Check(site, b, m.values[b.Values]); err != nil {
+			if err := Check(site, b); err != nil {
 				t.Errorf("block %d: %v", i, err)
 			}
 		}
 	}
-	short := m.values[rec.Blocks[0].Values]
-	if err := Check(site, &rec.Blocks[0], short[:len(short)-12]); err == nil {
+	whole := rec.Blocks[0].Values
+	rec.Blocks[0].Values = whole[:len(whole)-12]
+	if err := Check(site, &rec.Blocks[0]); err == nil {
 		t.Error("values cut short pass the check")
 	}
-	rec.Blocks[0].Children = nil
-	if err := Check(site, &rec.Blocks[0], short); err == nil {
+	rec.Blocks[0].Values, rec.Blocks[0].Children = whole, nil
+	if err := Check(site, &rec.Blocks[0]); err == nil {
 		t.Error("a block without its children passes the check")
 	}
 }

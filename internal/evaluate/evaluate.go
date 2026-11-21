@@ -51,12 +51,6 @@ type Report struct {
 	Blocks int     `json:"blocks"`
 	Pages  Changes `json:"pages"`
 	Shared Changes `json:"shared"`
-	// Values counts the distinct values of blocks that are kept.
-	Values struct {
-		Total   int `json:"total"`
-		Added   int `json:"added"`
-		Removed int `json:"removed"`
-	} `json:"values"`
 	// Render counts the pages whose HTML is not what it was: the pages that
 	// are new or have changed themselves, and the pages that show a shared
 	// block that has. RenderNames are the first of them.

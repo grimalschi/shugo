@@ -16,9 +16,9 @@ import (
 
 // keeper takes the records of the units a run computes and writes to the
 // store those that differ from what it has. It also keeps the store's
-// account of who shows which shared block and which values, and of who read
-// what from the data, so that at the end it can drop what nothing shows any
-// more and tell on which pages the HTML differs.
+// account of who shows which shared block and of who read what from the
+// data, so that at the end it can drop what nothing shows any more and tell
+// on which pages the HTML differs.
 type keeper struct {
 	site   *program.Site
 	update *store.Update
@@ -81,7 +81,6 @@ type keeper struct {
 	reads  readings
 
 	shows   edges
-	values  ledger
 	was, is content
 }
 
@@ -105,16 +104,14 @@ func newKeeper(site *program.Site, u *store.Update, report *Report, limit int) (
 		seenPages: map[string]struct{}{}, seenShared: map[int64]struct{}{}, failed: map[int64]*ScriptError{},
 		met: map[string]met{}, named: map[int64]string{}, asked: map[int64]struct{}{}, blank: map[int64]struct{}{},
 		touched: map[string]bool{}, fresh: map[int64]bool{}, uses: map[int64][]int64{}, loose: map[int64]struct{}{},
-		reads:  readings{update: u},
-		shows:  edges{update: u},
-		values: ledger{update: u, more: map[record.Hash]*addition{}, fewer: map[record.Hash]int{}},
-		was:    content{shared: map[int64]struct{}{}, values: map[record.Hash]int{}},
-		is:     content{shared: map[int64]struct{}{}, values: map[record.Hash]int{}},
+		reads: readings{update: u},
+		shows: edges{update: u},
+		was:   content{},
+		is:    content{},
 	}, nil
 }
 
-// clear drops the records of another compiled project. The values stay:
-// most of them will be computed again as they were.
+// clear drops the records of another compiled project.
 func (k *keeper) clear() error {
 	k.anew, k.totals = true, store.Totals{}
 	return k.update.ClearRecords()
@@ -259,7 +256,6 @@ func (k *keeper) put(data []byte) error {
 	}
 
 	rec := &record.Record{Top: top}
-	var values [][]byte
 	var shows []int64
 	for len(rest) > 0 {
 		if len(rec.Blocks) == maxBlocks {
@@ -267,7 +263,7 @@ func (k *keeper) put(data []byte) error {
 		}
 		var one []byte
 		one, rest, _ = bytes.Cut(rest, []byte{1})
-		block, data, err := k.block(one)
+		block, err := k.block(one)
 		if err != nil {
 			return fmt.Errorf("%s: %w", u, err)
 		}
@@ -275,7 +271,6 @@ func (k *keeper) put(data []byte) error {
 			shows = append(shows, block.Shared)
 		}
 		rec.Blocks = append(rec.Blocks, block)
-		values = append(values, data)
 	}
 	k.report.Blocks += len(rec.Blocks)
 	encoded := rec.Encode()
@@ -320,10 +315,10 @@ func (k *keeper) put(data []byte) error {
 			return err
 		}
 	}
-	if err := k.fits(rec, values); err != nil {
+	if err := k.fits(rec); err != nil {
 		return fmt.Errorf("%s: %w", u, err)
 	}
-	if err := k.change(user, old, rec, values); err != nil {
+	if err := k.change(user, old, rec); err != nil {
 		return fmt.Errorf("%s: %w", u, err)
 	}
 	if u.shared {
@@ -362,17 +357,16 @@ func (k *keeper) noted(changes *Changes, name string, known bool) {
 
 // block reads one block: "b", its file, its part, its children, its slots
 // and its values; or "u", the name of a shared block and what fills its slots.
-func (k *keeper) block(data []byte) (record.Block, []byte, error) {
+func (k *keeper) block(data []byte) (record.Block, error) {
 	fields := bytes.SplitN(data, []byte{2}, 6)
 	var b record.Block
 	var slots []byte
-	var values []byte
 	switch {
 	case len(fields) == 3 && string(fields[0]) == "u":
 		name := string(fields[1])
 		shown, err := k.meet(name)
 		if err != nil {
-			return b, nil, err
+			return b, err
 		}
 		// The run computes a shared block it has met at most once, and one
 		// the store has no record of in any case.
@@ -388,15 +382,18 @@ func (k *keeper) block(data []byte) (record.Block, []byte, error) {
 		b.Part, err2 = strconv.Atoi(string(fields[2]))
 		b.Children, err3 = numbers(fields[3])
 		if err1 != nil || err2 != nil || err3 != nil {
-			return b, nil, errDamaged
+			return b, errDamaged
 		}
 		if _, ok := k.site.Part(b.File, b.Part); !ok {
-			return b, nil, errorf("a block of template %d, part %d, which the site does not have", b.File, b.Part)
+			return b, errorf("a block of template %d, part %d, which the site does not have", b.File, b.Part)
 		}
-		slots, values = fields[4], fields[5]
-		b.Values = record.HashOf(values)
+		values, err := tape(fields[5])
+		if err != nil {
+			return b, err
+		}
+		slots, b.Values = fields[4], values
 	default:
-		return b, nil, errDamaged
+		return b, errDamaged
 	}
 	// Slots are written as name=1,2;other=3.
 	for len(slots) > 0 {
@@ -405,11 +402,40 @@ func (k *keeper) block(data []byte) (record.Block, []byte, error) {
 		name, list, found := bytes.Cut(one, []byte{'='})
 		fills, err := numbers(list)
 		if !found || len(name) == 0 || err != nil {
-			return b, nil, errDamaged
+			return b, errDamaged
 		}
 		b.Slots = append(b.Slots, record.Slot{Name: string(name), Blocks: fills})
 	}
-	return b, values, nil
+	return b, nil
+}
+
+// tape reads the values of a block as the project's code sends them: each
+// after a byte 0. The bytes 0 to 4 inside a value come escaped, as 4 and the
+// byte plus 0x40, for the bytes 0 to 3 split the message.
+func tape(data []byte) (record.Tape, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	if data[0] != 0 {
+		return nil, errDamaged
+	}
+	var out record.Tape
+	var value []byte
+	for _, one := range bytes.Split(data[1:], []byte{0}) {
+		value = value[:0]
+		for i := 0; i < len(one); i++ {
+			if one[i] != 4 {
+				value = append(value, one[i])
+				continue
+			}
+			if i++; i == len(one) || one[i] < 0x40 || one[i] > 0x44 {
+				return nil, errDamaged
+			}
+			value = append(value, one[i]-0x40)
+		}
+		out = out.Append(value)
+	}
+	return out, nil
 }
 
 // numbers reads "1,2,3".
@@ -431,13 +457,13 @@ func numbers(list []byte) ([]int, error) {
 
 // fits tells whether a record can be shown: its blocks make one tree, and
 // the values of every block fit its template.
-func (k *keeper) fits(rec *record.Record, values [][]byte) error {
+func (k *keeper) fits(rec *record.Record) error {
 	if err := rec.Check(); err != nil {
 		return err
 	}
 	for i := range rec.Blocks {
 		if b := &rec.Blocks[i]; !b.Use {
-			if err := render.Check(k.site, b, values[i]); err != nil {
+			if err := render.Check(k.site, b); err != nil {
 				return err
 			}
 		}
@@ -445,32 +471,25 @@ func (k *keeper) fits(rec *record.Record, values [][]byte) error {
 	return nil
 }
 
-// content is what a record shows beside its own markup: shared blocks, and
-// values by their names. A name that several blocks have counts once.
-type content struct {
-	shared map[int64]struct{}
-	values map[record.Hash]int // one of the blocks that have them
-}
+// content is the shared blocks a record shows.
+type content map[int64]struct{}
 
-func (c *content) of(rec *record.Record) {
-	clear(c.shared)
-	clear(c.values)
+func (c content) of(rec *record.Record) {
+	clear(c)
 	if rec == nil {
 		return
 	}
 	for i := range rec.Blocks {
 		if b := &rec.Blocks[i]; b.Use {
-			c.shared[b.Shared] = struct{}{}
-		} else {
-			c.values[b.Values] = i
+			c[b.Shared] = struct{}{}
 		}
 	}
 }
 
 // change notes what a page or a shared block shows now in place of what it
 // showed. old is its record as the store has it, now the one that replaces
-// it with the values of its blocks; either may be missing.
-func (k *keeper) change(user string, old []byte, now *record.Record, values [][]byte) error {
+// it; either may be missing.
+func (k *keeper) change(user string, old []byte, now *record.Record) error {
 	var before *record.Record
 	if len(old) > 0 {
 		var err error
@@ -480,27 +499,15 @@ func (k *keeper) change(user string, old []byte, now *record.Record, values [][]
 	}
 	k.was.of(before)
 	k.is.of(now)
-	for id := range k.is.shared {
-		if _, kept := k.was.shared[id]; !kept {
+	for id := range k.is {
+		if _, kept := k.was[id]; !kept {
 			k.shows.list = append(k.shows.list, edge{id, user, true})
 		}
 	}
-	for id := range k.was.shared {
-		if _, kept := k.is.shared[id]; !kept {
+	for id := range k.was {
+		if _, kept := k.is[id]; !kept {
 			k.shows.list = append(k.shows.list, edge{id, user, false})
 			k.loose[id] = struct{}{}
-		}
-	}
-	for hash, at := range k.is.values {
-		if _, kept := k.was.values[hash]; !kept {
-			if err := k.values.use(hash, values[at]); err != nil {
-				return err
-			}
-		}
-	}
-	for hash := range k.was.values {
-		if _, kept := k.is.values[hash]; !kept {
-			k.values.drop(hash)
 		}
 	}
 	return nil
@@ -516,7 +523,7 @@ func (k *keeper) remove(path string) error {
 	if err != nil {
 		return err
 	}
-	if err := k.change(store.PageUser(path), old, nil, nil); err != nil {
+	if err := k.change(store.PageUser(path), old, nil); err != nil {
 		return fmt.Errorf("the page %s: %w", path, err)
 	}
 	if _, _, err := k.read(store.PageUser(path), kept.Reads, nil); err != nil {
@@ -526,8 +533,8 @@ func (k *keeper) remove(path string) error {
 	return k.update.DeletePage(path)
 }
 
-// finish settles the accounts of the run: it drops the shared blocks and
-// the values nothing shows any more, and tells what the update came to.
+// finish settles the accounts of the run: it drops the shared blocks that
+// nothing shows any more, and tells what the update came to.
 func (k *keeper) finish() error {
 	if err := k.loops(); err != nil {
 		return err
@@ -549,25 +556,10 @@ func (k *keeper) finish() error {
 	if err := k.reads.settle(); err != nil {
 		return err
 	}
-	if err := k.values.settle(); err != nil {
-		return err
-	}
 	r := k.report
-	r.Values.Added, r.Values.Removed = k.values.added, k.values.removed
 	k.totals.Pages += r.Pages.Added - r.Pages.Removed
 	k.totals.Shared += r.Shared.Added - r.Shared.Removed
-	k.totals.Values += r.Values.Added - r.Values.Removed
-	if k.anew {
-		// The values of the project compiled before stayed while the
-		// records were computed anew; those nothing took again go now.
-		dropped, left, err := k.update.SweepValues()
-		if err != nil {
-			return err
-		}
-		r.Values.Removed += dropped
-		k.totals.Values = left
-	}
-	r.Pages.Total, r.Shared.Total, r.Values.Total = k.totals.Pages, k.totals.Shared, k.totals.Values
+	r.Pages.Total, r.Shared.Total = k.totals.Pages, k.totals.Shared
 	if err := k.update.SetTotals(k.totals); err != nil {
 		return err
 	}
@@ -698,7 +690,7 @@ func (k *keeper) sweep() error {
 				continue
 			}
 			name := k.name(id)
-			if err := k.change(store.SharedUser(id), old, nil, nil); err != nil {
+			if err := k.change(store.SharedUser(id), old, nil); err != nil {
 				return fmt.Errorf("the shared block %s: %w", name, err)
 			}
 			reads, err := k.update.SharedReads(id)
@@ -754,6 +746,12 @@ func (k *keeper) rendered() error {
 		k.report.RenderNames = append(k.report.RenderNames, path)
 	}
 	sort.Strings(k.report.RenderNames)
+	// An export writes these pages again, and no others.
+	for _, path := range k.report.RenderNames {
+		if err := k.update.Changed(path); err != nil {
+			return err
+		}
+	}
 	if len(k.report.RenderNames) > k.limit {
 		k.report.RenderNames = k.report.RenderNames[:k.limit]
 	}
@@ -795,83 +793,6 @@ func (e *edges) settle() error {
 		}
 	}
 	e.list = e.list[:0]
-	return nil
-}
-
-// ledger counts how the uses of values change during a run. It tells the
-// store at the end, or earlier when it holds a lot of values to keep.
-type ledger struct {
-	update *store.Update
-	more   map[record.Hash]*addition
-	fewer  map[record.Hash]int
-	held   int // bytes of values waiting to be kept
-
-	added, removed int
-}
-
-// addition is values that more records use now.
-type addition struct {
-	data  []byte
-	count int
-}
-
-// enough is how many bytes of values the ledger holds before it tells the store.
-const enough = 64 << 20
-
-func (l *ledger) use(hash record.Hash, data []byte) error {
-	if a, held := l.more[hash]; held {
-		a.count++
-		return nil
-	}
-	// The data belongs to a message that is read over.
-	l.more[hash] = &addition{bytes.Clone(data), 1}
-	if l.held += len(data); l.held > enough {
-		return l.flush()
-	}
-	return nil
-}
-
-func (l *ledger) drop(hash record.Hash) { l.fewer[hash]++ }
-
-// flush keeps the values held so far, in the order of their names: the
-// store takes them several times faster that way.
-func (l *ledger) flush() error {
-	names := make([]record.Hash, 0, len(l.more))
-	for hash := range l.more {
-		names = append(names, hash)
-	}
-	sort.Slice(names, func(a, b int) bool { return bytes.Compare(names[a][:], names[b][:]) < 0 })
-	for _, hash := range names {
-		a := l.more[hash]
-		fresh, err := l.update.UseValues(hash, a.data, a.count)
-		if err != nil {
-			return err
-		}
-		if fresh {
-			l.added++
-		}
-	}
-	clear(l.more)
-	l.held = 0
-	return nil
-}
-
-// settle tells the store everything. Uses that came go first, so that
-// values which changed hands are never dropped in between.
-func (l *ledger) settle() error {
-	if err := l.flush(); err != nil {
-		return err
-	}
-	for hash, count := range l.fewer {
-		gone, err := l.update.DropValues(hash, count)
-		if err != nil {
-			return err
-		}
-		if gone {
-			l.removed++
-		}
-	}
-	clear(l.fewer)
 	return nil
 }
 
