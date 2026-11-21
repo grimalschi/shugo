@@ -5,39 +5,109 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Inside Shugo</title>
 <style>
-  /* Colours come from the theme of bb when the page is shown there, and fall back to plain ones. */
-  body { font: 15px/1.55 var(--font-sans, system-ui, -apple-system, "Segoe UI", sans-serif); margin: 0; color: var(--foreground, #1d1d1f); }
+  /* Colours. By default the page follows the theme of bb when it is shown
+     there, and the light or dark setting of the system elsewhere. The
+     buttons at the top choose a theme by hand. */
+  :root {
+    color-scheme: light dark;
+    --c-bg: var(--background, #ffffff);
+    --c-fg: var(--foreground, #1d1d1f);
+    --c-card: var(--card, #ffffff);
+    --c-border: var(--border, #e2e2e6);
+    --c-head: var(--muted, #f0f0f3);
+    --c-dim: var(--muted-foreground, #5f6068);
+    --c-link: var(--brand, #0b57d0);
+    --c-add: var(--diff-added, rgba(40, 167, 69, 0.16));
+    --c-del: var(--diff-removed, rgba(220, 53, 69, 0.16));
+    /* These work on either background. */
+    --c-op: #d97706;
+    --c-val: rgba(245, 158, 11, 0.26);
+    --c-pill: rgba(99, 102, 241, 0.18);
+    --c-target: #f59e0b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) {
+      --c-bg: var(--background, #141518);
+      --c-fg: var(--foreground, #e4e4e7);
+      --c-card: var(--card, #1c1d21);
+      --c-border: var(--border, #30323a);
+      --c-head: var(--muted, #25272d);
+      --c-dim: var(--muted-foreground, #9a9ba3);
+      --c-link: var(--brand, #7aa7ff);
+      --c-add: var(--diff-added, rgba(46, 160, 67, 0.28));
+      --c-del: var(--diff-removed, rgba(248, 81, 73, 0.28));
+    }
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --c-bg: #ffffff; --c-fg: #1d1d1f; --c-card: #ffffff; --c-border: #e2e2e6; --c-head: #f0f0f3;
+    --c-dim: #5f6068; --c-link: #0b57d0; --c-add: rgba(40, 167, 69, 0.16); --c-del: rgba(220, 53, 69, 0.16);
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --c-bg: #141518; --c-fg: #e4e4e7; --c-card: #1c1d21; --c-border: #30323a; --c-head: #25272d;
+    --c-dim: #9a9ba3; --c-link: #7aa7ff; --c-add: rgba(46, 160, 67, 0.28); --c-del: rgba(248, 81, 73, 0.28);
+  }
+
+  body { font: 15px/1.55 var(--font-sans, system-ui, -apple-system, "Segoe UI", sans-serif); margin: 0; color: var(--c-fg); background: var(--c-bg); }
   .wrap { max-width: 1320px; margin: 0 auto; padding: 0 clamp(0px, 2vw, 32px) 120px; }
   h1 { font-size: 28px; margin: 8px 0 4px; }
-  h2 { margin-top: 56px; padding-bottom: 6px; border-bottom: 2px solid var(--border, #d9d9de); }
+  h2 { margin-top: 56px; padding-bottom: 6px; border-bottom: 2px solid var(--c-border); }
   h3 { margin-top: 32px; }
   h4 { margin: 18px 0 6px; }
   pre, code, .mono { font: 12.5px/1.45 var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
-  pre { background: var(--card, #fff); border: 1px solid var(--border, #e2e2e6); border-radius: 6px; padding: 10px 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; margin: 6px 0 14px; }
-  table { border-collapse: collapse; width: 100%; margin: 6px 0 16px; background: var(--card, #fff); }
-  th, td { border: 1px solid var(--border, #e2e2e6); padding: 4px 8px; text-align: left; vertical-align: top; word-break: break-word; }
-  th { background: var(--muted, #f0f0f3); font-weight: 600; }
+  pre { background: var(--c-card); border: 1px solid var(--c-border); border-radius: 6px; padding: 10px 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; margin: 6px 0 14px; }
+  table { border-collapse: collapse; width: 100%; margin: 6px 0 16px; background: var(--c-card); }
+  th, td { border: 1px solid var(--c-border); padding: 4px 8px; text-align: left; vertical-align: top; word-break: break-word; }
+  th { background: var(--c-head); font-weight: 600; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
-  .card { background: var(--card, #fff); border: 1px solid var(--border, #e2e2e6); border-radius: var(--radius, 10px); padding: 12px 18px; margin: 16px 0; }
-  .note { color: var(--muted-foreground, #555); }
-  .pill { display: inline-block; padding: 0 8px; margin-right: 4px; border-radius: 10px; background: rgba(90, 110, 255, 0.14); font-size: 12px; }
-  .op { display: inline-block; min-width: 1.4em; font-weight: 700; color: #b45f00; }
-  .val { background: rgba(255, 196, 0, 0.28); padding: 0 3px; border-radius: 3px; }
-  .n { color: var(--muted-foreground, #888); font-size: 12px; }
-  .add { background: var(--diff-added, rgba(40, 167, 69, 0.15)); }
-  .del { background: var(--diff-removed, rgba(220, 53, 69, 0.15)); }
-  .skip { color: var(--muted-foreground, #aaa); }
-  :target { outline: 3px solid #ffb000; outline-offset: 2px; }
+  .card { background: var(--c-card); border: 1px solid var(--c-border); border-radius: var(--radius, 10px); padding: 12px 18px; margin: 16px 0; }
+  .card pre, .card table { background: var(--c-bg); }
+  .note { color: var(--c-dim); }
+  .pill { display: inline-block; padding: 0 8px; margin-right: 4px; border-radius: 10px; background: var(--c-pill); font-size: 12px; }
+  .op { display: inline-block; min-width: 1.4em; font-weight: 700; color: var(--c-op); }
+  .val { background: var(--c-val); padding: 0 3px; border-radius: 3px; }
+  .n { color: var(--c-dim); font-size: 12px; }
+  .add { background: var(--c-add); }
+  .del { background: var(--c-del); }
+  .skip { color: var(--c-dim); }
+  :target { outline: 3px solid var(--c-target); outline-offset: 2px; }
   details > summary { cursor: pointer; font-weight: 600; margin: 6px 0; }
   nav ol { columns: 2; }
-  a { color: var(--brand, #0b57d0); text-decoration: none; } a:hover { text-decoration: underline; }
+  a { color: var(--c-link); text-decoration: none; } a:hover { text-decoration: underline; }
   .terms dt { font-weight: 700; margin-top: 8px; }
   .terms dd { margin-left: 18px; }
+  .themes { float: right; margin-top: 12px; display: flex; gap: 0; border: 1px solid var(--c-border); border-radius: 8px; overflow: hidden; }
+  .themes button { font: inherit; font-size: 13px; padding: 3px 10px; border: 0; background: var(--c-card); color: var(--c-fg); cursor: pointer; }
+  .themes button + button { border-left: 1px solid var(--c-border); }
+  .themes button[aria-pressed="true"] { background: var(--c-head); font-weight: 600; }
 </style>
 </head>
 <body><div class="wrap">
 
+<div class="themes" role="group" aria-label="Theme">
+  <button type="button" data-choose="auto" title="Use BB's theme, or follow the system outside BB">Auto</button>
+  <button type="button" data-choose="light">Light</button>
+  <button type="button" data-choose="dark">Dark</button>
+</div>
+<script>
+  // The chosen theme is kept where the page may keep it; inside bb it may not.
+  (() => {
+    const root = document.documentElement;
+    const key = "shugo-inside-theme";
+    const choose = (theme) => {
+      if (theme === "auto") delete root.dataset.theme;
+      else root.dataset.theme = theme;
+      for (const button of document.querySelectorAll(".themes button")) button.setAttribute("aria-pressed", String(button.dataset.choose === theme));
+      try { localStorage.setItem(key, theme); } catch {}
+    };
+    let saved = "auto";
+    try { saved = localStorage.getItem(key) || "auto"; } catch {}
+    choose(saved);
+    for (const button of document.querySelectorAll(".themes button")) button.addEventListener("click", () => choose(button.dataset.choose));
+  })();
+</script>
 <h1>Inside Shugo</h1>
 <p class="note">This project goes through compilation, an initial build, and five data changes, each followed by an update. The report captures intermediate data from that run. This is the fifth trial, on the <code>lab/inside</code> branch.</p>
 <p class="note">To reproduce: <code>go build -o bin/shugo ./cmd/shugo && go run ./cmd/inside examples/inside</code>. The example project is <code>examples/inside</code>. To customize the data changes, edit <code>examples/inside/data/steps.json</code>.</p>
