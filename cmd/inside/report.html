@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inside Shugo</title>
+<style>
+  /* Colours. By default the page follows the theme of bb when it is shown
+     there, and the light or dark setting of the system elsewhere. The
+     buttons at the top choose a theme by hand. */
+  :root {
+    color-scheme: light dark;
+    --c-bg: var(--background, #ffffff);
+    --c-fg: var(--foreground, #1d1d1f);
+    --c-card: var(--card, #ffffff);
+    --c-border: var(--border, #e2e2e6);
+    --c-head: var(--muted, #f0f0f3);
+    --c-dim: var(--muted-foreground, #5f6068);
+    --c-link: var(--brand, #0b57d0);
+    /* These work on either background. */
+    --c-add: rgba(46, 160, 67, 0.17);
+    --c-del: rgba(220, 53, 69, 0.16);
+    --c-op: #d97706;
+    --c-val: rgba(245, 158, 11, 0.26);
+    --c-pill: rgba(99, 102, 241, 0.18);
+    --c-target: #f59e0b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) {
+      --c-bg: var(--background, #141518);
+      --c-fg: var(--foreground, #e4e4e7);
+      --c-card: var(--card, #1c1d21);
+      --c-border: var(--border, #30323a);
+      --c-head: var(--muted, #25272d);
+      --c-dim: var(--muted-foreground, #9a9ba3);
+      --c-link: var(--brand, #7aa7ff);
+    }
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --c-bg: #ffffff; --c-fg: #1d1d1f; --c-card: #ffffff; --c-border: #e2e2e6; --c-head: #f0f0f3;
+    --c-dim: #5f6068; --c-link: #0b57d0;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --c-bg: #141518; --c-fg: #e4e4e7; --c-card: #1c1d21; --c-border: #30323a; --c-head: #25272d;
+    --c-dim: #9a9ba3; --c-link: #7aa7ff;
+  }
+
+  body { font: 15px/1.55 var(--font-sans, system-ui, -apple-system, "Segoe UI", sans-serif); margin: 0; color: var(--c-fg); background: var(--c-bg); }
+  .wrap { max-width: 1320px; margin: 0 auto; padding: 0 clamp(0px, 2vw, 32px) 120px; }
+  h1 { font-size: 28px; margin: 8px 0 4px; }
+  h2 { margin-top: 56px; padding-bottom: 6px; border-bottom: 2px solid var(--c-border); }
+  h3 { margin-top: 32px; }
+  h4 { margin: 18px 0 6px; }
+  pre, code, .mono { font: 12.5px/1.45 var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
+  pre { background: var(--c-card); border: 1px solid var(--c-border); border-radius: 6px; padding: 10px 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; margin: 6px 0 14px; }
+  table { border-collapse: collapse; width: 100%; margin: 6px 0 16px; background: var(--c-card); }
+  th, td { border: 1px solid var(--c-border); padding: 4px 8px; text-align: left; vertical-align: top; overflow-wrap: break-word; }
+  td.mono, td .mono { overflow-wrap: anywhere; }
+  td.v { overflow-wrap: normal; }   /* a value of the data breaks between words only */
+  .scroll { overflow-x: auto; }
+  tr.readers td { font-size: 13px; background: var(--c-head); padding-left: 18px; }
+  td.pre { white-space: pre-wrap; }                      /* markup keeps its lines */
+  th { background: var(--c-head); font-weight: 600; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--c-card); border: 1px solid var(--c-border); border-radius: var(--radius, 10px); padding: 12px 18px; margin: 16px 0; }
+  .card pre, .card table { background: var(--c-bg); }
+  .note { color: var(--c-dim); }
+  .pill { display: inline-block; padding: 0 8px; margin-right: 4px; border-radius: 10px; background: var(--c-pill); font-size: 12px; }
+  .op { display: inline-block; min-width: 1.4em; font-weight: 700; color: var(--c-op); }
+  .val { background: var(--c-val); padding: 0 3px; border-radius: 3px; }
+  .n { color: var(--c-dim); font-size: 12px; }
+  .add { background: var(--c-add); }
+  .del { background: var(--c-del); }
+  .skip { color: var(--c-dim); }
+  :target { outline: 3px solid var(--c-target); outline-offset: 2px; }
+  details > summary { cursor: pointer; font-weight: 600; margin: 6px 0; }
+  nav ol { columns: 2; }
+  a { color: var(--c-link); text-decoration: none; } a:hover { text-decoration: underline; }
+  .terms dt { font-weight: 700; margin-top: 8px; }
+  .terms dd { margin-left: 18px; }
+  .sep { display: inline-block; font: 10px/1 var(--font-mono, ui-monospace, monospace); padding: 1px 3px; margin: 0 1px; border-radius: 3px; background: var(--c-pill); color: var(--c-dim); vertical-align: 1px; }
+  .themes { float: right; margin-top: 12px; display: flex; gap: 0; border: 1px solid var(--c-border); border-radius: 8px; overflow: hidden; }
+  .themes button { font: inherit; font-size: 13px; padding: 3px 10px; border: 0; background: var(--c-card); color: var(--c-fg); cursor: pointer; }
+  .themes button + button { border-left: 1px solid var(--c-border); }
+  .themes button[aria-pressed="true"] { background: var(--c-head); font-weight: 600; }
+</style>
+</head>
+<body><div class="wrap">
+
+<div class="themes" role="group" aria-label="Theme">
+  <button type="button" data-choose="auto" title="Use BB's theme, or follow the system outside BB">Auto</button>
+  <button type="button" data-choose="light">Light</button>
+  <button type="button" data-choose="dark">Dark</button>
+</div>
+<script>
+  // The chosen theme is kept where the page may keep it; inside bb it may not.
+  (() => {
+    const root = document.documentElement;
+    const key = "shugo-inside-theme";
+    const choose = (theme) => {
+      if (theme === "auto") delete root.dataset.theme;
+      else root.dataset.theme = theme;
+      for (const button of document.querySelectorAll(".themes button")) button.setAttribute("aria-pressed", String(button.dataset.choose === theme));
+      try { localStorage.setItem(key, theme); } catch {}
+    };
+    let saved = "auto";
+    try { saved = localStorage.getItem(key) || "auto"; } catch {}
+    choose(saved);
+    for (const button of document.querySelectorAll(".themes button")) button.addEventListener("click", () => choose(button.dataset.choose));
+  })();
+</script>
+<h1>Inside Shugo</h1>
+<p class="note">This project goes through compilation, an initial build, and five data changes, each followed by an update. The report captures intermediate data from that run. This is the fifth trial, on the <code>lab/inside</code> branch.</p>
+<p class="note">To reproduce: <code>go build -o bin/shugo ./cmd/shugo && go run ./cmd/inside examples/inside</code>. The example project is <code>examples/inside</code>. To customize the data changes, edit <code>examples/inside/data/steps.json</code>.</p>
+
+<nav class="card"><b>Contents</b>
+<ol>
+  <li><a href="#map">Architecture and terminology</a></li>
+  <li><a href="#project">Project</a></li>
+  <li><a href="#compile">Compilation: JS and template programs</a></li>
+  <li><a href="#data">Project data and journal</a></li>
+  <li><a href="#talk">First build: the Go and JS exchange</a></li>
+  <li><a href="#store">Store after the build</a></li>
+  <li><a href="#story">A page from record to HTML</a></li>
+  <li><a href="#steps">Data changes and updates</a></li>
+  <li><a href="#proposal">Proposal: values inside records</a></li>
+</ol></nav>
+
+<h2 id="map">Architecture and terminology</h2>
+<pre>
+ project source files                  project data: data/site.db
+ pages/*.shugo, components/*.shugo     tables + change journal (maintained by Shugo triggers)
+        │                                         │
+        ▼  shugo build: compilation (Go)         │
+ _build/eval.mjs   — JS: data code and expressions  │
+ _build/site.json  — program: template markup      │
+        │                                         │
+        ▼  computation: Go directs, JS computes  │
+ Go ⇄ JS: “list pages”, “compute these” ◄───┘ JS reads data through Shugo.query
+        │   JS returns records and reads
+        ▼
+ _build/store.db — store: page and shared block records, value tapes,
+        │          reads (which rows each reader selected), program
+        ▼  shugo serve / shugo export
+ Page HTML: Go reads the template program and inserts values from the tapes
+
+ shugo update: journal → changed rows → affected readers → recompute those readers
+</pre>
+<dl class="terms card">
+  <dt>Template program</dt><dd>A list of operations representing the template markup with placeholders for values. Each file has one, stored in <code>_build/site.json</code> and in the store.</dd>
+  <dt>File JS module</dt><dd>A function the compiler generates from the <code>.shugo</code>file. It runs the data code and writes each expression's value in order. The modules are bundled in <code>_build/eval.mjs</code>.</dd>
+  <dt>Block</dt><dd>One rendering of a template: a page, layout, component, or markup passed into a slot.</dd>
+  <dt>Value tape</dt><dd>The expression values for a block, in order. Identical tapes share one entry keyed by their content hash.</dd>
+  <dt>Record</dt><dd>All the blocks for a page or shared block. Each records its template, value tape, nested blocks, and slots.</dd>
+  <dt>Shared block</dt><dd>A component called with plain props. It is computed once for the site and stored by name. Pages reference it by number.</dd>
+  <dt>Reader</dt><dd>A page, shared block, or route page list that read project data.</dd>
+  <dt>Read shape</dt><dd>A table, the columns used to look up rows, and the columns whose changes matter. For example, a lookup on variants by product that tracks position, stock, and title.</dd>
+  <dt>Read</dt><dd>A read shape and its lookup values, such as variants where product = p1. A row affects a read if the row matches or previously matched those values and was inserted, deleted, or changed in a relevant column.</dd>
+  <dt>Journal</dt><dd>The <code>_shugo_journal</code> table in the project database records which rows changed and their earlier values.</dd>
+</dl>
+
+<h2 id="project">1. Project</h2>
+<p class="note">The shop has three products in two categories. It has a product page, a category page, a home page, and a layout with a header. The header and product card are shared blocks. The product variant is a regular component.</p>
+{{range .Files}}
+<details {{if eq .Path "pages/products/[slug].shugo"}}open{{end}}><summary>{{.Path}}</summary><pre>{{.Source}}</pre></details>
+{{end}}
+<details><summary>data/seed.sql — seed data</summary><pre>{{.Seed}}</pre></details>
+
+<h2 id="compile">2. Compilation: JS and template programs</h2>
+<p>For each <code>.shugo</code> file, the compiler produces two things. <b>The JS module</b> runs the data code and records each expression's value as it renders the template. Each call to <code>$$.text</code>, <code>$$.attr</code>, <code>$$.branch</code>, <code>$$.loop</code>/<code>$$.count</code>, <code>$$.slot</code> adds a value to the block's tape. <b>Program</b> represents the same markup, with each expression replaced by an operation that takes the next value from the tape. The compiler emits both in one pass, keeping them in the same order.</p>
+<p class="note">This JS comes from the built <code>_build/eval.mjs</code> ({{.Compiled.Bundle}} bytes). Imports have already been resolved, producing names like <code>ProductCard_default</code>.</p>
+{{range .Files}}{{if ge .Number 0}}
+<div class="card" id="{{anchor "file" .Path}}">
+  <h3>{{.Path}}</h3>
+  <p><span class="pill">file {{.Number}}</span>{{if .Shared}}<span class="pill">eligible for a shared block</span>{{else}}<span class="pill">renders in place</span>{{end}}{{if .Slots}}<span class="pill">slots: {{join .Slots ", "}}</span>{{end}}</p>
+  <div class="grid">
+    <div><h4>Source</h4><pre>{{.Source}}</pre></div>
+    <div><h4>JS that evaluates expressions</h4><pre>{{.Module}}</pre></div>
+  </div>
+  <h4>Program</h4>
+  {{range .Parts}}
+  <p class="note">Part {{.Number}}{{if eq .Number 0}} — the template itself{{else}} — markup inside a tag passed to a component or layout slot{{end}}.</p>
+  <table><tr><th style="width:5em">Operation</th><th style="width:12em">Meaning</th><th>Text</th><th style="width:9em">Uses a tape value</th></tr>
+  {{range .Ops}}<tr><td style="{{pad .Depth}}"><span class="op">{{.Code}}</span></td><td>{{.Name}}</td><td class="mono pre">{{visible .Text}}</td><td>{{if .Slots}}one value{{end}}</td></tr>{{end}}
+  </table>
+  {{end}}
+</div>
+{{end}}{{end}}
+<h3>Files without templates</h3>
+{{range .Files}}{{if and (lt .Number 0) (ne .Path "shugo.json")}}<p><b>{{.Path}}</b> — regular TypeScript; bundled as:</p><pre>{{.Module}}</pre>{{end}}{{end}}
+<h3>Routes</h3>
+<table><tr><th>№</th><th>URL</th><th>Page file</th><th>Outer layouts</th></tr>
+{{range $i, $r := .Compiled.Site.Routes}}<tr id="route-{{$i}}"><td>{{$i}}</td><td class="mono">{{$r.Pattern}}</td><td>{{(index $.Compiled.Site.Files $r.File).Path}}</td><td>{{range $r.Layouts}}{{(index $.Compiled.Site.Files .).Path}} {{end}}</td></tr>{{end}}
+</table>
+<details><summary>Full _build/site.json — project program</summary><pre>{{.Compiled.Raw}}</pre></details>
+
+<h2 id="data">3. Project data and journal</h2>
+<p>The project database is <code>data/site.db</code>. Pages read it through <code>Shugo.query</code>. The right column shows each row's readers after the first build. Updates use those reads to identify what a changed row affects.</p>
+{{$store := .Build.Look.Store}}
+{{range .Build.Look.Data.Tables}}{{$t := .}}
+<h3>{{.Name}} <span class="n">key: {{.Key}}</span></h3>
+<div class="scroll"><table><tr>{{range .Columns}}<th>{{.}}</th>{{end}}</tr>
+{{range .Rows}}<tr id="row-{{$t.Name}}-{{number .Key}}">{{range .Values}}<td class="mono v">{{shown .}}</td>{{end}}</tr>
+<tr class="readers"><td colspan="{{len $t.Columns}}"><span class="n">Readers of this row:</span>
+  {{range $store.ReadersOf $t .}}<div><a href="#shape-{{.Shape.ID}}">shape {{.Shape.ID}}</a>: {{if .Shape.By}}rows where {{join .Shape.By ", "}} = {{key .Key}}{{else}}all rows in the table{{end}}{{if .Shape.Columns}}; relevant columns: {{join .Shape.Columns ", "}}{{end}} → {{range .Readers}}{{reader .}}; {{end}}</div>{{else}}none{{end}}
+</td></tr>{{end}}
+</table></div>
+{{end}}
+<h3>What Shugo added to the database</h3>
+<p>Triggers on each table journal row inserts, changes, and deletes, along with the prior values. A write that changes nothing produces no journal entry.</p>
+{{range .Build.Look.Data.Triggers}}<details><summary class="mono">{{.Name}}</summary><pre>{{.SQL}}</pre></details>{{end}}
+<h4>Indexes Shugo built for project queries</h4>
+<table><tr><th>Name</th><th>SQL</th></tr>{{range .Build.Look.Data.Indexes}}<tr><td class="mono">{{.Name}}</td><td class="mono">{{.SQL}}</td></tr>{{end}}</table>
+<h4>_shugo_meta</h4>
+<table>{{range .Build.Look.Data.Settings}}<tr><td class="mono">{{.Name}}</td><td class="mono">{{.Value}}</td></tr>{{end}}</table>
+<p class="note">Journal after the first build: {{len .Build.Look.Data.Journal}} rows. Seed data was loaded before the triggers existed. The first build computes everything.</p>
+
+<h2 id="talk">4. First build: Go requests and JS responses</h2>
+<p>Go decides what to compute. JS runs the project code and returns records. This division supports updates because Go tracks what changed and what the store already contains. The first build uses the same process, so it runs in several rounds.</p>
+<ul>
+  <li><b>Rounds by level.</b> Go discovers a shared block when a record references it. A page renders a card, for example, or a layout renders a header. Go checks the store and requests any missing blocks in the next round. A first build starts with pages, then processes their shared blocks and any further dependencies.</li>
+  <li><b>Indexes on demand.</b> The first time JS runs a query, it asks Go for an index and waits for a reply. Go alone writes to the database. The store remembers indexed queries, so Go tells JS at startup which indexes are ready.</li>
+</ul>
+{{template "rounds" .Build.Rounds}}
+<details><summary>Full messages recorded by tap.sh</summary>
+<p class="note">Each message contains its length, a code, and a body. The labels show the separator bytes by code: <span class="sep">00</span> precedes each value on the tape, <span class="sep">01</span> separates blocks in a record, <span class="sep">02</span> separates fields, and <span class="sep">03</span> separates records. Each side is recorded in order. The sequence across both sides is unavailable.</p>
+<div class="grid">
+<div><h4>Go → JS</h4><table><tr><th>Code</th><th>Meaning</th><th>Body</th></tr>{{range .Build.Requests}}<tr><td class="mono">{{.Kind}}</td><td>{{sep .Meaning}}</td><td class="mono">{{sep .Body}}</td></tr>{{end}}</table></div>
+<div><h4>JS → Go</h4><table><tr><th>Code</th><th>Meaning</th><th>Body</th></tr>{{range .Build.Answers}}<tr><td class="mono">{{.Kind}}</td><td>{{sep .Meaning}}</td><td class="mono">{{if eq .Kind "R"}}Records: {{len .Records}}, {{.Size}} bytes — see below{{else}}{{sep .Body}}{{end}}</td></tr>{{end}}</table></div>
+</div>
+{{range .Build.Answers}}{{if eq .Kind "R"}}<p><b>R</b> — {{.Size}} bytes</p><pre>{{sep .Body}}</pre>{{end}}{{end}}
+</details>
+{{range .Build.Answers}}{{range .Records}}{{if eq (index .Fields 1) "/products/jug"}}
+<h3>One record as sent by JS: /products/jug</h3>
+<pre>{{sep .Raw}}</pre>
+<table>
+<tr><th>Header field</th><th>value</th><th>Meaning</th></tr>
+<tr><td>1</td><td class="mono">{{index .Fields 0}}</td><td>p means page and s means shared block</td></tr>
+<tr><td>2</td><td class="mono">{{index .Fields 1}}</td><td>Page URL</td></tr>
+<tr><td>3</td><td class="mono">{{index .Fields 2}}</td><td>Route number</td></tr>
+<tr><td>4</td><td class="mono">{{index .Fields 3}}</td><td>Starting block for the page, which is the outer layout</td></tr>
+<tr><td>5</td><td class="mono">{{index .Fields 4}}</td><td>Reads in sequence: a shape ID from this exchange's S messages, then its lookup values</td></tr>
+</table>
+<table><tr><th>Block</th><th>Fields</th></tr>
+{{range $i, $b := .Blocks}}<tr><td>{{$i}}</td><td class="mono">{{range $j, $f := $b}}{{if $j}} │ {{end}}{{sep $f}}{{end}}</td></tr>{{end}}
+</table>
+<p class="note">Block <code>b</code>: file │ part │ nested blocks │ slots │ value tape. Block <code>u</code>: shared block reference by name │ slots. Go resolves the name to an ID, hashes the value tape, and verifies that the tape matches the template program.</p>
+{{end}}{{end}}{{end}}
+
+<h2 id="store">5. Store after the build</h2>
+<p>The store is <code>_build/store.db</code>. The server serves pages from this store.</p>
+<h3>meta</h3>
+<table>{{range .Build.Look.Store.Meta}}<tr><td class="mono">{{.Name}}</td><td class="mono">{{.Value}}</td></tr>{{end}}</table>
+<p class="note"><code>data</code> is the journal name and the last journal row reflected in the store. <code>version</code> increases with every update. <code>totals</code> counts pages, shared blocks, and value tapes.</p>
+
+<h3>page — page records</h3>
+{{range .Build.Look.Store.Pages}}{{$p := .}}
+<div class="card" id="{{anchor "page" .Path}}">
+<h4>{{.Path}} <span class="n">route {{.Route}}, record {{len .Raw}} bytes, hash {{short .Hash}}</span></h4>
+<table><tr><th>Block</th><th>Template or shared block</th><th>Value tape</th><th>Nested blocks</th><th>Slots</th></tr>
+{{range $i, $b := .Record.Blocks}}<tr><td>{{$i}}{{if eq $i $p.Record.Top}} <span class="pill">root</span>{{end}}</td>
+<td>{{if $b.Use}}<a href="#shared-{{$b.Shared}}">shared block {{$b.Shared}}</a> <span class="n">{{$store.SharedName $b.Shared}}</span>{{else}}{{(index $.Compiled.Site.Files $b.File).Path}}, part {{$b.Part}}{{end}}</td>
+<td>{{if not $b.Use}}<a href="#value-{{hexOf $b.Values}}" class="mono">{{short (hexOf $b.Values)}}</a>{{end}}</td>
+<td>{{range $b.Children}}{{.}} {{end}}</td><td>{{range $b.Slots}}{{.Name}} = {{range .Blocks}}{{.}} {{end}}; {{end}}</td></tr>{{end}}
+</table>
+<p><b>Reads:</b></p>
+<ul>{{range .Readings}}{{$sh := $store.Shape .Shape}}<li><a href="#shape-{{.Shape}}">shape {{.Shape}}</a>: rows in <b>{{$sh.Table}}</b>{{if $sh.By}}, where {{join $sh.By ", "}} = <span class="mono">{{key .Key}}</span>{{else}} — all rows{{end}}{{if $sh.Columns}}; relevant columns: {{join $sh.Columns ", "}}{{end}}. Matching rows now: {{range $.Build.Look.RowsOf $sh .Key}}<a href="#row-{{$sh.Table}}-{{.}}" class="mono">{{.}}</a> {{else}}none{{end}}</li>{{end}}</ul>
+</div>
+{{end}}
+
+<h3>shared — shared blocks</h3>
+{{range .Build.Look.Store.Shared}}{{$s := .}}
+<div class="card" id="shared-{{.ID}}">
+<h4>{{.ID}}: {{.Name}} <span class="n">record {{len .Raw}} bytes</span></h4>
+<p>Rendered by: {{range $store.Users .ID}}{{reader .}}; {{end}}</p>
+<table><tr><th>Block</th><th>Template or shared block</th><th>Value tape</th><th>Nested blocks</th></tr>
+{{range $i, $b := .Record.Blocks}}<tr><td>{{$i}}</td><td>{{if $b.Use}}<a href="#shared-{{$b.Shared}}">shared block {{$b.Shared}}</a>{{else}}{{(index $.Compiled.Site.Files $b.File).Path}}, part {{$b.Part}}{{end}}</td><td>{{if not $b.Use}}<a href="#value-{{hexOf $b.Values}}" class="mono">{{short (hexOf $b.Values)}}</a>{{end}}</td><td>{{range $b.Children}}{{.}} {{end}}</td></tr>{{end}}
+</table>
+<p><b>Reads:</b></p>
+<ul>{{range .Readings}}{{$sh := $store.Shape .Shape}}<li><a href="#shape-{{.Shape}}">shape {{.Shape}}</a>: rows in <b>{{$sh.Table}}</b>{{if $sh.By}}, where {{join $sh.By ", "}} = <span class="mono">{{key .Key}}</span>{{else}} — all rows{{end}}{{if $sh.Columns}}; relevant columns: {{join $sh.Columns ", "}}{{end}}. Matching rows now: {{range $.Build.Look.RowsOf $sh .Key}}<a href="#row-{{$sh.Table}}-{{.}}" class="mono">{{.}}</a> {{else}}none{{end}}</li>{{end}}</ul>
+</div>
+{{end}}
+
+<h3>route — page lists by route</h3>
+<table><tr><th>route</th><th>Supplies props</th><th>Reads</th></tr>
+{{range .Build.Look.Store.Routes}}<tr><td>{{.ID}}</td><td>{{.Props}}</td><td>{{range .Readings}}{{$sh := $store.Shape .Shape}}<div><a href="#shape-{{.Shape}}">shape {{.Shape}}</a>: {{$sh.Table}}{{if $sh.By}} where {{join $sh.By ", "}} = {{key .Key}}{{end}}; relevant columns: {{join $sh.Columns ", "}}</div>{{end}}</td></tr>{{end}}
+</table>
+
+<h3>value — value tapes</h3>
+<p class="note">The value tape is keyed by its content hash. <code>uses</code> counts the records that refer to the tape. A tape is removed when its last reference disappears.</p>
+<table><tr><th>Hash</th><th>uses</th><th>Values in order</th></tr>
+{{range .Build.Look.Store.Values}}<tr id="value-{{hexOf .Hash}}"><td class="mono">{{short (hexOf .Hash)}}</td><td>{{.Uses}}</td><td class="mono">{{range $i, $v := .Values}}<span class="n">{{add $i 1}}</span>&nbsp;<span class="val">{{visible $v}}</span> {{end}}</td></tr>{{end}}
+</table>
+
+<h3>shape — read shapes</h3>
+<table><tr><th>shape</th><th>Table</th><th>Lookup columns</th><th>Other relevant columns</th><th>As sent by JS</th></tr>
+{{range .Build.Look.Store.Shapes}}<tr id="shape-{{.ID}}"><td>{{.ID}}</td><td>{{.Table}}</td><td>{{join .By ", "}}</td><td>{{join .Columns ", "}}</td><td class="mono">{{.Spec}}</td></tr>{{end}}
+</table>
+
+<h3>reads — reads indexed for lookup</h3>
+<p class="note">These are the same reads stored with the readers, indexed by shape, lookup values, and reader. Go finds every reader of a changed row with one lookup per shape.</p>
+<table><tr><th>shape</th><th>Lookup values</th><th>Reader</th></tr>
+{{range .Build.Look.Store.Reads}}<tr><td><a href="#shape-{{.Shape}}">{{.Shape}}</a></td><td class="mono">{{key .Key}}</td><td>{{reader .Reader}}</td></tr>{{end}}
+</table>
+
+<h3>shows — what renders each shared block</h3>
+<table><tr><th>shared block</th><th>Renders</th></tr>
+{{range .Build.Look.Store.Shows}}<tr><td><a href="#shared-{{.Shared}}">{{.Shared}}</a> <span class="n">{{$store.SharedName .Shared}}</span></td><td>{{reader .User}}</td></tr>{{end}}
+</table>
+
+<h2 id="story">6. A page from record to HTML</h2>
+<p>Page <b>{{.Story.Path}}</b>. The server loads the page record and starts at the root block. For each block, it follows the template program, copying markup and taking the next value from the tape for each expression. The tables below show which operations consume which values.</p>
+{{range .Story.Blocks}}
+<div class="card"><h4>Block {{.Index}}: {{if .Use}}reference to <a href="#shared-{{.Shared}}">shared block {{.Shared}}</a> {{.SharedName}}{{else}}{{.File}}, part {{.Part}}, value tape <a href="#value-{{.Hash}}" class="mono">{{short .Hash}}</a>{{end}}</h4>
+{{if .Slots}}<p class="note">Slots filled in this block: {{join .Slots "; "}}</p>{{end}}
+{{if .Walk}}<table><tr><th style="width:4em">Op.</th><th>What it does</th><th style="width:4em">Tape index</th><th>value</th></tr>
+{{range .Walk}}<tr><td style="{{pad .Depth}}"><span class="op">{{.Op}}</span></td><td>{{.What}}{{if .Link}} <a href="#{{.Link}}">→</a>{{end}}</td><td>{{if .Slot}}{{.Slot}}{{end}}</td><td class="mono pre">{{if .Slot}}<span class="val">{{visible .Value}}</span>{{else}}{{visible .Value}}{{end}}</td></tr>{{end}}
+</table>{{end}}
+{{if .Error}}<p class="del">{{.Error}}</p>{{end}}
+</div>
+{{end}}
+<h3>Shared blocks rendered by this page</h3>
+{{range .Story.Shared}}
+<div class="card"><h4>Shared block {{.ID}}: {{.Name}}</h4>
+{{range .Blocks}}{{if not .Use}}
+<p class="note">Block {{.Index}}: {{.File}}, part {{.Part}}, value tape <a href="#value-{{.Hash}}" class="mono">{{short .Hash}}</a></p>
+<table><tr><th style="width:4em">Op.</th><th>What it does</th><th style="width:4em">Tape index</th><th>value</th></tr>
+{{range .Walk}}<tr><td style="{{pad .Depth}}"><span class="op">{{.Op}}</span></td><td>{{.What}}{{if .Link}} <a href="#{{.Link}}">→</a>{{end}}</td><td>{{if .Slot}}{{.Slot}}{{end}}</td><td class="mono pre">{{if .Slot}}<span class="val">{{visible .Value}}</span>{{else}}{{visible .Value}}{{end}}</td></tr>{{end}}
+</table>{{else}}<p class="note">Block {{.Index}}: reference to <a href="#shared-{{.Shared}}">shared block {{.Shared}}</a></p>{{end}}{{end}}
+</div>
+{{end}}
+<h3>Rendered HTML</h3>
+<pre>{{.Story.HTML}}</pre>
+<h3>Page record byte by byte</h3>
+<p class="note">The record is stored in <code>page.record</code>. Numbers use varints, so a small number takes one byte. The record contains the value tape's hash.</p>
+<table><tr><th style="width:4em">Offset</th><th style="width:30em">Bytes</th><th>Meaning</th></tr>
+{{range .Story.Bytes}}<tr><td>{{.Offset}}</td><td class="mono">{{.Hex}}</td><td>{{sep .Meaning}}</td></tr>{{end}}
+</table>
+
+<h2 id="steps">7. Data changes and updates</h2>
+<p>Each change runs SQL against the project database, as a data ingestion program would. Then the report runs <code>shugo update</code>.</p>
+{{range .Steps}}{{$step := .}}
+<div class="card" id="step-{{.Number}}">
+<h3>{{.Number}}. {{.Plan.Title}}</h3>
+<p class="note">{{.Plan.Why}}</p>
+<pre>{{join .Plan.SQL ";\n"}};</pre>
+
+<h4>Journal: rows after {{.Position}}. Earlier rows are already reflected in the store.</h4>
+{{if .Journal}}<table><tr><th>seq</th><th>Table</th><th>Row key</th><th>Previous row (old)</th></tr>
+{{range .Journal}}<tr><td>{{.Seq}}</td><td>{{.Table}}</td><td class="mono">{{shown .Key}}</td><td class="mono">{{if .Old}}{{.Old}}{{else}}NULL — row did not exist{{end}}</td></tr>{{end}}
+</table>{{else}}<p>The journal is empty because the write changed nothing.</p>{{end}}
+
+<h4>Before and after: the first journal row shows the previous values, and the table shows the current values</h4>
+{{if .Changes}}{{range .Changes}}
+<table><tr><th style="width:9em">{{.Table}}, {{shown .Key}}</th><th>Row</th></tr>
+<tr><td>Before</td><td class="mono">{{rowOf .Old .Columns}}</td></tr>
+<tr><td>After</td><td class="mono">{{rowOf .New .Columns}}</td></tr>
+<tr><td>Changed columns</td><td><b>{{join .Changed ", "}}</b></td></tr>
+</table>
+<p><b>Affected readers:</b></p>
+<table><tr><th style="width:30%">Read shape</th><th style="width:14%">Lookup values</th><th>Reason</th><th style="width:26%">Readers to recompute</th></tr>
+{{range .Hits}}<tr class="add"><td><a href="#shape-{{.Shape.ID}}">shape {{.Shape.ID}}</a>: {{.Shape.Table}}{{if .Shape.By}} by {{join .Shape.By ", "}}{{else}}, all rows{{end}}{{if .Shape.Columns}}; relevant columns: {{join .Shape.Columns ", "}}{{end}}</td><td class="mono">{{key .Key}}</td><td>{{.Why}}</td><td>{{range .Readers}}{{reader .}}; {{end}}</td></tr>{{end}}
+{{range .Misses}}<tr class="skip"><td><a href="#shape-{{.Shape.ID}}">shape {{.Shape.ID}}</a>: {{.Shape.Table}}{{if .Shape.By}} by {{join .Shape.By ", "}}{{else}}, all rows{{end}}{{if .Shape.Columns}}; relevant columns: {{join .Shape.Columns ", "}}{{end}}</td><td></td><td>unaffected: {{.Why}}</td><td></td></tr>{{end}}
+</table>
+{{end}}{{else}}<p>No rows changed, so there is nothing to compute.</p>{{end}}
+
+<h4>Update results</h4>
+<table>
+<tr><td>Pages / shared blocks computed</td><td>{{get .Summary "computed" "pages"}} / {{get .Summary "computed" "shared"}}</td></tr>
+<tr><td>Page records: changed / added / removed</td><td>{{names (get .Summary "pages" "changedNames")}} / {{names (get .Summary "pages" "addedNames")}} / {{names (get .Summary "pages" "removedNames")}}</td></tr>
+<tr><td>Shared blocks: changed / added / removed</td><td>{{names (get .Summary "shared" "changedNames")}} / {{names (get .Summary "shared" "addedNames")}} / {{names (get .Summary "shared" "removedNames")}}</td></tr>
+<tr><td>Pages with new HTML</td><td>{{get .Summary "render"}}: {{names (get .Summary "renderNames")}}</td></tr>
+<tr><td>Store version</td><td>{{index .Diff.Version 0}} → {{index .Diff.Version 1}}</td></tr>
+<tr><td>Command time, ms</td><td>{{get .Summary "time" "total"}}</td></tr>
+</table>
+<details><summary>Full shugo update -json report</summary><pre>{{.Report}}</pre></details>
+
+<h4>Store changes</h4>
+<table>
+<tr><td>Page records</td><td>{{if .Diff.PagesChanged}}changed: {{join .Diff.PagesChanged ", "}}. {{end}}{{if .Diff.PagesAdded}}added: {{join .Diff.PagesAdded ", "}}. {{end}}{{if .Diff.PagesRemoved}}removed: {{join .Diff.PagesRemoved ", "}}.{{end}}</td></tr>
+<tr><td>Shared block records</td><td>{{if .Diff.SharedChanged}}changed: {{join .Diff.SharedChanged ", "}}. {{end}}{{if .Diff.SharedAdded}}added: {{join .Diff.SharedAdded ", "}}. {{end}}{{if .Diff.SharedRemoved}}removed: {{join .Diff.SharedRemoved ", "}}.{{end}}</td></tr>
+<tr><td>Value tapes</td><td>{{range .Diff.ValuesAdded}}<div class="add mono">+ {{short (hexOf .Hash)}}: {{range .Values}}<span class="val">{{visible .}}</span> {{end}}</div>{{end}}{{range .Diff.ValuesRemoved}}<div class="del mono">− {{short (hexOf .Hash)}}: {{range .Values}}<span class="val">{{visible .}}</span> {{end}}</div>{{end}}</td></tr>
+<tr><td>Reads</td><td>{{range .Diff.ReadsAdded}}<div class="add">+ shape {{.Shape}}, {{key .Key}} — {{reader .Reader}}</div>{{end}}{{range .Diff.ReadsRemoved}}<div class="del">− shape {{.Shape}}, {{key .Key}} — {{reader .Reader}}</div>{{end}}</td></tr>
+<tr><td>Shared block users</td><td>{{range .Diff.ShowsAdded}}<div class="add">+ {{.Shared}} ← {{reader .User}}</div>{{end}}{{range .Diff.ShowsRemoved}}<div class="del">− {{.Shared}} ← {{reader .User}}</div>{{end}}</td></tr>
+</table>
+
+<h4>Pages whose HTML changed</h4>
+{{range .HTML}}<details {{if eq .Path "/products/jug"}}open{{end}}><summary>{{.Path}}</summary><pre>{{range .Lines}}{{if eq .Kind "+"}}<span class="add">+ {{.Text}}</span>
+{{else if eq .Kind "-"}}<span class="del">− {{.Text}}</span>
+{{else if eq .Kind "…"}}<span class="skip">  …</span>
+{{else}}  {{.Text}}
+{{end}}{{end}}</pre></details>{{else}}<p>No pages.</p>{{end}}
+
+<h4>Go requests to JS</h4>
+{{if .Rounds}}{{template "rounds" .Rounds}}
+<details><summary>Full messages</summary>
+<table><tr><th>Direction</th><th>Code</th><th>Meaning</th><th>Body</th></tr>
+{{range .Requests}}<tr><td>Go → JS</td><td class="mono">{{.Kind}}</td><td>{{sep .Meaning}}</td><td class="mono">{{sep .Body}}</td></tr>{{end}}
+{{range .Answers}}<tr><td>JS → Go</td><td class="mono">{{.Kind}}</td><td>{{sep .Meaning}}</td><td class="mono">{{sep .Body}}</td></tr>{{end}}
+</table>
+</details>{{else}}<p>No readers were affected, so JS did not run.</p>{{end}}
+</div>
+{{end}}
+
+<h2 id="proposal">8. Proposal: values inside records</h2>
+<p>Currently, a block's record contains the value tape's hash. The tape lives in its own row in <code>value</code>. To render a page, the server separately looks up its record, the records of any shared blocks, and their value tapes. Embedding the tapes in page and shared block records would reduce this to one lookup per record.</p>
+<div class="grid">
+<div><h4>Current: {{len .Proposal.Now}} lookups, {{.Proposal.NowBytes}} bytes</h4>
+<table><tr><th>Reads</th><th>bytes</th></tr>{{range .Proposal.Now}}<tr><td class="mono">{{.What}}</td><td>{{.Bytes}}</td></tr>{{end}}</table></div>
+<div><h4>Proposed: {{len .Proposal.New}} lookups, {{.Proposal.NewBytes}} bytes</h4>
+<table><tr><th>Reads</th><th>bytes</th></tr>{{range .Proposal.New}}<tr><td class="mono">{{.What}}</td><td>{{.Bytes}}</td></tr>{{end}}</table></div>
+</div>
+<p>This site currently needs {{.Proposal.StoreNow}} bytes for records and value tapes, or {{.Proposal.StoreNew}} bytes with tapes embedded in records. Every record that uses a tape stores its own copy. This adds 17% to a store with 100,000 products.</p>
+<h3>{{.Proposal.Example}}: current record, {{index .Proposal.ExampleSize 0}} bytes</h3>
+<table><tr><th style="width:4em">Offset</th><th style="width:30em">Bytes</th><th>Meaning</th></tr>
+{{range .Proposal.ExampleRecord}}<tr><td>{{.Offset}}</td><td class="mono">{{.Hex}}</td><td>{{sep .Meaning}}</td></tr>{{end}}
+</table>
+<h3>Same record with embedded value tapes, {{index .Proposal.ExampleSize 1}} bytes</h3>
+<table><tr><th style="width:4em">Offset</th><th style="width:30em">Bytes</th><th>Meaning</th></tr>
+{{range .Proposal.ExampleBundled}}<tr><td>{{.Offset}}</td><td class="mono">{{.Hex}}</td><td>{{sep .Meaning}}</td></tr>{{end}}
+</table>
+<p class="note">This is a proposed layout. A block could reference a value tape by its number in the record and omit the hash.</p>
+
+</div>
+{{define "rounds"}}{{range $i, $r := .}}
+<div class="card round">
+<h4>{{if $r.Told}}At startup{{else}}Round {{$r.Number}}{{end}}. Go: {{$r.Ask}}</h4>
+{{if $r.Told}}<p class="note">JS remembers these indexes and does not send a response or request them again.</p>{{end}}
+{{if $r.Units}}<p class="note">{{join $r.Units "; "}}</p>{{end}}
+{{if $r.Pages}}<p><b>JS listed {{counted (len $r.Pages) "page" "pages"}}:</b> {{join $r.Pages ", "}}</p>{{end}}
+{{if $r.Routes}}<table><tr><th style="width:8em">route</th><th>Reads by getStaticPaths</th></tr>
+{{range $r.Routes}}<tr><td><a href="#route-{{.Route}}">{{.Route}}</a>{{if .Props}}, supplies props{{end}}</td><td>{{range .Readings}}<div>{{.}}</div>{{else}}no database reads{{end}}</td></tr>{{end}}</table>{{end}}
+{{if $r.Records}}<p><b>JS returned {{counted (len $r.Records) "record" "records"}}:</b></p>
+<table><tr><th>record</th><th style="width:4em">Blocks</th><th>Renders shared blocks</th><th>Database reads</th></tr>
+{{range $r.Records}}<tr><td>{{.Kind}} <span class="mono">{{.Key}}</span></td><td>{{.Blocks}}</td><td class="mono">{{join .Shows ", "}}</td><td>{{range .Readings}}<div>{{.}}</div>{{end}}</td></tr>{{end}}</table>{{end}}
+{{if $r.Named}}<p><b>Records reference these shared blocks:</b> <span class="mono">{{join $r.Named ", "}}</span>. Go will request any missing blocks in the next round.</p>{{end}}
+{{if $r.Indexes}}<p><b>JS asked Go for indexes {{counted (len $r.Indexes) "time" "times"}}:</b></p>
+<table><tr><th>Table</th><th>Lookup columns</th><th>Order columns</th><th>Go response</th></tr>
+{{range $r.Indexes}}<tr><td>{{.Table}}</td><td>{{join .Equal ", "}}</td><td>{{join .Order ", "}}</td><td>{{if .Made}}built{{else}}suitable index already existed{{end}}</td></tr>{{end}}</table>{{end}}
+{{if $r.Shapes}}<p class="note">Read shapes first seen on this run: {{join $r.Shapes "; "}}.</p>{{end}}
+{{if $r.Failed}}<p class="del">Project code failed: {{$r.Failed}}</p>{{end}}
+</div>
+{{end}}{{end}}
+</body></html>

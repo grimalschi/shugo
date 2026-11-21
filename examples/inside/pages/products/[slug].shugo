@@ -1,0 +1,18 @@
+---
+import Variant from "../../components/Variant.shugo"
+import { price } from "../../lib/money"
+
+// The route gives the addresses; every page asks for its product itself.
+export function getStaticPaths({ query }) {
+  return query("products").select("slug").all().map((row) => ({ params: { slug: row.slug } }))
+}
+
+const item = Shugo.query("products").where({ slug: Shugo.params.slug }).first()
+const variants = Shugo.query("variants").where({ product: item.id }).order("position").all()
+---
+<title slot="head">{item.title} — Pottery Shop</title>
+<h1>{item.title}</h1>
+<p class="price">{price(item.price)}</p>
+<ul>
+  <g-for each={variants} as="variant"><Variant variant={variant} /></g-for>
+</ul>
