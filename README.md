@@ -70,13 +70,13 @@ Store on 100,000 products, 104,202 pages and 100,009 common blocks, Bun, 8 cores
 
 | What | Time |
 | --- | ---: |
-| First build, with eight indexes that Shugo builds itself | 14.1 s |
-| Update after price change of one product: page and card calculated, HTML changed to 7 pages | 28 ms, the whole team of 36 ms |
-| Update after changing column that no one reads, 5,000 products | 0.10 s, nothing calculated |
-| Update after changing the cap that is on all pages | 0.11–0.12 s: One record of the common block |
-| First export to files | 3.5 s |
+| First build, with eight indexes that Shugo builds itself | 14.5 s |
+| Update after price change of one product: page and card calculated, HTML changed to 7 pages | 29 ms, the whole team of 36 ms |
+| Update after changing column that no one reads, 5,000 products | 0.11 s, nothing calculated |
+| Update after changing the cap that is on all pages | 0.12–0.13 s: One record of the common block |
+| First export to files | 5.0 s |
 | Export after the price change of one product | 8 ms: built by 7 pages |
-| Export after changing the header | 8.1–8.7 s: all files rewritten |
+| Export after changing the header | 8.2–8.5 s: all files rewritten |
 | Assembly of the product page by the server from the storage | 58–67 µs |
 | Request to server as a whole, 8 clients in the same process | 16–18 thousand per second |
 

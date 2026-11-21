@@ -62,7 +62,7 @@ All this is one transaction. If something falls, nothing is recorded: the site r
 
 ### Effects of data changes
 
-Shop on 100,000 products: 104,202 pages, 100,009 common blocks, 1.2 million blocks. Update after price change of one product — 28 ms, after changing the cap — 0.12 s. Full table and launch — in [README booth](../examples/catalog/README.md#results).
+Shop on 100,000 products: 104,202 pages, 100,009 common blocks, 1.3 million blocks. Update after price change of one product — 29 ms, after changing the cap — 0.12–0.13 s. Full table and launch — in [README booth](../examples/catalog/README.md#results).
 
 | What changed in the data | Page entries rewritten | Common blocks rewritten | Pages with new HTML |
 | --- | ---: | ---: | ---: |
