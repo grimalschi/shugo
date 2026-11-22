@@ -1,11 +1,11 @@
 # Components
 
-Component is the reusable part of the template: the cap, the product card, the footer. This is a `.shugo` file, the same component of Svelte 5 as the page and layout.
+Component is the reusable part of the template: the cap, the product card, the footer. This is a `.svelte` file, the same component of Svelte 5 as the page and layout.
 
 ## Decisions
 
 - The term is called “component.”
-- The component is a `.shugo` file, like page and layout.
+- The component is a `.svelte` file, like page and layout.
 - The components are written as in Svelte 5, with the same markup logic (the decision of the author of the project 21 November 2026 year): parameters - `$props()`, markup inside the component is transmitted by snippets, the styles of the component act only on it. This replaces the previous solutions "parameters are read in code, as in Astro" and `<g-slot>` slots.
 - The component can upload its data.
 - The calling pattern can transfer the markup inside the component.
@@ -20,7 +20,7 @@ Component is the reusable part of the template: the cap, the product card, the f
 
 ```svelte
 <script>
-  import Card from "../components/Card.shugo"
+  import Card from "../components/Card.svelte"
   import * as ui from "@/components/ui"
 </script>
 
@@ -52,7 +52,7 @@ The parameters are written as attributes: `title="text"` transmits a string, `fe
 What is inside the component tag, the component gets the parameter `children`. Named pieces of markup are transmitted by snippets - also parameters.
 
 ```svelte
-<!-- src/components/Card.shugo -->
+<!-- src/components/Card.svelte -->
 <script>
   let { children, footer } = $props()
 </script>
@@ -75,7 +75,7 @@ What is inside the component tag, the component gets the parameter `children`. N
 - The snippet can accept parameters: the component transmits them when shown.
 
 ```svelte
-<!-- src/components/List.shugo -->
+<!-- src/components/List.svelte -->
 <script>
   let { items, row } = $props()
 </script>
@@ -123,7 +123,7 @@ Hence the reception: it is better to give the card the number of goods, and she 
 When the entire site is calculated after `shugo build` or code edits the build weighs the common components. If the component 100 has shared blocks or more and each is shown on average in less than one and a half places, it warns:
 
 ```
-warning: src/components/Price.shugo is kept apart as 9000 shared blocks, each shown in 1.0 places on average. …
+warning: src/components/Price.svelte is kept apart as 9000 shared blocks, each shown in 1.0 places on average. …
 ```
 
 This happens with `<Price value={n} />`, when almost every page has its own number: there is no need to store such a block separately, and it is worth the extra search in the storage. The component to which the object was transferred, such as the string it shows, is calculated as part of the page. Layouts are not weighted: A layout that reads a page is stored for each page on purpose.
@@ -133,9 +133,9 @@ This happens with `<Price value={n} />`, when almost every page has its own numb
 As in Svelte 5: the component imports itself.
 
 ```svelte
-<!-- src/components/Tree.shugo -->
+<!-- src/components/Tree.svelte -->
 <script>
-  import Tree from "./Tree.shugo"
+  import Tree from "./Tree.svelte"
   let { node } = $props()
 </script>
 
@@ -152,8 +152,8 @@ As in Svelte 5: the component imports itself.
 
 ```svelte
 <script>
-  import Grid from "./Grid.shugo"
-  import List from "./List.shugo"
+  import Grid from "./Grid.svelte"
+  import List from "./List.svelte"
   let { compact, items } = $props()
   const View = compact ? List : Grid
 </script>

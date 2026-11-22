@@ -1,6 +1,7 @@
 package compile
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -9,7 +10,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"slices"
 	"sort"
@@ -35,6 +35,11 @@ const (
 
 // AssetsURL is where the files of the Assets folder are published.
 const AssetsURL = "/_assets/"
+
+const (
+	catalogModule = "shugo:catalog"
+	searchModule  = "shugo:search"
+)
 
 // Result is a compiled project.
 type Result struct {
@@ -65,15 +70,22 @@ func Build(p *project.Project) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	bundled, err := b.bundle(routes)
+	islands, err := b.buildIslands()
 	if err != nil {
 		return nil, err
 	}
-	shell, err := readShell(p)
+	bundled, err := b.bundle(routes, islands)
 	if err != nil {
 		return nil, err
 	}
-	site := &skeleton.Site{Origin: p.Config.Site, Redirects: p.Config.Redirects, Routes: routes, Shell: shell}
+	shell, err := b.readShell()
+	if err != nil {
+		return nil, err
+	}
+	site := &skeleton.Site{
+		Origin: p.Config.Site, Redirects: p.Config.Redirects, Routes: routes, Shell: shell, Assets: []string{},
+		CatalogSearch: bundled.catalogSearch, Search: bundled.search,
+	}
 	if site.Origin == "" {
 		site.Origin = "http://localhost"
 	}
@@ -88,23 +100,35 @@ func Build(p *project.Project) (*Result, error) {
 
 	output := p.Path(project.Output)
 	assets := filepath.Join(output, Assets)
-	if err := os.RemoveAll(assets); err != nil {
-		return nil, err
-	}
 	if err := os.MkdirAll(assets, 0o755); err != nil {
 		return nil, err
 	}
-	sheet, err := b.styles(bundled.styles)
+	stylesheet, err := b.styles(bundled.styles)
 	if err != nil {
 		return nil, err
 	}
-	if sheet != nil {
+	site.Assets = append(site.Assets, stylesheet.assets...)
+	bundled.files = append(bundled.files, stylesheet.inputs...)
+	if islands != nil {
+		for _, file := range islands.assets {
+			if err := writeHashedFile(file.Path, file.Contents); err != nil {
+				return nil, err
+			}
+			site.Assets = append(site.Assets, filepath.Base(file.Path))
+		}
+		site.IslandPrograms = islands.programs
+		bundled.files = append(bundled.files, islands.files...)
+		warnings = append(warnings, islands.warnings...)
+	}
+	if sheet := stylesheet.sheet; sheet != nil {
 		name := "styles." + digest(sheet)[:10] + ".css"
-		if err := os.WriteFile(filepath.Join(assets, name), sheet, 0o644); err != nil {
+		if err := writeHashedFile(filepath.Join(assets, name), sheet); err != nil {
 			return nil, err
 		}
+		site.Assets = append(site.Assets, name)
 		site.Mounts = map[string]string{"head": `<link rel="stylesheet" href="` + AssetsURL + name + `">`}
 	}
+	slices.Sort(site.Assets)
 
 	data, err := site.Encode()
 	if err != nil {
@@ -120,6 +144,30 @@ func Build(p *project.Project) (*Result, error) {
 		}
 	}
 	return &Result{Site: site, ID: digest(data, bundled.code), Warnings: append(warnings, bundled.warnings...)}, nil
+}
+
+// A running server can still render a previously built store. Publish new
+// hashed files without truncating the assets it refers to.
+func writeHashedFile(path string, contents []byte) error {
+	if current, err := os.ReadFile(path); err == nil && bytes.Equal(current, contents) {
+		return nil
+	}
+	f, err := os.CreateTemp(filepath.Dir(path), ".shugo-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	defer f.Close()
+	if err := f.Chmod(0o644); err != nil {
+		return err
+	}
+	if _, err := f.Write(contents); err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), path)
 }
 
 // Load reads a project that Build has compiled before.
@@ -143,30 +191,48 @@ func Load(p *project.Project) (*Result, error) {
 
 // sources is the list of what a project was compiled from: its templates,
 // the modules among its pages, and every file that went into the bundle
-// with a hash of its content.
+// with a hash of its content; and the format of the skeleton, the parser of
+// Svelte and the revision of the compiler that made it.
 type sources struct {
 	Templates []string          `json:"templates"`
 	Modules   []string          `json:"modules"`
 	Files     map[string]string `json:"files"`
+	Format    int               `json:"format"`
+	Parser    string            `json:"parser"`
+	Revision  int               `json:"revision"`
 }
+
+// The compiler can need a fresh build even when the page program format
+// and Svelte version stay the same. Revision 2 adds the search build protocol
+// to the generated bundle, along with the current compiler input tracking.
+const sourcesRevision = 2
 
 // sources hashes the files of the project that the compiled result depends on.
 func (b *builder) sources(bundled []string) sources {
-	out := sources{Templates: b.paths, Modules: b.modules, Files: map[string]string{}}
-	for _, name := range append(bundled, project.Settings, project.Shell) {
-		out.Files[name] = hashFile(b.project.Path(filepath.FromSlash(name)))
+	out := sources{Templates: b.paths, Modules: b.modules, Files: map[string]string{}, Format: skeleton.Version, Parser: syntax.SvelteVersion, Revision: sourcesRevision}
+	// A template and the shell count as they were read: they may have
+	// changed since.
+	for _, unit := range b.units {
+		out.Files[unit.file.Path] = digest([]byte(unit.file.Source))
+	}
+	out.Files[project.Shell] = b.shell
+	for _, name := range append(bundled, project.Settings) {
+		if _, read := out.Files[name]; !read {
+			out.Files[name] = hashFile(b.project.Path(filepath.FromSlash(name)))
+		}
 	}
 	return out
 }
 
 // readShell reads the shell every page stands in: src/site.html, or the
-// one of the framework.
-func readShell(p *project.Project) (skeleton.Shell, error) {
+// one of the framework. It keeps the hash of what it read, as hashFile
+// writes it.
+func (b *builder) readShell() (skeleton.Shell, error) {
 	text := skeleton.DefaultShell
-	data, err := os.ReadFile(p.Path(filepath.FromSlash(project.Shell)))
+	data, err := os.ReadFile(b.project.Path(filepath.FromSlash(project.Shell)))
 	switch {
 	case err == nil:
-		text = string(data)
+		text, b.shell = string(data), digest(data)
 	case !errors.Is(err, fs.ErrNotExist):
 		return skeleton.Shell{}, err
 	}
@@ -200,7 +266,8 @@ func Changed(p *project.Project) (bool, error) {
 		return false, err
 	}
 	var compiled sources
-	if err := json.Unmarshal(data, &compiled); err != nil {
+	if err := json.Unmarshal(data, &compiled); err != nil || compiled.Format != skeleton.Version ||
+		compiled.Parser != syntax.SvelteVersion || compiled.Revision != sourcesRevision {
 		return true, nil
 	}
 	templates, err := p.Templates()
@@ -232,12 +299,14 @@ func digest(parts ...[]byte) string {
 
 type builder struct {
 	project *project.Project
-	paths   []string       // the .shugo files, sorted
+	paths   []string       // the regular .svelte files, sorted
 	ids     map[string]int // the number of every template: its place in paths
 	units   []*unit
 	// modules are the modules among the pages that give files, sorted.
 	// Their numbers follow those of the templates.
 	modules []string
+	// shell is the hash of src/site.html as it was read; empty without it.
+	shell string
 }
 
 // roleOf tells what a file is by where it lies.
@@ -258,6 +327,15 @@ func roleOf(path string) role {
 // compile compiles every file, several at a time.
 func (b *builder) compile() error {
 	b.units = make([]*unit, len(b.paths))
+	if len(b.paths) == 0 {
+		return nil
+	}
+	parser, err := syntax.Start(b.project.Runtime(), b.project.Root)
+	if err != nil {
+		return err
+	}
+	defer parser.Close()
+
 	failures := make([]error, len(b.paths))
 	next := make(chan int)
 	var group sync.WaitGroup
@@ -265,11 +343,7 @@ func (b *builder) compile() error {
 		group.Go(func() {
 			for id := range next {
 				path := b.paths[id]
-				source, err := os.ReadFile(b.project.Path(filepath.FromSlash(path)))
-				if err == nil {
-					b.units[id], err = compileFile(path, string(source), id, roleOf(path))
-				}
-				failures[id] = err
+				b.units[id], failures[id] = b.compileTemplate(parser, path, id)
 			}
 		})
 	}
@@ -293,6 +367,22 @@ func (b *builder) compile() error {
 		return errs
 	}
 	return nil
+}
+
+func (b *builder) compileTemplate(parser *syntax.Parser, path string, id int) (*unit, error) {
+	source, err := os.ReadFile(b.project.Path(filepath.FromSlash(path)))
+	if err != nil {
+		return nil, err
+	}
+	file, err := parser.Parse(path, string(source))
+	if err != nil {
+		var diagnostic *syntax.Error
+		if errors.As(err, &diagnostic) {
+			return nil, Errors{diagnostic}
+		}
+		return nil, err
+	}
+	return compileFile(file, id, roleOf(path))
 }
 
 // routes makes a route of every page and of every module among the pages,
@@ -377,16 +467,18 @@ func (b *builder) routes() ([]skeleton.Route, error) {
 
 // bundled is what the bundler made of the modules of all files.
 type bundled struct {
-	code, smap []byte
-	files      []string        // the files of the project that went into the bundle
-	shared     map[string]bool // which files can be computed once for all pages
-	styles     []style         // the style sheets in the order they apply
-	warnings   []string
+	code, smap    []byte
+	files         []string        // the files of the project that went into the bundle
+	shared        map[string]bool // which files can be computed once for all pages
+	styles        []style         // the style sheets in the order they apply
+	warnings      []string
+	catalogSearch bool
+	search        bool
 }
 
 // bundle links the modules of all files, the code they import and the
 // library of the framework into one file.
-func (b *builder) bundle(routes []skeleton.Route) (*bundled, error) {
+func (b *builder) bundle(routes []skeleton.Route, islands *islandOutput) (*bundled, error) {
 	root := b.project.Root
 	// The entry names the module of every file, the templates and then the
 	// modules among the pages: a page is computed from its route, and a
@@ -418,8 +510,10 @@ func (b *builder) bundle(routes []skeleton.Route) (*bundled, error) {
 	fmt.Fprintf(&entry, "await run([%s]);\n", strings.Join(table, ", "))
 
 	plugin := api.Plugin{Name: "shugo", Setup: func(build api.PluginBuild) {
-		// shugo is the module the code of a project imports from; shugo:…
-		// are the framework's own.
+		rejectOldTemplates(build)
+		// shugo is the module the code of a project imports from, and so are
+		// shugo:search and shugo:catalog; the other shugo:… are the
+		// framework's own.
 		build.OnResolve(api.OnResolveOptions{Filter: `^shugo(:|$)`}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
 			path := args.Path
 			if path == "shugo" {
@@ -436,11 +530,29 @@ func (b *builder) bundle(routes []skeleton.Route) (*bundled, error) {
 				contents = jsrt.Query
 			case shugoModule:
 				contents = `export { query, paginate, page } from "shugo:runtime";`
+			case "shugo:wire":
+				contents = jsrt.Wire
+			case catalogModule:
+				contents = jsrt.Catalog
+			case searchModule:
+				contents = jsrt.Search
+			case "shugo:island-eval":
+				if islands == nil {
+					return api.OnLoadResult{}, fmt.Errorf("the Svelte island evaluation module needs a %s import", project.IslandSuffix)
+				}
+				contents = islands.eval
 			}
 			return api.OnLoadResult{Contents: &contents, Loader: api.LoaderJS, ResolveDir: root}, nil
 		})
-		build.OnLoad(api.OnLoadOptions{Filter: `\.shugo$`}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
+		build.OnLoad(api.OnLoadOptions{Filter: `\.svelte$`}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
 			rel := b.relative(args.Path)
+			if project.IsIsland(rel) {
+				if islands == nil || islands.names[rel].path == "" {
+					return api.OnLoadResult{}, fmt.Errorf("import the island %s as a default component directly in a regular %s template", rel, project.TemplateExtension)
+				}
+				contents := `import { islands } from "shugo:island-eval"; export default islands.get(` + quote(rel) + `);`
+				return api.OnLoadResult{Contents: &contents, Loader: api.LoaderJS, ResolveDir: filepath.Dir(args.Path)}, nil
+			}
 			id, known := b.ids[rel]
 			switch {
 			case known:
@@ -502,6 +614,18 @@ func (b *builder) bundle(routes []skeleton.Route) (*bundled, error) {
 	return out, nil
 }
 
+// Report stale imports even when the old file has already been renamed.
+func rejectOldTemplates(build api.PluginBuild) {
+	build.OnResolve(api.OnResolveOptions{Filter: `\.shugo$`}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
+		if !filepath.IsAbs(args.Path) && !strings.HasPrefix(args.Path, "./") &&
+			!strings.HasPrefix(args.Path, "../") && !strings.HasPrefix(args.Path, "@/") {
+			return api.OnResolveResult{}, nil // an npm package may have a dot in its name
+		}
+		return api.OnResolveResult{}, fmt.Errorf("update the import %q to %q; Shugo templates now use %s", args.Path,
+			strings.TrimSuffix(args.Path, ".shugo")+project.TemplateExtension, project.TemplateExtension)
+	})
+}
+
 // relative returns the path of a file of the project as the units know it.
 func (b *builder) relative(path string) string {
 	if !filepath.IsAbs(path) {
@@ -513,8 +637,6 @@ func (b *builder) relative(path string) string {
 	}
 	return filepath.ToSlash(rel)
 }
-
-var markupInCode = regexp.MustCompile(`<[A-Za-z/][^<>]*>`)
 
 // diagnoseAll turns the messages of the bundler into errors in the files
 // of the project.
@@ -540,9 +662,6 @@ func (b *builder) diagnose(message api.Message) *syntax.Error {
 	}
 	u := b.units[id]
 	text := message.Text
-	if line := at.Line - 1; line < len(u.module.from) && u.module.from[line].kind == 't' && markupInCode.MatchString(u.module.lines[line]) {
-		text += "; markup cannot stand inside {…}: write {#if …}…{/if} or {#each …}…{/each} around it instead"
-	}
 	if strings.Contains(text, `"await" can only be used inside an "async" function`) {
 		text = "a page is computed without waiting: its data comes from query of the module shugo, which answers at once, so there is nothing to wait for. " +
 			"What takes time and needs doing once, such as making a highlighter, can be awaited at the top of a module in lib/ and used here"
@@ -564,9 +683,19 @@ func (b *builder) graph(metafile string, out *bundled) error {
 				Path string `json:"path"`
 			} `json:"imports"`
 		} `json:"inputs"`
+		Outputs map[string]struct {
+			Inputs map[string]struct {
+				Bytes int `json:"bytesInOutput"`
+			} `json:"inputs"`
+		} `json:"outputs"`
 	}
 	if err := json.Unmarshal([]byte(metafile), &meta); err != nil {
 		return err
+	}
+	// Esbuild's output graph excludes unused imports and tree-shaken code.
+	for _, file := range meta.Outputs {
+		out.catalogSearch = out.catalogSearch || file.Inputs["shugo:"+catalogModule].Bytes > 0
+		out.search = out.search || file.Inputs["shugo:"+searchModule].Bytes > 0
 	}
 	names := make([]string, 0, len(meta.Inputs))
 	for name := range meta.Inputs {

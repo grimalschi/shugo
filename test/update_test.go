@@ -13,7 +13,7 @@ import (
 const shop = `
 -- shugo.json --
 {"data": "data/shop.db"}
--- src/components/Header.shugo --
+-- src/components/Header.svelte --
 <script>
 import { query } from "shugo"
 const motto = query("settings").get(1).motto
@@ -21,35 +21,35 @@ const count = query("products").count()
 console.log("header computed")
 </script>
 <header>{motto} · {count} products</header>
--- src/components/Card.shugo --
-<script>
+-- src/components/Card.svelte --
+<script lang="ts">
 import { query } from "shugo"
 const { slug } = $props() as { slug: string }
 const { title, price } = query("products").where({ slug }).first()
 </script>
 <a href={"/products/" + slug}>{title} — {price}</a>
--- src/pages/+layout.shugo --
+-- src/pages/+layout.svelte --
 <script>
 let { children } = $props()
-import Header from "../components/Header.shugo"
+import Header from "../components/Header.svelte"
 </script>
 <Header /><main>{@render children()}</main>
--- src/pages/index.shugo --
+-- src/pages/index.svelte --
 <script>
 import { query } from "shugo"
-import Card from "../components/Card.shugo"
+import Card from "../components/Card.svelte"
 const products = query("products").select("slug").order("position").all()
 </script>
 <ul>{#each products as p}<li><Card slug={p.slug} /></li>{/each}</ul>
--- src/pages/about.shugo --
+-- src/pages/about.svelte --
 <h1>About</h1>
--- src/pages/products/[slug].shugo --
+-- src/pages/products/[slug].svelte --
 <script module>
 import { query, page } from "shugo"
 export const getStaticPaths = () => query("products").select("slug").all().map((p) => ({ params: { slug: p.slug } }))
 </script>
 <script>
-import Card from "../../components/Card.shugo"
+import Card from "../../components/Card.svelte"
 const p = query("products").where({ slug: page.params.slug }).first()
 const related = query("related").where({ product: p.slug }).order("position").all()
 </script>
@@ -88,11 +88,11 @@ func expectChanges(t *testing.T, r *evaluate.Report, pages, shared evaluate.Chan
 }
 
 const (
-	header   = "src/components/Header.shugo{}"
-	cardJug  = `src/components/Card.shugo{"slug":"jug"}`
-	cardCup  = `src/components/Card.shugo{"slug":"cup"}`
-	cardTray = `src/components/Card.shugo{"slug":"tray"}`
-	cardPot  = `src/components/Card.shugo{"slug":"pot"}`
+	header   = "src/components/Header.svelte{}"
+	cardJug  = `src/components/Card.svelte{"slug":"jug"}`
+	cardCup  = `src/components/Card.svelte{"slug":"cup"}`
+	cardTray = `src/components/Card.svelte{"slug":"tray"}`
+	cardPot  = `src/components/Card.svelte{"slug":"pot"}`
 )
 
 func TestUpdates(t *testing.T) {
@@ -186,7 +186,7 @@ func TestUpdates(t *testing.T) {
 
 	// After a template changes every record is written anew.
 	t.Run("a template changes", func(t *testing.T) {
-		s.write("-- src/pages/about.shugo --\n<h1>About us</h1>")
+		s.write("-- src/pages/about.svelte --\n<h1>About us</h1>")
 		r := s.build()
 		if !r.Rebuilt || r.Pages.Added != r.Pages.Total {
 			t.Errorf("rebuilt=%v pages=%+v", r.Rebuilt, r.Pages)
@@ -217,7 +217,7 @@ func TestUpdateWithoutData(t *testing.T) {
 	s := newSite(t, `
 -- src/lib/names.ts --
 export const names = ["Ann", "Bob"]
--- src/pages/index.shugo --
+-- src/pages/index.svelte --
 <script>
 import { names } from "../lib/names"
 </script>

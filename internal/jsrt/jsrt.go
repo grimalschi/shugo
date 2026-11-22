@@ -17,3 +17,12 @@ var Source string
 //
 //go:embed query.js
 var Query string
+
+//go:embed catalog.js
+var Catalog string
+
+//go:embed search.js
+var Search string
+
+//go:embed wire.js
+var Wire string

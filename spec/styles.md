@@ -15,7 +15,7 @@ The document describes how to work with styles: component styles, common files C
 ### Component Styles
 
 ```svelte
-<!-- src/components/Card.shugo -->
+<!-- src/components/Card.svelte -->
 <a class="card">…</a>
 
 <style>
@@ -39,13 +39,13 @@ One difference: Svelte puts the class only on elements that some selector choose
 ### General Style Files
 
 ```svelte
-<!-- src/pages/+layout.shugo -->
+<!-- src/pages/+layout.svelte -->
 <script>
   import "../styles/main.css"
 </script>
 ```
 
-The style file is connected by import to `<script>`. You can connect it in any `.shugo` file or module; this is usually the root layout.
+The style file is connected by import to `<script>`. You can connect it in any `.svelte` file or module; this is usually the root layout.
 
 ### One stylesheet per site
 
@@ -70,4 +70,4 @@ Classes are in both markup and code lines: `` class={`rounded-lg ${look}`} ``. A
 
 ## Open questions
 
-- Whether to put the component class only on selected elements and throw out extra selectors, like Svelte. Delayed 22 November 2026 years; how to do it - in [the Compatibility Proposal](../docs/proposals/svelte-compatibility.md).
+- Whether to put the component class only on selected elements and whether to throw out extra selectors like Svelte. The 22 of November 2026 has been postponed.

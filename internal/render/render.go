@@ -7,6 +7,7 @@
 package render
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -32,10 +33,28 @@ const (
 // page in its layouts, inside the shell of the site. A module gives a file
 // of its own type, written as it is.
 func Page(dst []byte, site *skeleton.Site, route int, rec *record.Record, src Source) ([]byte, error) {
+	return PageWithIslands(dst, site, route, rec, src, nil)
+}
+
+// Island holds the SSR output and inputs for hydrating one component.
+type Island struct {
+	ID      string            `json:"id"`
+	URL     string            `json:"url"`
+	CSS     string            `json:"css"`
+	Props   json.RawMessage   `json:"props"`
+	Body    string            `json:"body"`
+	Request map[string]string `json:"request,omitempty"` // prop name to data source
+	Search  bool              `json:"search,omitempty"`  // bound to the search of shugo:catalog
+}
+
+// PageWithIslands is Page for a request that can change the input of an
+// island: replace gives such an island its markup for the request before it
+// is written. Export and ordinary requests use the stored output.
+func PageWithIslands(dst []byte, site *skeleton.Site, route int, rec *record.Record, src Source, replace func(*Island) error) ([]byte, error) {
 	if route < 0 || route >= len(site.Routes) {
 		return dst, fmt.Errorf("the page is of route %d, which the site does not have", route)
 	}
-	r := renderer{site: site, src: src, out: dst, start: len(dst)}
+	r := renderer{site: site, src: src, out: dst, start: len(dst), replace: replace}
 	if site.FileRoute(route) {
 		if err := r.show(rec, rec.Top, nil); err != nil {
 			return dst, err
@@ -82,6 +101,11 @@ type renderer struct {
 	head   []given
 	title  *given
 	headAt int
+	// replace is set only for requests that can change an island's input.
+	// scripts and styles are the files of islands the page links already.
+	replace func(*Island) error
+	scripts map[string]bool
+	styles  map[string]bool
 }
 
 // given is blocks of a record that a template gives the head of the page,
@@ -252,6 +276,15 @@ func (r *renderer) ops(ops []skeleton.Op, c *cursor) error {
 			}
 			r.out = append(r.out, value...)
 
+		case skeleton.Island:
+			value, err := c.next()
+			if err != nil {
+				return err
+			}
+			if err := r.island(value); err != nil {
+				return err
+			}
+
 		case skeleton.Attr:
 			value, err := c.next()
 			if err != nil {
@@ -362,6 +395,75 @@ func (r *renderer) ops(ops []skeleton.Op, c *cursor) error {
 		default:
 			return fmt.Errorf("unknown operation %q", rune(op.Kind))
 		}
+	}
+	return nil
+}
+
+func (r *renderer) island(value []byte) error {
+	var island Island
+	if err := json.Unmarshal(value, &island); err != nil {
+		return fmt.Errorf("invalid island record: %w", err)
+	}
+	if island.ID == "" || !strings.HasPrefix(island.URL, "/_assets/") ||
+		(island.CSS != "" && !strings.HasPrefix(island.CSS, "/_assets/")) ||
+		len(island.Props) == 0 || island.Props[0] != '{' {
+		return errors.New("invalid island entry or props")
+	}
+	if r.dry {
+		// During evaluation, use the native Svelte render as the reference
+		// for the build-produced Go program before publishing the record.
+		if island.Search || len(island.Request) > 0 {
+			body, err := IslandBody(r.site, island.ID, island.Props)
+			if err != nil {
+				return err
+			}
+			if body != island.Body {
+				at := 0
+				for at < min(len(body), len(island.Body)) && body[at] == island.Body[at] {
+					at++
+				}
+				return fmt.Errorf("island %s: Go markup differs from the Svelte server render at byte %d", island.ID, at)
+			}
+		}
+		return nil
+	}
+	if r.replace != nil && (island.Search || len(island.Request) > 0) {
+		if err := r.replace(&island); err != nil {
+			return err
+		}
+	}
+	// Marshal escapes HTML metacharacters in the JSON, including </script>.
+	payload, err := json.Marshal(island.Props)
+	if err != nil {
+		return err
+	}
+	if len(r.out)-r.start+len(island.Body)+len(payload) > maxOutput {
+		return errors.New("the page is too large")
+	}
+	if island.CSS != "" && !r.styles[island.CSS] {
+		if r.styles == nil {
+			r.styles = make(map[string]bool)
+		}
+		r.styles[island.CSS] = true
+		r.out = append(r.out, `<link rel="stylesheet" href="`...)
+		r.out = appendEscaped(r.out, []byte(island.CSS), true)
+		r.out = append(r.out, `">`...)
+	}
+	r.out = append(r.out, `<div data-shugo-island="`...)
+	r.out = appendEscaped(r.out, []byte(island.URL), true)
+	r.out = append(r.out, `"><div data-shugo-target>`...)
+	r.out = append(r.out, island.Body...)
+	r.out = append(r.out, `</div><script type="application/json" data-shugo-props>`...)
+	r.out = append(r.out, payload...)
+	r.out = append(r.out, `</script></div>`...)
+	if !r.scripts[island.URL] {
+		if r.scripts == nil {
+			r.scripts = make(map[string]bool)
+		}
+		r.scripts[island.URL] = true
+		r.out = append(r.out, `<script type="module" src="`...)
+		r.out = appendEscaped(r.out, []byte(island.URL), true)
+		r.out = append(r.out, `"></script>`...)
 	}
 	return nil
 }

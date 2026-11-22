@@ -13,7 +13,7 @@ Dynamic page - one file, which collects many pages. Their list is taken from the
 ## Implemented, pending approval
 
 ```svelte
-<!-- src/pages/products/[slug].shugo -->
+<!-- src/pages/products/[slug].svelte -->
 <script module>
   import { query, page } from "shugo"
 
@@ -40,7 +40,7 @@ Dynamic page - one file, which collects many pages. Their list is taken from the
 ### Pagination
 
 ```svelte
-<!-- src/pages/blog/[...page].shugo -->
+<!-- src/pages/blog/[...page].svelte -->
 <script module>
   import { query, paginate } from "shugo"
 

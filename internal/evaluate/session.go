@@ -41,11 +41,14 @@ import (
 //	                                   by with given values \x02 these
 //	                                   columns and those of the order, split
 //	                                   by \x02; the answer is waited for
+//	J  default search result       J  a search declaration, during startup or evaluation
+//	E  a search error              A  ready to receive the first command (search builds)
 //	                                D  the request is done: what it has to add
 type wire struct {
 	asks    io.Writer
 	answers *bufio.Reader
 	message []byte
+	search  func([]byte) ([]byte, error)
 }
 
 // Limits on what the project's code may send. It runs outside of our
@@ -101,6 +104,10 @@ func (w *wire) ask(kind byte, body []byte, k *keeper, got func(kind byte, body [
 			if err := k.shapes.tell(at, string(spec)); err != nil {
 				return nil, err
 			}
+		case 'J':
+			if err := w.searchReply(body); err != nil {
+				return nil, err
+			}
 		case 'I':
 			// The project's code waits for the answer before it asks its
 			// question: with the index, the question finds its rows at once.
@@ -127,6 +134,49 @@ func (w *wire) ask(kind byte, body []byte, k *keeper, got func(kind byte, body [
 			if err := got(kind, body); err != nil {
 				return nil, err
 			}
+		}
+	}
+}
+
+func (w *wire) searchReply(body []byte) error {
+	if w.search == nil {
+		return errorf("search was not enabled for this build")
+	}
+	if len(body) > 1<<20 {
+		return errorf("a search declaration of %d bytes", len(body))
+	}
+	result, err := w.search(body)
+	if err == nil {
+		return w.send('J', result)
+	}
+	encoded, _ := json.Marshal(struct {
+		Message string `json:"message"`
+	}{err.Error()})
+	return w.send('E', encoded)
+}
+
+// Module initializers can use search before run receives its first command.
+func (w *wire) ready() error {
+	for {
+		kind, body, err := w.read()
+		if err != nil {
+			return err
+		}
+		switch kind {
+		case 'A':
+			return nil
+		case 'J':
+			if err := w.searchReply(body); err != nil {
+				return err
+			}
+		case 'E':
+			failure, err := failed(body)
+			if err != nil {
+				return err
+			}
+			return failure
+		default:
+			return errorf("a message of the kind %q before the project's code was ready", kind)
 		}
 	}
 }
@@ -280,7 +330,23 @@ type session struct {
 }
 
 // start runs the JavaScript of the project.
-func start(p *project.Project, log io.Writer) (*session, error) {
+func start(p *project.Project, log io.Writer, catalog []byte, search *searchPreparation) (*session, error) {
+	var catalogInput *os.File
+	if len(catalog) > 0 {
+		input, err := os.CreateTemp(p.Path(project.Output), ".catalog-input-*")
+		if err != nil {
+			return nil, err
+		}
+		defer os.Remove(input.Name())
+		defer input.Close()
+		if _, err := input.Write(catalog); err != nil {
+			return nil, err
+		}
+		if _, err := input.Seek(0, io.SeekStart); err != nil {
+			return nil, err
+		}
+		catalogInput = input
+	}
 	answers, answersIn, err := os.Pipe()
 	if err != nil {
 		return nil, err
@@ -297,7 +363,18 @@ func start(p *project.Project, log io.Writer) (*session, error) {
 	// Requests and answers go through pipes of their own, so that whatever
 	// the project prints or reads cannot get mixed into them.
 	command.ExtraFiles = []*os.File{answersIn, asksOut}
-	command.Env = append(os.Environ(), "SHUGO_OUT=3", "SHUGO_IN=4", "SHUGO_DATA="+p.Data())
+	catalogFD := ""
+	if catalogInput != nil {
+		// Module initializers may call search() before the protocol starts.
+		// Pass its JSON as a file, since an environment value has a size limit.
+		catalogFD = strconv.Itoa(3 + len(command.ExtraFiles))
+		command.ExtraFiles = append(command.ExtraFiles, catalogInput)
+	}
+	searchEnabled := ""
+	if search != nil {
+		searchEnabled = "1"
+	}
+	command.Env = append(os.Environ(), "SHUGO_OUT=3", "SHUGO_IN=4", "SHUGO_DATA="+p.Data(), "SHUGO_CATALOG_FD="+catalogFD, "SHUGO_SEARCH="+searchEnabled)
 	err = command.Start()
 	answersIn.Close()
 	asksOut.Close()
@@ -306,10 +383,14 @@ func start(p *project.Project, log io.Writer) (*session, error) {
 		asks.Close()
 		return nil, fmt.Errorf("cannot start %s to run the project's code: %w", p.Runtime(), err)
 	}
-	return &session{
+	session := &session{
 		wire:    wire{asks: asks, answers: bufio.NewReaderSize(answers, 1<<20)},
 		project: p, command: command, pipes: [2]*os.File{asks, answers},
-	}, nil
+	}
+	if search != nil {
+		session.wire.search = search.request
+	}
+	return session, nil
 }
 
 // told turns an error of the conversation into what the author of the
@@ -357,6 +438,8 @@ func (s *session) stop() {
 // worker is the JavaScript of the project, started when it is first asked
 // for something: an update that finds nothing to compute never starts it.
 type worker struct {
+	catalog []byte
+	search  *searchPreparation
 	project *project.Project
 	log     io.Writer
 	session *session
@@ -375,11 +458,16 @@ func (w *worker) ready(k *keeper) error {
 			return err
 		}
 	}
-	session, err := start(w.project, w.log)
+	session, err := start(w.project, w.log, w.catalog, w.search)
 	if err != nil {
 		return err
 	}
 	w.session = session
+	if w.search != nil {
+		if err := session.wire.ready(); err != nil {
+			return session.told(err)
+		}
+	}
 	if known == nil {
 		return nil
 	}

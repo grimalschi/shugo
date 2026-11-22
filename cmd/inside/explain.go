@@ -158,7 +158,7 @@ func (w *walker) ops(ops []skeleton.Op, depth int) error {
 		switch op.Kind {
 		case skeleton.Markup:
 			w.add(depth, "r", "unchanged markup", op.Text, 0)
-		case skeleton.Text, skeleton.HTML:
+		case skeleton.Text, skeleton.HTML, skeleton.Island:
 			value, place, err := w.take()
 			if err != nil {
 				return err
@@ -166,6 +166,9 @@ func (w *walker) ops(ops []skeleton.Op, depth int) error {
 			what := "text: escaped"
 			if op.Kind == skeleton.HTML {
 				what = "rendered HTML: inserted as-is"
+			}
+			if op.Kind == skeleton.Island {
+				what = "Svelte island: server-rendered markup and hydration data"
 			}
 			w.add(depth, string(rune(op.Kind)), what, value, place)
 		case skeleton.Attr:
@@ -311,7 +314,7 @@ func firstByte(s string) byte {
 var opNames = map[string]string{
 	"r": "markup", "t": "text", "h": "rendered HTML", "a": "attribute",
 	"s": "spread attributes", "i": "conditional", "f": "loop", "c": "component", "n": "{@render}",
-	"e": "<svelte:element>",
+	"e": "<svelte:element>", "d": "Svelte island",
 }
 
 // opLine is one operation of a skeleton as the report lists it.
@@ -330,7 +333,7 @@ func listOps(ops []skeleton.Op, depth int) []opLine {
 		code := string(rune(op.Kind))
 		line := opLine{Depth: depth, Code: code, Name: opNames[code], Text: op.Text}
 		switch op.Kind {
-		case skeleton.Text, skeleton.HTML, skeleton.Attr, skeleton.If, skeleton.For, skeleton.Render, skeleton.Element:
+		case skeleton.Text, skeleton.HTML, skeleton.Island, skeleton.Attr, skeleton.If, skeleton.For, skeleton.Render, skeleton.Element:
 			line.Takes = 1
 		}
 		out = append(out, line)
@@ -645,7 +648,12 @@ func readingsIn(text string, shapes map[int]spec) []string {
 	var out []string
 	for len(list) > 0 {
 		number, _ := list[0].(json.Number)
-		n, _ := number.Int64()
+		n, err := number.Int64()
+		if err == nil && n == -1 {
+			out = append(out, "first catalog results")
+			list = list[1:]
+			continue
+		}
 		s, known := shapes[int(n)]
 		if !known || len(list)-1 < len(s.By) {
 			return append(out, "?")

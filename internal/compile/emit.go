@@ -67,14 +67,35 @@ func (e *emitter) nodes(list []node) []skeleton.Op {
 			ops = append(ops, e.loop(n))
 		case call:
 			ops = append(ops, e.component(n)...)
+		case island:
+			e.call("$$.island((", n.target, "), {")
+			e.props(n.props)
+			if len(n.request) == 0 {
+				e.m.add("});")
+			} else {
+				e.m.add("}, [")
+				for _, p := range n.request {
+					e.m.add("[%s, ", quote(p.name))
+					e.value(p.value)
+					e.m.add("],")
+				}
+				e.m.add("]);")
+			}
+			ops = append(ops, skeleton.Op{Kind: skeleton.Island})
 		case snipp:
 			e.snippet(n)
 		case render:
-			e.m.add("$$.render(")
+			e.m.add("$$.render((")
 			e.m.code(n.expr)
-			e.m.add(", [")
-			if strings.TrimSpace(n.args.text) != "" {
-				e.m.code(n.args)
+			if n.optional {
+				e.m.add("), () => [")
+			} else {
+				e.m.add("), [")
+			}
+			for _, arg := range n.args {
+				e.m.add("(")
+				e.m.code(arg)
+				e.m.add("),")
 			}
 			e.m.add("], %t);", n.optional)
 			ops = append(ops, skeleton.Op{Kind: skeleton.Render})
@@ -286,15 +307,7 @@ func (e *emitter) component(n call) []skeleton.Op {
 	} else {
 		e.call("$$.call((", n.target, "), {")
 	}
-	for _, p := range n.props {
-		if p.spread != nil {
-			e.call("...(", *p.spread, "),")
-			continue
-		}
-		e.m.add("%s: ", quote(p.name))
-		e.value(p.value)
-		e.m.add(",")
-	}
+	e.props(n.props)
 	for _, s := range n.snippets {
 		e.m.add("%s: $$.snippet(%d, ($$, ", quote(s.name), len(e.parts))
 		e.m.code(s.params)
@@ -316,6 +329,18 @@ func (e *emitter) component(n call) []skeleton.Op {
 	}
 	e.m.add("} else {\n$$.branch(0);\n}")
 	return []skeleton.Op{{Kind: skeleton.If, Bodies: [][]skeleton.Op{{call}}}}
+}
+
+func (e *emitter) props(props []prop) {
+	for _, p := range props {
+		if p.spread != nil {
+			e.call("...(", *p.spread, "),")
+			continue
+		}
+		e.m.add("%s: ", quote(p.name))
+		e.value(p.value)
+		e.m.add(",")
+	}
 }
 
 // dynamic writes <svelte:element>: the tag is a value, and so is whether it

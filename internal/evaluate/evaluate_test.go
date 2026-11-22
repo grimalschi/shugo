@@ -20,8 +20,8 @@ import (
 // with text.
 var site = &skeleton.Site{
 	Files: []skeleton.File{
-		{Path: "page.shugo", Parts: [][]skeleton.Op{{{Kind: skeleton.Text}, {Kind: skeleton.Call}}}},
-		{Path: "leaf.shugo", Parts: [][]skeleton.Op{{{Kind: skeleton.Text}}}},
+		{Path: "page.svelte", Parts: [][]skeleton.Op{{{Kind: skeleton.Text}, {Kind: skeleton.Call}}}},
+		{Path: "leaf.svelte", Parts: [][]skeleton.Op{{{Kind: skeleton.Text}}}},
 	},
 	Routes: []skeleton.Route{
 		{File: 0, Pattern: "/special", Segments: []skeleton.Segment{{Text: "special"}}},

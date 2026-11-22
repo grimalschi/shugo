@@ -7,15 +7,15 @@ import (
 
 func TestParse(t *testing.T) {
 	cases := []struct{ file, pattern string }{
-		{"index.shugo", "/"},
-		{"about.shugo", "/about"},
-		{"blog/index.shugo", "/blog"},
-		{"blog/[slug].shugo", "/blog/[slug]"},
-		{"docs/[...path].shugo", "/docs/[...path]"},
-		{"(shop)/cart.shugo", "/cart"},
-		{"(shop)/products/[id]/reviews.shugo", "/products/[id]/reviews"},
-		{"404.shugo", "/404"},
-		{"café/index.shugo", "/café"},
+		{"index.svelte", "/"},
+		{"about.svelte", "/about"},
+		{"blog/index.svelte", "/blog"},
+		{"blog/[slug].svelte", "/blog/[slug]"},
+		{"docs/[...path].svelte", "/docs/[...path]"},
+		{"(shop)/cart.svelte", "/cart"},
+		{"(shop)/products/[id]/reviews.svelte", "/products/[id]/reviews"},
+		{"404.svelte", "/404"},
+		{"café/index.svelte", "/café"},
 		// A module gives files of the type its name tells.
 		{"sitemap.xml.ts", "/sitemap.xml"},
 		{"robots.txt.js", "/robots.txt"},
@@ -36,17 +36,25 @@ func TestParse(t *testing.T) {
 }
 
 func TestParseSkipsAndErrors(t *testing.T) {
-	for _, file := range []string{"_parts/card.shugo", "blog/_draft.shugo", "blog/_posts.ts", "_lib/feed.ts"} {
+	for _, file := range []string{
+		"_parts/card.svelte",
+		"blog/_draft.svelte",
+		"index.island.svelte",
+		"(shop)/products/[id]/Cart.island.svelte",
+		"blog/readme.md",
+		"blog/_posts.ts",
+		"_lib/feed.ts",
+	} {
 		if _, ok, err := Parse(file); ok || err != nil {
 			t.Errorf("%s: %v %v", file, ok, err)
 		}
 	}
 	errors := map[string]string{
-		"blog/+page.shugo":  "kept for the framework",
-		"[...all]/x.shugo":  "must be the last part",
-		"post-[id].shugo":   "mixes text and a parameter",
-		"[a]/[a].shugo":     "is there twice",
-		"[my-id].shugo":     "is not a name of a parameter",
+		"blog/+page.svelte": "kept for the framework",
+		"[...all]/x.svelte": "must be the last part",
+		"post-[id].svelte":  "mixes text and a parameter",
+		"[a]/[a].svelte":    "is there twice",
+		"[my-id].svelte":    "is not a name of a parameter",
 		"api/data.ts":       "its name tells the type of that file before .ts: sitemap.xml.ts gives /sitemap.xml",
 		"feed.x-y.ts":       "its name tells the type",
 		"post-[id].json.ts": "mixes text and a parameter",
@@ -58,16 +66,8 @@ func TestParseSkipsAndErrors(t *testing.T) {
 	}
 }
 
-func TestModule(t *testing.T) {
-	for file, want := range map[string]bool{"sitemap.xml.ts": true, "feed.js": true, "app.d.ts": false, "page.shugo": false, "style.css": false} {
-		if Module(file) != want {
-			t.Errorf("%s: %v", file, !want)
-		}
-	}
-}
-
 func TestOrder(t *testing.T) {
-	files := []string{"[...all].shugo", "products/[slug].shugo", "[section]/new.shugo", "products/new.shugo", "index.shugo", "products/index.shugo", "products/[id].json.ts", "sitemap.xml.ts"}
+	files := []string{"[...all].svelte", "products/[slug].svelte", "[section]/new.svelte", "products/new.svelte", "index.svelte", "products/index.svelte", "products/[id].json.ts", "sitemap.xml.ts"}
 	var routes []Route
 	for _, file := range files {
 		r, _, _ := Parse(file)

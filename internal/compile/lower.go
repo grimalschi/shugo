@@ -97,6 +97,11 @@ type (
 		// props of the component, computed where it renders them.
 		snippets []snipp
 	}
+	island struct {
+		target  code
+		props   []prop
+		request []prop
+	}
 	// piece is named markup computed in the template that writes it: a
 	// snippet without parameters given to a component, or <svelte:head>.
 	piece struct {
@@ -112,9 +117,9 @@ type (
 	}
 	// render is {@render snippet(…)}.
 	render struct {
-		expr     code // the snippet
-		args     code // what stands between the parentheses
-		optional bool // snippet?.(): nothing for a missing snippet
+		expr     code   // the snippet
+		args     []code // arguments from the Svelte AST
+		optional bool   // snippet?.(): nothing for a missing snippet
 	}
 	// dynamic is <svelte:element this={tag}>.
 	dynamic struct {
@@ -217,6 +222,7 @@ var oldTags = map[string]string{
 type lowerer struct {
 	file     *syntax.File
 	role     role
+	islands  map[string]islandBinding
 	errs     Errors
 	warnings []string
 	// hash is the class that scopes the <style> of the component to its own
@@ -488,21 +494,26 @@ func (c context) inner() context {
 }
 
 func (l *lowerer) render(n *syntax.Tag) []node {
-	expr := strings.TrimSpace(n.Code.Text)
-	open := strings.IndexByte(expr, '(')
-	if open < 0 || !strings.HasSuffix(expr, ")") {
+	if n.Call == nil {
 		l.errorf(n.Start, "{@render} calls a snippet: {@render children()}, {@render row(item)}")
 		return nil
 	}
-	callee := strings.TrimSpace(expr[:open])
-	optional := strings.HasSuffix(callee, "?.")
-	callee = strings.TrimSuffix(callee, "?.")
-	start := n.Code.Start + strings.Index(n.Code.Text, expr)
-	return []node{render{expr: code{callee, start}, args: code{expr[open+1 : len(expr)-1], start + open + 1}, optional: optional}}
+	out := render{expr: code{n.Call.Callee.Text, n.Call.Callee.Start}, optional: n.Call.Optional}
+	for _, arg := range n.Call.Arguments {
+		out.args = append(out.args, code{arg.Text, arg.Start})
+	}
+	return []node{out}
 }
 
 // element lowers a tag: an element of HTML, a component or one of svelte:.
 func (l *lowerer) element(e *syntax.Element, ctx context) []node {
+	if l.islands[e.Name].path == "" {
+		for _, a := range e.Attrs {
+			if a.Directive == "request" {
+				l.errorf(a.Start, "request:%s binds a prop on an %s component", a.Name, project.IslandSuffix)
+			}
+		}
+	}
 	if hint, old := oldTags[e.Name]; old {
 		l.errorf(e.Start, "there is no <%s>: write %s", e.Name, hint)
 		return nil
@@ -512,15 +523,19 @@ func (l *lowerer) element(e *syntax.Element, ctx context) []node {
 		return l.dynamicElement(e, ctx)
 	case "svelte:self":
 		// Svelte 5 still shows them, and warns; so does Shugo.
-		name := strings.TrimSuffix(l.file.Path[strings.LastIndex(l.file.Path, "/")+1:], ".shugo")
-		l.warnf(e.Start, "<svelte:self> is deprecated in Svelte 5: a component imports itself, import %s from \"./%s.shugo\"", name, name)
+		name := strings.TrimSuffix(l.file.Path[strings.LastIndex(l.file.Path, "/")+1:], project.TemplateExtension)
+		l.warnf(e.Start, "<svelte:self> is deprecated in Svelte 5: a component imports itself, import %s from \"./%s%s\"", name, name, project.TemplateExtension)
 		return []node{l.call(e, ctx, code{"$$self", e.Start}, true, false)}
 	case "svelte:component":
-		l.warnf(e.Start, "<svelte:component> is deprecated in Svelte 5: a component in a variable is shown by its tag, {@const Shown = cond ? A : B}<Shown />")
 		this, ok := l.this(e)
 		if !ok {
 			return nil
 		}
+		if name := strings.TrimSpace(this.text); l.islands[name].path != "" {
+			l.errorf(e.Start, "a Svelte island must be rendered by its imported tag <%s />", name)
+			return nil
+		}
+		l.warnf(e.Start, "<svelte:component> is deprecated in Svelte 5: a component in a variable is shown by its tag, {@const Shown = cond ? A : B}<Shown />")
 		return []node{l.call(e, ctx, this, false, true)}
 	case "svelte:boundary":
 		return l.fragment(e.Children, ctx.inner())
@@ -533,9 +548,64 @@ func (l *lowerer) element(e *syntax.Element, ctx context) []node {
 		return nil
 	}
 	if isComponent(e.Name) {
+		if _, island := l.islands[e.Name]; island {
+			return []node{l.island(e, ctx)}
+		}
 		return []node{l.call(e, ctx, code{e.Name, e.Start + 1}, false, false)}
 	}
 	return l.html5(e, ctx)
+}
+
+func (l *lowerer) island(e *syntax.Element, ctx context) node {
+	if ctx.head || ctx.svg || ctx.raw || slices.Contains([]string{"select", "option", "optgroup", "textarea", "template"}, ctx.parent) {
+		l.errorf(e.Start, "the Svelte island <%s> needs a place for its wrapper in the HTML body", e.Name)
+	}
+	l.placed("div", e.Start, ctx.ancestors)
+	if hoisted, children := l.clean(e.Children, ctx); len(hoisted)+len(children) > 0 {
+		l.errorf(e.Start, "the Svelte island <%s> takes JSON props; its tag cannot pass children or snippets", e.Name)
+	}
+	out := island{target: code{e.Name, e.Start + 1}}
+	bound := map[string]bool{}
+	for _, a := range e.Attrs {
+		switch a.Kind {
+		case syntax.Spread:
+			c, _ := a.Expr()
+			out.props = append(out.props, prop{spread: &code{c.Text, c.Start}})
+		case syntax.Plain, syntax.Shorthand:
+			if a.Name == "shugoSearch" {
+				l.errorf(a.Start, "use request:initial={search(\"products\", options)} with search imported from \"shugo:search\"")
+			}
+			out.props = append(out.props, prop{name: a.Name, value: l.value(a)})
+		case syntax.Directive:
+			if a.Directive != "request" {
+				l.errorf(a.Start, "pass a JSON prop to the Svelte island <%s>; directives belong inside its %s file", e.Name, project.IslandSuffix)
+				continue
+			}
+			if _, ok := a.Expr(); !ok || len(a.Modifiers) != 0 {
+				l.errorf(a.Start, "request:%s needs one source expression, as in request:%s={search(\"products\", options)}", a.Name, a.Name)
+				continue
+			}
+			if bound[a.Name] {
+				l.errorf(a.Start, "request:%s is already bound on this island", a.Name)
+				continue
+			}
+			bound[a.Name] = true
+			out.request = append(out.request, prop{name: a.Name, value: l.value(a)})
+		default:
+			l.errorf(a.Start, "pass a JSON prop to the Svelte island <%s>; directives belong inside its %s file", e.Name, project.IslandSuffix)
+		}
+	}
+	for _, p := range out.props {
+		if bound[p.name] {
+			l.errorf(e.Start, "prop %s already gets its value from request:%s", p.name, p.name)
+		}
+	}
+	if len(out.request) > 0 {
+		binding := l.islands[e.Name]
+		binding.request = true
+		l.islands[e.Name] = binding
+	}
+	return out
 }
 
 // this returns the expression of this={…}.

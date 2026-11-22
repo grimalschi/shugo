@@ -1,6 +1,10 @@
 package test
 
 import (
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -8,7 +12,7 @@ import (
 // one builds a site of one page and returns its HTML.
 func one(t *testing.T, page string, more ...string) string {
 	t.Helper()
-	s := newSite(t, "-- src/pages/index.shugo --\n"+page+"\n"+strings.Join(more, "\n"))
+	s := newSite(t, "-- src/pages/index.svelte --\n"+page+"\n"+strings.Join(more, "\n"))
 	s.build()
 	return s.page("/")
 }
@@ -67,7 +71,7 @@ const odd = "a\u0000b\u0001c\u0002d\u0003e\u0004f\u0005g\u0004@"
 	odd := "a\x00b\x01c\x02d\x03e\x04f\x05g\x04@"
 	expect(t, got, `<p title="`+odd+`">`+odd+`</p>`+odd)
 
-	s := newSite(t, "-- src/pages/index.shugo --\n<script>\nconst rest = { \"a\\u0001b\": 1 }\n</script>\n<p {...rest}>x</p>")
+	s := newSite(t, "-- src/pages/index.svelte --\n<script>\nconst rest = { \"a\\u0001b\": 1 }\n</script>\n<p {...rest}>x</p>")
 	if _, err := s.tryBuild(); err == nil || !strings.Contains(err.Error(), `"a\x01b" cannot be the name of an attribute`) {
 		t.Errorf("an attribute named with a control character: %v", err)
 	}
@@ -147,7 +151,7 @@ const note = "a < b"
 	expect(t, got, `<h3 class="t">title</h3><br/> <select><option value="s">S</option><option selected="">m</option></select> <textarea>a &lt; b</textarea>`)
 }
 
-const card = `-- src/components/Card.shugo --
+const card = `-- src/components/Card.svelte --
 <script>
 let { title, big = false, children, footer } = $props()
 </script>
@@ -161,7 +165,7 @@ let { title, big = false, children, footer } = $props()
 // written inside its tag.
 func TestComponentsAndSnippets(t *testing.T) {
 	got := one(t, `<script>
-import Card from "../components/Card.shugo"
+import Card from "../components/Card.svelte"
 const name = "world"
 </script>
 <Card title="A" />
@@ -177,19 +181,19 @@ const name = "world"
 // or hand them to one as a parameter.
 func TestNestedComponentsPassSnippets(t *testing.T) {
 	got := one(t, `<script>
-import Outer from "../components/Outer.shugo"
+import Outer from "../components/Outer.svelte"
 </script>
-<Outer><b>text</b></Outer>`, `-- src/components/Outer.shugo --
+<Outer><b>text</b></Outer>`, `-- src/components/Outer.svelte --
 <script>
-import Inner from "./Inner.shugo"
-import Shown from "./Shown.shugo"
+import Inner from "./Inner.svelte"
+import Shown from "./Shown.svelte"
 let { children } = $props()
 </script>
 <div class="outer"><Inner><i>before</i>{@render children()}</Inner></div><Shown content={children} />
--- src/components/Inner.shugo --
+-- src/components/Inner.svelte --
 <script>let { children } = $props()</script>
 <div class="inner">{@render children()}</div>
--- src/components/Shown.shugo --
+-- src/components/Shown.svelte --
 <script>let { content } = $props()</script>
 <p>{@render content()}</p>`)
 	expect(t, got, `<div class="outer"><div class="inner"><i>before</i><b>text</b></div></div><p><b>text</b></p>`)
@@ -197,47 +201,59 @@ let { children } = $props()
 
 func TestSnippetsWithParameters(t *testing.T) {
 	got := one(t, `<script>
-import List from "../components/List.shugo"
+import List from "../components/List.svelte"
 const label = "№"
 </script>
 {#snippet cell(x)}<td>{label}{x}</td>{/snippet}
 <table><tbody><tr>{@render cell(1)}{@render cell(2)}</tr></tbody></table>
-<List items={["a", "b"]}>{#snippet row(item, i)}<li>{i}: {item} {label}</li>{/snippet}</List>`, `-- src/components/List.shugo --
+<List items={["a", "b"]}>{#snippet row(item, i)}<li>{i}: {item} {label}</li>{/snippet}</List>`, `-- src/components/List.svelte --
 <script>let { items, row } = $props()</script>
 <ul>{#each items as item, i}{@render row(item, i)}{/each}</ul>`)
 	expect(t, got, `<table><tbody><tr><td>№1</td><td>№2</td></tr></tbody></table> <ul><li>0: a №</li><li>1: b №</li></ul>`)
 }
 
+func TestRenderCallWithParenthesizedExpressions(t *testing.T) {
+	got := one(t, `<script>
+const first = true
+const missing = null
+function fail() { throw new Error("an optional call must skip its arguments") }
+</script>
+{#snippet card(value, label)}<p>{value} {label}</p>{/snippet}
+{#snippet other(value, label)}<b>{label} {value}</b>{/snippet}
+{@render (first ? card : other)((1, 2), /[(]/.source)}{@render missing?.(fail())}`)
+	expect(t, got, "<p>2 [(]</p>")
+}
+
 func TestRecursionAndDynamicComponents(t *testing.T) {
 	got := one(t, `<script>
-import Tree from "../components/Tree.shugo"
-import Self from "../components/Self.shugo"
-import A from "../components/A.shugo"
-import B from "../components/B.shugo"
+import Tree from "../components/Tree.svelte"
+import Self from "../components/Self.svelte"
+import A from "../components/A.svelte"
+import B from "../components/B.svelte"
 const tree = { name: "root", children: [{ name: "a", children: [{ name: "a1", children: [] }] }, { name: "b", children: [] }] }
 const Tag = tree.children.length > 1 ? B : A
 </script>
-<Tree node={tree} /><Self node={tree} /><Tag /><svelte:component this={A} /><svelte:component this={null} />`, `-- src/components/Tree.shugo --
+<Tree node={tree} /><Self node={tree} /><Tag /><svelte:component this={A} /><svelte:component this={null} />`, `-- src/components/Tree.svelte --
 <script>
 let { node } = $props()
 </script>
 <li>{node.name}{#if node.children.length}<ul>{#each node.children as child}<svelte:self node={child} />{/each}</ul>{/if}</li>
--- src/components/Self.shugo --
+-- src/components/Self.svelte --
 <script>
-import Self from "./Self.shugo"
+import Self from "./Self.svelte"
 let { node } = $props()
 </script>
 <li>{node.name}{#if node.children.length}<ul>{#each node.children as child}<Self node={child} />{/each}</ul>{/if}</li>
--- src/components/A.shugo --
+-- src/components/A.svelte --
 <a>A</a>
--- src/components/B.shugo --
+-- src/components/B.svelte --
 <b>B</b>`)
 	tree := `<li>root<ul><li>a<ul><li>a1</li></ul></li><li>b</li></ul></li>`
 	expect(t, got, tree+tree+`<b>B</b><a>A</a>`)
 }
 
 func TestTypeScript(t *testing.T) {
-	got := one(t, `<script>
+	got := one(t, `<script lang="ts">
 import { price, type Product } from "@/lib/shop"
 interface Props { product?: Product }
 const { product = { title: "Jug", cents: 1250 } as Product } = $props() as Props
@@ -257,12 +273,12 @@ const src = "/a.png"
 const title = "T"
 </script>
 <ui.Button href="/x">go</ui.Button><img {src} alt=""><ui.Title {title} /><p title="a {'x'} b">{"{"}</p>`, `-- src/components/ui.ts --
-export { default as Button } from "./Button.shugo"
-export { default as Title } from "./Title.shugo"
--- src/components/Button.shugo --
+export { default as Button } from "./Button.svelte"
+export { default as Title } from "./Title.svelte"
+-- src/components/Button.svelte --
 <script>let { href, children } = $props()</script>
 <a class="button" {href}>{@render children?.()}</a>
--- src/components/Title.shugo --
+-- src/components/Title.svelte --
 <script>let { title } = $props()</script>
 <h1>{title}</h1>`)
 	expect(t, got, `<a class="button" href="/x">go</a><img src="/a.png" alt=""/><h1>T</h1><p title="a x b">{</p>`)
@@ -272,7 +288,7 @@ func TestStyles(t *testing.T) {
 	s := newSite(t, `
 -- src/site.html --
 <html><head><title>T</title>%shugo.head%</head><body>%shugo.body%</body></html>
--- src/pages/+layout.shugo --
+-- src/pages/+layout.svelte --
 <script>
 import "../styles/main.css"
 let { children } = $props()
@@ -282,13 +298,13 @@ let { children } = $props()
   main { margin: 0 }
   :global(body) { padding: 0 }
 </style>
--- src/pages/index.shugo --
+-- src/pages/index.svelte --
 <script>
-import Card from "../components/Card.shugo"
+import Card from "../components/Card.svelte"
 </script>
 <Card /><Card />
 <div><style>h1 { color: blue }</style></div>
--- src/components/Card.shugo --
+-- src/components/Card.svelte --
 <b class="card">card</b><i class></i><i class=""></i>
 <style>.card { color: green }</style>
 -- src/styles/main.css --
@@ -314,7 +330,8 @@ html { font-family: sans-serif }
 		t.Errorf("the cards are not scoped: %s", page)
 	}
 	link := page[strings.Index(page, `href="/_assets/`)+len(`href="/_assets/`):]
-	sheet := s.read("_build/assets/" + link[:strings.Index(link, `"`)])
+	sheetFile := link[:strings.Index(link, `"`)]
+	sheet := s.read("_build/assets/" + sheetFile)
 	for _, want := range []string{"font-family:sans-serif", `.logo{background:url("/_assets/logo.`, ".card." + card + "{color:green}", "main.svelte-", "body{padding:0}"} {
 		if !strings.Contains(sheet, want) {
 			t.Errorf("the style sheet has no %q: %s", want, sheet)
@@ -325,8 +342,28 @@ html { font-family: sans-serif }
 	}
 	// What a style sheet points at is copied next to it.
 	name := sheet[strings.Index(sheet, "/_assets/logo.")+len("/_assets/"):]
-	if got := s.read("_build/assets/" + name[:strings.Index(name, `"`)]); !strings.Contains(got, "<svg") {
+	logoFile := name[:strings.Index(name, `"`)]
+	if got := s.read("_build/assets/" + logoFile); !strings.Contains(got, "<svg") {
 		t.Errorf("the picture of the style sheet: %q", got)
+	}
+
+	out := filepath.Join(s.root, "dist")
+	if done := s.export(out); done.Files != 3 {
+		t.Fatalf("expected page, stylesheet and SVG in export: %+v", done)
+	}
+	s.write(`-- src/styles/logo.svg --
+<svg xmlns="http://www.w3.org/2000/svg" width="20"/>`)
+	s.build()
+	if done := s.export(out); done.Files != 3 || done.Written != 3 || done.Removed != 2 {
+		t.Fatalf("expected a new stylesheet and SVG and page: %+v", done)
+	}
+	for _, name := range []string{sheetFile, logoFile} {
+		if _, err := os.Stat(filepath.Join(s.root, "_build", "assets", name)); err != nil {
+			t.Errorf("previous asset unavailable to the server: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(out, "_assets", name)); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("previous asset retained by export: %s, %v", name, err)
+		}
 	}
 }
 

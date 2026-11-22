@@ -62,7 +62,7 @@ updated in 28 ms: 104202 pages, 100010 shared blocks
   pages: 0 added, 1 changed, 0 removed
     changed: /products/product-5
   shared blocks: 0 added, 1 changed, 0 removed
-    changed: src/components/ProductCard.shugo{"id":"p5"}
+    changed: src/components/ProductCard.svelte{"id":"p5"}
   the HTML differs on 7 pages: they show a shared block that has changed
 ```
 
@@ -78,7 +78,7 @@ In JSON, the same time of each step is in milliseconds:
   "computed": { "pages": 1, "shared": 1 },
   "blocks": 13,
   "pages": { "total": 104202, "added": 0, "changed": 1, "removed": 0, "changedNames": ["/products/product-5"] },
-  "shared": { "total": 100010, "added": 0, "changed": 1, "removed": 0, "changedNames": ["src/components/ProductCard.shugo{\"id\":\"p5\"}"] },
+  "shared": { "total": 100010, "added": 0, "changed": 1, "removed": 0, "changedNames": ["src/components/ProductCard.svelte{\"id\":\"p5\"}"] },
   "render": 7,
   "renderNames": ["/", "/categories/c5", "/products/product-5", "…"],
   "shadowed": 0,
@@ -97,7 +97,7 @@ In JSON, the same time of each step is in milliseconds:
 An error in the project is shown with the space in the project file and a line of code:
 
 ```
-error: src/pages/about.shugo:4:14: </div> does not close <span> opened at 4:3
+error: src/pages/about.svelte:4:14: </div> does not close <span> opened at 4:3
      3 | <div>
      4  <span>text</div>
        |              ^
@@ -107,8 +107,8 @@ The error during the calculation shows the page that was calculated and the plac
 
 ```
 error: Cannot read properties of undefined (reading 'title')
-  while computing the page /about (src/pages/about.shugo)
-  at src/pages/about.shugo:5:21
+  while computing the page /about (src/pages/about.svelte)
+  at src/pages/about.svelte:5:21
      4 | const first = products[10]
      5 | const title = first.title.toUpperCase()
        |                     ^

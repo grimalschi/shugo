@@ -22,8 +22,8 @@ import (
 const dataShop = `
 -- shugo.json --
 {"data": "data/shop.db"}
--- src/components/Card.shugo --
-<script>
+-- src/components/Card.svelte --
+<script lang="ts">
 import { query } from "shugo"
 const { id } = $props() as { id: string }
 const item = query("products").select("slug", "title", "price").get(id)
@@ -31,7 +31,7 @@ if (!item) throw new Error("there is no product " + id)
 console.log("card " + id)
 </script>
 <a href={"/products/" + item.slug}>{item.title} — {item.price}</a>
--- src/components/Header.shugo --
+-- src/components/Header.svelte --
 <script>
 import { query } from "shugo"
 const shop = query("shop").select("name").get(1)
@@ -39,27 +39,27 @@ const count = query("products").count()
 console.log("header")
 </script>
 <header>{shop.name} · {count} products</header>
--- src/pages/+layout.shugo --
+-- src/pages/+layout.svelte --
 <script>
 let { children } = $props()
-import Header from "../components/Header.shugo"
+import Header from "../components/Header.svelte"
 </script>
 <Header /><main>{@render children()}</main>
--- src/pages/index.shugo --
+-- src/pages/index.svelte --
 <script>
 import { query } from "shugo"
-import Card from "../components/Card.shugo"
+import Card from "../components/Card.svelte"
 const top = query("products").select("id").order("position").limit(2).all()
 console.log("index")
 </script>
 <ul>{#each top as p}<li><Card id={p.id} /></li>{/each}</ul>
--- src/pages/products/[slug].shugo --
+-- src/pages/products/[slug].svelte --
 <script module>
 import { query, page } from "shugo"
 export const getStaticPaths = () => query("products").select("slug").all().map(({ slug }) => ({ params: { slug } }))
 </script>
 <script>
-import Card from "../../components/Card.shugo"
+import Card from "../../components/Card.svelte"
 const item = query("products").select("title", "price")
   .where({ slug: page.params.slug }).join("categories", "category", { select: ["title"], as: "group" }).first()
 const reviews = query("reviews").select("text").where({ product: item.id, approved: true }).all()
@@ -69,14 +69,14 @@ console.log("page " + item.id)
 <h1>{item.title}</h1><p>{item.price} · {item.group?.title}</p>
 <ul>{#each reviews as r}<li>{r.text}</li>{/each}</ul>
 <nav>{#each related as r}<Card id={r.other} />{/each}</nav>
--- src/pages/categories/[id]/[...page].shugo --
+-- src/pages/categories/[id]/[...page].svelte --
 <script module>
 import { query, paginate, page } from "shugo"
 export const getStaticPaths = () =>
   query("categories").select("id").all().flatMap(({ id }) => paginate(query("products").where({ category: id }).count(), { pageSize: 2, params: { id } }))
 </script>
 <script>
-import Card from "../../../components/Card.shugo"
+import Card from "../../../components/Card.svelte"
 const category = query("categories").get(page.params.id)
 const list = paginate(query("products").select("id").where({ category: category.id }).order("position"), { pageSize: 2 })
 console.log("list " + page.url.pathname)
@@ -317,28 +317,28 @@ func TestDataQueries(t *testing.T) {
 	s := newSite(t, `
 -- shugo.json --
 {"data": "data/shop.db"}
--- src/pages/among.shugo --
+-- src/pages/among.svelte --
 <script>
 import { query } from "shugo"
 const rows = query("products").select("title").where("id", "in", ["p1", "p3"]).order("title").all()
 console.log("among")
 </script>
 <p>{rows.map((row) => row.title).join(", ")}</p>
--- src/pages/cheap.shugo --
+-- src/pages/cheap.svelte --
 <script>
 import { query } from "shugo"
 const rows = query("products").select("title", "price").where("price", "<", 8).order("price", "desc").all()
 console.log("cheap")
 </script>
 <p>{rows.map((row) => row.title + " " + row.price).join(", ")}</p>
--- src/pages/dearest.shugo --
+-- src/pages/dearest.svelte --
 <script>
 import { query } from "shugo"
 const row = query("products").select("title").where({ category: "c1" }).order("price", "desc").first()
 console.log("dearest")
 </script>
 <p>{row.title}</p>
--- src/pages/joined.shugo --
+-- src/pages/joined.svelte --
 <script>
 import { query } from "shugo"
 const row = query("products").select("title").join("categories", "category", { select: ["title"], as: "group" }).get("p4")
@@ -346,7 +346,7 @@ const other = query("categories").join("products", "id", { on: "slug", select: [
 console.log("joined")
 </script>
 <p>{row.title} in {row.group.title}; {String(other.namesake)}</p>
--- src/pages/count.shugo --
+-- src/pages/count.svelte --
 <script>
 import { query } from "shugo"
 const count = query("products").where("price", ">=", 7).where("category", "!=", null).count()
@@ -402,18 +402,18 @@ func TestDataQueryMistakes(t *testing.T) {
 		"an unknown comparison":    {`query("products").where("price", "~", 5).all()`, `the comparisons are =, !=, <, <=, >, >=, like, in`},
 		"a join that hides a name": {`query("products").join("categories", "category", { as: "title" }).all()`, `a row already has "title"`},
 	} {
-		s := newSite(t, "-- shugo.json --\n{\"data\": \"data/shop.db\"}\n-- src/pages/index.shugo --\n<script>\nimport { query } from \"shugo\"\nconst rows = "+mistake[0]+"\n</script>\n<p>{rows.length}</p>\n")
+		s := newSite(t, "-- shugo.json --\n{\"data\": \"data/shop.db\"}\n-- src/pages/index.svelte --\n<script>\nimport { query } from \"shugo\"\nconst rows = "+mistake[0]+"\n</script>\n<p>{rows.length}</p>\n")
 		s.sql(queryRows)
 		if _, err := s.tryBuild(); err == nil || !strings.Contains(err.Error(), mistake[1]) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
 
-	s := newSite(t, "-- src/pages/index.shugo --\n<script>\nimport { query } from \"shugo\"\nconst rows = query(\"products\").all()\n</script>\n<p>{rows.length}</p>\n")
+	s := newSite(t, "-- src/pages/index.svelte --\n<script>\nimport { query } from \"shugo\"\nconst rows = query(\"products\").all()\n</script>\n<p>{rows.length}</p>\n")
 	if _, err := s.tryBuild(); err == nil || !strings.Contains(err.Error(), "this project names none") {
 		t.Errorf("no data database: %v", err)
 	}
-	s = newSite(t, "-- shugo.json --\n{\"data\": \"data/shop.db\"}\n-- src/pages/index.shugo --\n<p>Hi</p>\n")
+	s = newSite(t, "-- shugo.json --\n{\"data\": \"data/shop.db\"}\n-- src/pages/index.svelte --\n<p>Hi</p>\n")
 	if _, err := s.tryBuild(); err == nil || !strings.Contains(err.Error(), "is not there") {
 		t.Errorf("a data database that is not there: %v", err)
 	}
@@ -429,7 +429,7 @@ func TestPagesAskForTheirRows(t *testing.T) {
 	s := newSite(t, `
 -- shugo.json --
 {"data": "data/shop.db"}
--- src/pages/items/[id].shugo --
+-- src/pages/items/[id].svelte --
 <script module>
 import { query, page } from "shugo"
 export const getStaticPaths = () => query("products").select("id").all().map(({ id }) => ({ params: { id } }))
@@ -464,17 +464,17 @@ func TestSharedBlockThatFails(t *testing.T) {
 	s := newSite(t, `
 -- shugo.json --
 {"data": "data/shop.db"}
--- src/components/Card.shugo --
+-- src/components/Card.svelte --
 <script>
 import { query } from "shugo"
 const item = query("products").select("title").get($props().id)
 if (!item) throw new Error("there is no product " + $props().id)
 </script>
 <b>{item.title}</b>
--- src/pages/index.shugo --
+-- src/pages/index.svelte --
 <script>
 import { query } from "shugo"
-import Card from "../components/Card.shugo"
+import Card from "../components/Card.svelte"
 const rows = query("products").select("id").where({ category: "c2" }).all()
 </script>
 <Card id="p1" />{#each rows as row}<Card id={row.id} />{/each}
@@ -492,7 +492,7 @@ const rows = query("products").select("id").where({ category: "c2" }).all()
 
 	// The page still shows the other card, whatever the data says.
 	s.sql(`DELETE FROM products WHERE id = 'p1'`)
-	if _, err := s.tryUpdate(); err == nil || !strings.Contains(err.Error(), "there is no product p1") || !strings.Contains(err.Error(), "src/components/Card.shugo") {
+	if _, err := s.tryUpdate(); err == nil || !strings.Contains(err.Error(), "there is no product p1") || !strings.Contains(err.Error(), "src/components/Card.svelte") {
 		t.Errorf("the update: %v", err)
 	}
 	expect(t, s.page("/"), `<b>Jug</b>`)
@@ -510,7 +510,7 @@ func TestDataJournalStartsAnew(t *testing.T) {
 	s := newSite(t, `
 -- shugo.json --
 {"data": "data/shop.db"}
--- src/pages/index.shugo --
+-- src/pages/index.svelte --
 <script>
 import { query } from "shugo"
 const rows = query("products").select("title").order("title").all()
@@ -553,7 +553,7 @@ func TestDataOutsideTheDatabase(t *testing.T) {
 {"data": "data/shop.db"}
 -- note.txt --
 old
--- src/pages/index.shugo --
+-- src/pages/index.svelte --
 <script>
 import { query } from "shugo"
 import { readFileSync } from "node:fs"
@@ -579,9 +579,9 @@ func TestDataPageBehindAnother(t *testing.T) {
 	s := newSite(t, `
 -- shugo.json --
 {"data": "data/shop.db"}
--- src/pages/products/special.shugo --
+-- src/pages/products/special.svelte --
 <h1>Special</h1>
--- src/pages/products/[slug].shugo --
+-- src/pages/products/[slug].svelte --
 <script module>
 import { query, page } from "shugo"
 export const getStaticPaths = () => query("products").select("slug").all().map(({ slug }) => ({ params: { slug } }))
@@ -613,31 +613,31 @@ func TestDataPageChangesRoutes(t *testing.T) {
 	s := newSite(t, `
 -- shugo.json --
 {"data": "data/shop.db"}
--- src/components/Card.shugo --
+-- src/components/Card.svelte --
 <script>
 import { query } from "shugo"
 const item = query("products").select("title").get($props().id)
 console.log("card " + $props().id)
 </script>
 <b>{item.title}</b>
--- src/pages/x/[slug].shugo --
+-- src/pages/x/[slug].svelte --
 <script module>
 import { query, page } from "shugo"
 export const getStaticPaths = () => query("products").select("slug").where({ category: "c1" }).all().map(({ slug }) => ({ params: { slug } }))
 </script>
 <script>
-import Card from "../../components/Card.shugo"
+import Card from "../../components/Card.svelte"
 const item = query("products").select("price").where({ slug: page.params.slug }).first()
 console.log("exact " + item.id)
 </script>
 <p>exact {item.price} <Card id={item.id} /></p>
--- src/pages/[...all].shugo --
+-- src/pages/[...all].svelte --
 <script module>
 import { query, page } from "shugo"
 export const getStaticPaths = () => query("products").select("slug").all().map(({ slug }) => ({ params: { all: "x/" + slug } }))
 </script>
 <script>
-import Card from "../components/Card.shugo"
+import Card from "../components/Card.svelte"
 const item = query("products").select("price").where({ slug: page.params.all.slice(2) }).first()
 console.log("loose " + item.id)
 </script>
@@ -676,7 +676,7 @@ func TestLayoutKeptForEveryPage(t *testing.T) {
 {"data": "data/shop.db"}
 -- src/site.html --
 <html><head><meta charset="utf-8">%shugo.head%</head><body>%shugo.body%</body></html>
--- src/pages/+layout.shugo --
+-- src/pages/+layout.svelte --
 <script>
 import { query, page } from "shugo"
 let { children } = $props()
@@ -685,7 +685,7 @@ console.log("layout " + page.url.pathname)
 </script>
 <svelte:head><title>Shop</title><meta name="menu" content={menu.length}></svelte:head>
 <nav>{#each menu as item}<a href="/{item.id}" class:active={page.url.pathname === "/" + item.id}>{item.title}</a>{/each}</nav>{@render children()}
--- src/pages/[id].shugo --
+-- src/pages/[id].svelte --
 <script module>
 import { query, page } from "shugo"
 export const getStaticPaths = () => query("categories").select("id").all().map(({ id }) => ({ params: { id } }))

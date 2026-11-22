@@ -208,9 +208,14 @@ const comparisons = new Set(["=", "!=", "<", "<=", ">", ">=", "like", "in"]);
 // It belongs to that computation alone. A question asked, or a column read,
 // by another computation or after this one is over would leave nobody
 // depending on the answer; so both are refused, with what to do instead.
+let catalogAtModuleScope = false;
+let searchesAtModuleScope;
+
 export class Reads {
   constructor() {
     this.asked = [];
+    this.catalog = false;
+    this.searches = undefined;
     // settled tells that the readings are told: nothing more may be asked
     // or read.
     this.settled = false;
@@ -224,8 +229,17 @@ export class Reads {
   // computed.
   text() {
     this.settled = true;
-    if (this.asked.length === 0) return "";
-    const list = [];
+    const catalog = this.catalog || catalogAtModuleScope;
+    if (this.asked.length === 0 && !catalog && !this.searches && !searchesAtModuleScope) return "";
+    // Wire shape -1 reads the default search result and has no key.
+    const list = catalog ? [-1] : [];
+    // Wire shape -2 names one generic search by its declaration ID.
+    if (searchesAtModuleScope) {
+      for (const id of searchesAtModuleScope) list.push(-2, id);
+    }
+    if (this.searches) {
+      for (const id of this.searches) if (!searchesAtModuleScope?.has(id)) list.push(-2, id);
+    }
     for (const one of this.asked) one.settle(list);
     return JSON.stringify(list);
   }
@@ -249,6 +263,25 @@ export class Reads {
 // list of pages. Nothing waits while a page is computed, so one computation
 // runs at a time and is all there is to know.
 let computing = null;
+
+// The default search result is a build input of the computation that asks
+// for it, including a list of pages or a shared block.
+export function readCatalog() {
+  if (computing?.mine()) {
+    computing.catalog = true;
+  } else {
+    // Module-level values can be shared by any consumer of the bundle.
+    catalogAtModuleScope = true;
+  }
+}
+
+export function readSearch(id) {
+  if (computing?.mine()) {
+    (computing.searches ??= new Set()).add(id);
+  } else {
+    (searchesAtModuleScope ??= new Set()).add(id);
+  }
+}
 
 // during runs compute as the computation that reads belongs to.
 export function during(reads, compute) {

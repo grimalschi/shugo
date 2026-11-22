@@ -11,8 +11,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-
-	"github.com/grimalschi/shugo/internal/route"
 )
 
 // The folders and files every project has by the same names.
@@ -24,6 +22,25 @@ const (
 	Public   = "public"        // files that go to the site as they are
 	Output   = "_build"        // everything the framework writes
 )
+
+// What the files of a project end with.
+const (
+	TemplateExtension = ".svelte"        // a page, a layout or a component
+	IslandSuffix      = ".island.svelte" // a component that also runs in the browser
+	legacyExtension   = ".shugo"         // what templates ended with before 22 November 2026
+)
+
+// IsIsland reports whether a source file declares a Svelte island.
+func IsIsland(path string) bool {
+	return strings.HasSuffix(path, IslandSuffix)
+}
+
+// IsModule tells whether a file is a module of code: among the pages, a
+// module gives a file of the site that is not HTML. Declarations of types
+// are no modules.
+func IsModule(path string) bool {
+	return (strings.HasSuffix(path, ".ts") || strings.HasSuffix(path, ".js")) && !strings.HasSuffix(path, ".d.ts")
+}
 
 // Config is what shugo.json holds. Every field may be left out.
 type Config struct {
@@ -82,10 +99,17 @@ func (p *Project) Data() string {
 	return p.Path(filepath.FromSlash(p.Config.Data))
 }
 
-// Templates returns the .shugo files of the project: those in src/,
-// sorted. The paths are relative to the root and use "/".
+// Templates returns the sorted regular .svelte files in src/. Islands enter
+// the compiler through imports. The paths are relative to the root and use
+// "/". A template of the old extension .shugo is an error that says to
+// rename it.
 func (p *Project) Templates() ([]string, error) {
-	return p.files(Source, func(name string) bool { return strings.HasSuffix(name, route.Extension) })
+	return p.files(Source, func(rel string) (bool, error) {
+		if base, legacy := strings.CutSuffix(rel, legacyExtension); legacy {
+			return false, fmt.Errorf("%s: rename this template to %s and update its imports", rel, base+TemplateExtension)
+		}
+		return strings.HasSuffix(rel, TemplateExtension) && !IsIsland(rel), nil
+	})
 }
 
 // PageModules returns the modules of code among the pages, the .ts and .js
@@ -93,19 +117,14 @@ func (p *Project) Templates() ([]string, error) {
 // the site that are not HTML. One whose name or folder starts with _ is
 // code for others to import, and is not among them.
 func (p *Project) PageModules() ([]string, error) {
-	all, err := p.files(Pages, route.Module)
-	out := all[:0]
-	for _, path := range all {
-		if !strings.Contains(strings.TrimPrefix(path, Pages), "/_") {
-			out = append(out, path)
-		}
-	}
-	return out, err
+	return p.files(Pages, func(rel string) (bool, error) {
+		return IsModule(rel) && !strings.Contains(strings.TrimPrefix(rel, Pages), "/_"), nil
+	})
 }
 
-// files returns the files in a folder of the project whose names it keeps,
-// sorted.
-func (p *Project) files(folder string, keep func(name string) bool) ([]string, error) {
+// files returns the files in a folder of the project that keep takes, by
+// their paths relative to the root, sorted.
+func (p *Project) files(folder string, keep func(rel string) (bool, error)) ([]string, error) {
 	var out []string
 	top := p.Path(filepath.FromSlash(folder))
 	err := filepath.WalkDir(top, func(path string, entry fs.DirEntry, err error) error {
@@ -120,11 +139,16 @@ func (p *Project) files(folder string, keep func(name string) bool) ([]string, e
 			}
 			return nil
 		}
-		if keep(name) {
-			rel, _ := filepath.Rel(p.Root, path)
-			out = append(out, filepath.ToSlash(rel))
+		rel, err := filepath.Rel(p.Root, path)
+		if err != nil {
+			return err
 		}
-		return nil
+		rel = filepath.ToSlash(rel)
+		kept, err := keep(rel)
+		if kept {
+			out = append(out, rel)
+		}
+		return err
 	})
 	sort.Strings(out)
 	return out, err

@@ -14,7 +14,7 @@ import (
 const fileModules = `
 -- shugo.json --
 {"data": "data/shop.db", "site": "https://shop.example"}
--- src/pages/products/[slug].shugo --
+-- src/pages/products/[slug].svelte --
 <script module>
 import { query } from "shugo"
 export function getStaticPaths() {
@@ -137,7 +137,7 @@ func TestFileMistakes(t *testing.T) {
 -- src/pages/data.ts --
 export function GET() { return "x" }`, "src/pages/data.ts:1:1: a module among the pages gives a file of the site, and its name tells the type of that file before .ts: sitemap.xml.ts gives /sitemap.xml; a module of helpers goes to src/lib/, or its name starts with _"},
 		{"a template and a module with one address", `
--- src/pages/feed.xml.shugo --
+-- src/pages/feed.xml.svelte --
 <p>x</p>
 -- src/pages/feed.xml.ts --
 export function GET() { return "x" }`, "give the same addresses"},
