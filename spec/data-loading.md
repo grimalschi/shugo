@@ -17,7 +17,7 @@ The document describes where the data for pages comes from and when they are loa
 
 ### Data comes from the project database
 
-Pages, layouts and components read data only from the SQLite database of the project, named in `shugo.json`: `{ "data": "data/site.db" }`. Read via `Shugo.query`, route via `query` in `getStaticPaths`. The request responds immediately: SQLite works in the same process, and in Bun, and in Node its interface is synchronous.
+Pages, layouts, components, `getStaticPaths` and `GET` modules functions among pages read data only from the SQLite database of the project, named in `shugo.json`: `{ "data": "data/site.db" }`. Read via `query` from the `shugo` module: `import { query } from "shugo"`. The request responds immediately: SQLite works in the same process, and in Bun, and in Node its interface is synchronous.
 
 Each answer line remembers which columns are read in the page code, in the template, in the functions to which it was passed, in the components. It depends on what is calculated after changing the line: [Change tracking](../docs/change-tracking.md).
 

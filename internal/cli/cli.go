@@ -218,7 +218,7 @@ func (c *command) renew(st *store.Store) error {
 		// plain update would again leave such a page as it is.
 		return fmt.Errorf("%d pages or shared blocks came out different although no row they read has changed; the first: %s.\n"+
 			"They read data past the data database — a file, the network, something another page left in a module — or a package does so for them. "+
-			"Put that data into the database and ask for it with Shugo.query; until then only `shugo build` reads it again", len(report.Unseen), report.Unseen[0])
+			"Put that data into the database and ask for it with query from \"shugo\"; until then only `shugo build` reads it again", len(report.Unseen), report.Unseen[0])
 	}
 	return nil
 }

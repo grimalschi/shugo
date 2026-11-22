@@ -23,13 +23,13 @@ The document describes what the page is built of and how the change in data reac
 - **Tape** — block expression values in the order of the template. There is no markup in the tape: it lies in the project framework, one for all template impressions.
 - **Page Record** is a list of its blocks. The block has its template, its tape, the blocks inside it, the snippets that the caller gave it, and the blocks that its template gave `<head>` pages in `<svelte:head>`.
 - **Shared block** is a component that shows the same thing on any page. It has its own record under the name; pages link to this name. Layout is always a separate record: common to the entire site or its own to each page.
+- **File not in HTML** is what gives a module among pages, for example `src/pages/sitemap.xml.ts`. Its record is one block with one value: the text that returned the function `GET`. What `GET` read from the database is written to this record like a page.
 
 Product page in the store from [examples/catalog](../examples/catalog/README.md):
 
 ```
 page entry /products/jug
 └─ layout src/pages/+layout.shugo{|children} general: one for the whole site
-   ├─ end of <head> here server puts <title> pages
    ├─ Header general: one for the whole site
    ├─ {@render children()}: page block in page entry
    │  ├─ <svelte:head>: block <title> in page entry
@@ -42,12 +42,16 @@ page entry /products/jug
 
 The layout doesn’t read anything about the page, so it’s one-on-one for the entire site. The page gives him a snippet of `children` herself. Snippet names are in the common block name after `|`. The snippet itself is calculated in the page and lies in its entry; in the layout entry, in its place, there is a link "snippet `children` of the one who showed me".
 
+The documents around — `<!doctype>`, `<html>`, `<head>`, `<body>` — are not in the records. This is the shell of `src/site.html`, one for the entire site; it lies in the project framework, cut into its places `%shugo.head%` and `%shugo.body%`.
+
 ### Layouts
 
 The layout never lies in the page entry. The page stores a link to it and its snippets, and the layout is its own entry:
 
 - **A model that does not read a page**, — one entry for the entire site: `src/pages/+layout.shugo{|children}`.
-- **A model that reads the address** — `Shugo.url` or `Shugo.params`, for example, to highlight the current menu item, is its own entry on each page. Its name is the route and address of the page: `src/pages/+layout.shugo{"@path":"/c1","@route":0|children}`. The name of the record itself is calculated: from the address are obtained `Shugo.url` and `Shugo.params`, like a page.
+- **A model that reads the address** `page.url` or `page.params` from the `shugo` module, for example, to highlight the current menu item own entry to each page. Its name is the route and address of the page: `src/pages/+layout.shugo{"@path":"/c1","@route":0|children}`. The name of the entry is calculated by itself: from the address you get `page` - `page.url` and `page.params`, like a page.
+
+Whether the template reads a page, the compiler learns by imports. The template or module that imports `page` or `paginate` from the `shugo` module depends on the page, and with it everyone who imports it: for example, a layout that imports the module from `src/lib/`, where the function reads `page.url`. Such a layout is a record for each page, such a component is not a common block: it is calculated on each page anew, in the record of the one who showed it. `query` does not depend on the page: what it read is written on who is currently being calculated.
 
 Readings of the layout are recorded on his record, readings of the page are recorded on it. Therefore:
 
@@ -63,7 +67,7 @@ A page that is no longer there takes its own layout record with it: no one shows
 
 What the template writes in `<svelte:head>` is its own writing blocks: the template block has a head block list and a separate list of `<title>` blocks. The layout, which is calculated once on the entire site, stores its head blocks at home, the page - at home.
 
-The head of the page is collected by the server. As it shows a page, it remembers the head blocks of each template it met, in order: the outer layout is before the inner one, the layout before the page is the document order, as in Svelte. When a page is shown, it shows the blocks it remembers, and of `<title>`, only the last one, after the rest, and puts all this at the end of `<head>` before referring to styles. This end marks in the frame the same place where framework adds its markup.
+The head of the page is collected by the server. As it shows a page, it remembers the head blocks of each template it met, in order: the outer layout is before the inner one, the layout before the page is the document order, as in Svelte. When the page is shown, it shows the blocks that are remembered, and of `<title>`, only the last one, after the rest, then a link to the styles, and puts all this in place of `%shugo.head%`'s shell `src/site.html`. Where this place is, the server knows from the frame: the shell lies there cut into three pieces - up to `%shugo.head%`, between places and after `%shugo.body%`.
 
 Tapes lie inside records, common blocks are separate records under their own name. The reasons are in [2](../spec/decisions.md#2-values-are-stored-by-content-and-shared-blocks-by-name) and [3](../spec/decisions.md#3-which-blocks-are-shared).
 

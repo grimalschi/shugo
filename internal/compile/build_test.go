@@ -35,7 +35,9 @@ func TestBuildExample(t *testing.T) {
 	for _, r := range result.Site.Routes {
 		patterns = append(patterns, r.Pattern)
 	}
-	if got, want := strings.Join(patterns, " "), "/ /404 /about /products/[slug]"; got != want {
+	// Of two routes that name as much of an address, the one of a file is
+	// first: it names its type too.
+	if got, want := strings.Join(patterns, " "), "/ /robots.txt /sitemap.xml /404 /about /products/[slug]"; got != want {
 		t.Errorf("routes: %s, want %s", got, want)
 	}
 	shared := map[string]bool{}
@@ -44,7 +46,7 @@ func TestBuildExample(t *testing.T) {
 	}
 	// The header reads nothing of the page; the card too; the layout shows
 	// both and has no script that reads the page.
-	for path, want := range map[string]bool{"src/components/Header.shugo": true, "src/components/Card.shugo": true, "src/pages/+layout.shugo": true, "src/pages/about.shugo": false} {
+	for path, want := range map[string]bool{"src/components/Header.shugo": true, "src/components/Card.shugo": true, "src/pages/+layout.shugo": true, "src/pages/about.shugo": false, "src/pages/sitemap.xml.ts": false} {
 		if shared[path] != want {
 			t.Errorf("%s: shared = %v, want %v", path, shared[path], want)
 		}

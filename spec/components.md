@@ -93,7 +93,9 @@ What is inside the component tag, the component gets the parameter `children`. N
 
 ```svelte
 <script>
-  const menu = Shugo.query("menu").order("position").all()
+  import { query } from "shugo"
+
+  const menu = query("menu").order("position").all()
 </script>
 
 <nav>{#each menu as item}<a href={item.href}>{item.title}</a>{/each}</nav>
@@ -111,7 +113,7 @@ The component is calculated and stored once, if it is independent of the page an
 <ProductCard item={product} />  <!-- once per page because the prop is an object -->
 ```
 
-- The component depends on the page if it itself or something imported by it reads `Shugo.url` or `Shugo.params`.
+- The component depends on the page, if it itself or the module it imports takes `page` or `paginate` from the `shugo` module: this is visible by imports, without starting the code. Such a component is calculated on each page anew.
 - Simple parameters are strings, numbers, `true`, `false`, `null`.
 - Snippets transferred to a common component do not prevent it from being shared: their markup is counted in the template that wrote them and stored with it. Therefore, the layout is usually shared: the page it receives with the snippet `children`.
 

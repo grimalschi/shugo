@@ -156,7 +156,7 @@ func lookAt(project string) (*look, error) {
 		if err != nil {
 			return nil, err
 		}
-		l.HTML[p.Path] = string(page.HTML)
+		l.HTML[p.Path] = string(page.Body)
 	}
 	return l, nil
 }

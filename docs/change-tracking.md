@@ -26,13 +26,15 @@ The words of the author of the project, 20 November 2026 year.
 
 21 November 2026 year author asked to remove all that remains of the first version, and prepare a solution as the final. The final version is collected from the fifth version in the branch `final`, merged into `main` and approved on the same day. It:
 
-- **Data** is in the base of the SQLite project and is read only through `Shugo.query`. Each line remembers which columns are read, by whomever they are read, while its owner is calculated (the 5 variant). The magazine is triggered, the indexes are built by Shugo - this is decided.
+- **Data** is in the base of the SQLite project and is read only through `query` from the `shugo` module. Each line remembers which columns are read, by whomever they are read, while its owner is calculated (option 5). The magazine is triggered, the indexes are built by Shugo - this is decided.
 - **Pages are calculated without waiting**, one by one, is decided by 21 in November: [Data loading](../spec/data-loading.md#decisions).
 - **Conversation Go and JS** without repetition. At the beginning of Go, one message says what is known from past launches: types of readings and questions for which there is already an index. JS asks only about the new one, and for price changes there is one request Go and one answer JS with records.
 - **Project without database**: The update does not compute anything until the project itself has changed ([26](../spec/decisions.md#26-project-without-database)).
 - **Value tapes inside records** and **server without a copy of the site** solved: [Storage](storage.md#decisions), [Runtime](runtime.md#decisions).
 - **Exports by change.** The page and shared block record stores the version in which the last time changed; it is written by the update itself along with the record. Export builds only pages with a record newer than its version and pages that show such a common block - it is decided: [Runtime](runtime.md#decisions).
 - **Failed upgrade not complete** solved: [Build pipeline](build-pipeline.md#failed-updates).
+
+22 November 2026 also began to track files not in HTML, which give modules among the pages, for example `src/pages/sitemap.xml.ts`. The `GET` function of such a module is calculated as a page: what it read through `query` is written to the file record, and the update only calculates the file again when the read changes ([Routing](../spec/routing.md#files-not-in-html)).
 
 Measurements on the store in 100,000 products — in [README booth](../examples/catalog/README.md#results): price of one product — update 28 ms and export 8 ms; cap on all pages — update 0.12 s; first assembly — 14.1 s. After 21 changes, the site updated and exported in steps coincides with the build from scratch file to file.
 
@@ -46,7 +48,7 @@ The author of the project asked to make two implementations for comparison, then
 | --- | --- | --- |
 | Base | `lab/base`, `../shugo-lab/base` | Go himself names which pages and common blocks to calculate, and injects a partial result into the repository. She calculates everything |
 | Variant 1 | `lab/fingerprints`, `../shugo-lab/fingerprints` | proposal from this document: data code is executed entirely, the imprint on the dependency tree, templates - only for the changed |
-| Variant 2 | `lab/query`, `../shugo-lab/query` | idea of the author: data is in SQLite under the framework control, read only through `Shugo.query`, dependencies are tied to base entries |
+| Variant 2 | `lab/query`, `../shugo-lab/query` | idea of the author: data is in SQLite under the framework control, read only through `query`, dependencies are tied to base entries |
 | Variant 4 | `lab/query-tree`, `../shugo-lab/query-tree` | update as in 2, compiler and two sides as in 1; the string itself remembers which columns it has read |
 | Variant 5 | `lab/query-signals`, `../shugo-lab/query-signals` | version of 2, in which the string remembers what its columns are read by anyone; without a tree and without the rules of the version of 1. The base indexes are built by Shugo itself |
 
@@ -55,7 +57,7 @@ Each option in the root branch is `VARIANT.md`: how it works, rules for the auth
 ### Variant 2 in two words
 
 - The framework puts triggers on each table of the database and maintains a log: inserting, changing and deleting the record leaves a string with the same value. Mandatory `updated_at` is not needed: the log sees and deletes, and you can not forget it.
-- Each query through `Shugo.query` leaves a page or general block with a “read”: which rows of which table with what values in which columns it searched and which columns it took.
+- Each query through `query` leaves a page or general block with a “read”: which rows of which table with what values in which columns it searched and which columns it took.
 - The update reads the journal, finds by reading who was touched by the changed lines, and calculates only them. If no one is hurt, JS does not start at all.
 - The route pages list (`getStaticPaths`) is the same reader: the route is re-listed only when what he read has changed.
 
@@ -105,7 +107,7 @@ Xeon E3-1270 v6, Go 1.27.4, Bun 1.4.4, Node 24.22.1. 100,000 Products: 104,202 P
 | | Variant 1 | Variant 2 |
 | --- | --- | --- |
 | Where data comes from | from anywhere: file, database, API | only from the project database |
-| How they are read | normal TypeScript | `Shugo.query("products").select(…).where(…)` |
+| How they are read | normal TypeScript | `query("products").select(…).where(…)` |
 | What is rewritten in the example of the store | price functions are rendered in `lib/money.ts`, one call is transferred from template to data code | data transferred to database, the code of pages and components data rewritten to requests |
 | Limitations | template does not see functions from the data code; component with object in parameters does not load anything; module with functions for templates does not load data | table has one key; request to one table, conditions through "and", of aggregates only `count`; `join` finds one line; views not supported |
 | What depends on accuracy | from what reads the template: displays the compiler | from column list in `select`: writes the author |
@@ -164,7 +166,7 @@ Test output. The accuracy was not given by the tree, but by the lines that remem
 
 ### 5: lines that remember what you read without a tree
 
-A variant of 2 in which each line from `Shugo.query` records which columns it reads while the one who requested it is calculated: page code, template, functions, the usual components to which the line was passed. There is no dependency tree, two sides and three rules of the 1 variant. The compiler is not affected.
+A variant of 2 in which each line from `query` records which columns it reads while the one who requested it is calculated: page code, template, functions, the usual components to which the line was passed. There is no dependency tree, two sides and three rules of the 1 variant. The compiler is not affected.
 
 Why do you think that's true. The calculation learns about the data in two ways: it sets a request and reads a column of a line. Both are recorded. While all the previous readings, the same code goes the same way in the same branches and the same calls and gives the same. In another branch, it can only send the value it has read. Also, signals are arranged in SolidJS.
 

@@ -1,6 +1,6 @@
 # Layouts
 
-Layout - general binding of pages: `<html>`, `<head>`, cap, footer and place for the page content.
+Layout — a general binding of pages: a cap, footer and place for the content of the page. The document itself — `<html>`, `<head>` and `<body>` — is written once, in the shell of `src/site.html`.
 
 ## Decisions
 
@@ -11,6 +11,7 @@ Layout - general binding of pages: `<html>`, `<head>`, cap, footer and place for
 - Data from page to page, how `load` the City of London `+layout.ts` SvelteKit, no: page asks the base itself (solution 22 November 2026 years).
 - The layout is kept separate from the pages: changing what it reads does not compute the pages, and changing the page does not compute the layout (decision 22 November 2026 A layout that does not read the address is one entry for the entire site; a layout that reads the address is its own entry for each page.
 - The layout is written as a component Svelte 5 (Decision of the author 21 November 2026 Year: Page he gets snippet `children` and shows her `{@render children()}`How `+layout.svelte` the City of London SvelteKit; title and meta tags page writes in `<svelte:head>`. It replaces the old `<g-slot />` and `<title slot="head">`.
+- `<html>`, `<head>` and `<body>` in a separate file `src/site.html` with places `%shugo.head%` and `%shugo.body%`How `src/app.html` the City of London SvelteKit; root layout - a common component (solution) 22 November 2026 years).
 
 ## Implemented, pending approval
 
@@ -30,6 +31,29 @@ src/pages/
 
 The nested layout is inside the external one, as in SvelteKit. The `/docs/start` page is wrapped with three layouts.
 
+### Shell: `src/site.html`
+
+```html
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    %shugo.head%
+  </head>
+  <body>
+    %shugo.body%
+  </body>
+</html>
+```
+
+- `%shugo.body%` is a page in its layouts.
+- `%shugo.head%` is what the page templates gave in `<svelte:head>`, followed by a link to the site style file.
+- Each place is in the file exactly once, the head - before the body; otherwise, the assembly will stop with an error.
+- The shell is a regular HTML, not a template: there are no expressions and code in it, it is copied as written. Page language, `<html lang="en">`, is here, one on the site.
+- No file - takes the shell of the framework, the same as above, but without `lang`.
+- A layout, page, or component that writes `<html>`, `<head>`, `<body>`, or `<!doctype>` is an assembly error: it is written in the shell.
+
 ### How the layout shows the page
 
 ```svelte
@@ -41,19 +65,11 @@ The nested layout is inside the external one, as in SvelteKit. The `/docs/start`
   let { children } = $props()
 </script>
 
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-  </head>
-  <body>
-    <Header />
-    <main>{@render children()}</main>
-  </body>
-</html>
+<Header />
+<main>{@render children()}</main>
 ```
 
-`{@render children()}` - the place of the page. The layout that does not show it is an assembly error.
+`{@render children()}` is the place of the page. The layout that does not show it is an assembly error. The root layout starts immediately with what is in `<body>`, like `+layout.svelte` in SvelteKit, and is transferred between them without editing.
 
 ### How a page conveys title and meta tags
 
@@ -68,7 +84,7 @@ The nested layout is inside the external one, as in SvelteKit. The `/docs/start`
 ```
 
 - `<svelte:head>` stands at the top of the page or layout as required by Svelte.
-- Its content gets to the end of the `<head>` page: the one that writes the nearest layout or the page itself. The layout that `<head>` writes may itself have `<svelte:head>`.
+- Its contents fall into the place of `%shugo.head%` shell.
 - Order is like in a Svelte document: first external layouts, then internal layouts, then pages.
 - `<title>` has one page like in Svelte: last in this order, and it stands after the rest. Therefore, the default title is written in `<svelte:head>` root layout, and the page replaces it with its own:
 
@@ -77,18 +93,16 @@ The nested layout is inside the external one, as in SvelteKit. The `/docs/start`
   <svelte:head><title>Measure</title></svelte:head>
   ```
 
-- If `<head>` does not write any page, no layout around it, `<svelte:head>` is an build error.
-
 ### What does framework add
 
-Before `</head>`, a link to the site style file is added. In development mode, before `</body>`, a script is added that reboots the page after updating.
+In place of `%shugo.head%`, after the templates have been given, a link to the site style file is added. In the post-page development mode, in place of `%shugo.body%`, a script is added that restarts the page after updating.
 
 ### The layout is kept separate from the pages
 
 Page comes to the layout with a snippet `children` and is stored in its record, and the layout is in its:
 
-- a layout that does not read `Shugo.url` and `Shugo.params` - one entry per entire site; changed menu - one entry is calculated;
-- layout that reads the address - for example, highlights the current menu item, `class:active={Shugo.url.pathname === item.href}` - its own entry for each page; changed menu - the layout is calculated for each page, and the pages themselves are not calculated;
+- a layout that does not take `page` from the `shugo` module - neither itself nor through the modules that it imports - one entry per entire site; the menu has changed - one entry is calculated;
+- a layout that reads the address - for example, highlights the current menu item, `class:active={page.url.pathname === item.href}` with `import { page } from "shugo"` - its own entry for each page; the menu has changed - the layout for each page is calculated, and the pages themselves are not calculated;
 - the page has changed it is calculated alone, without a layout.
 
 How it works in [Blocks](../docs/blocks.md).
@@ -96,4 +110,4 @@ How it works in [Blocks](../docs/blocks.md).
 ## Open questions
 
 - Reset chain: page or section without external layouts. In SvelteKit it is `+page@.svelte` and `+layout@.svelte`.
-- Page shell: `<html>`, `<head>` and `<body>` in the root layout as now, or in a separate file like `src/app.html` in SvelteKit - [proposal](../docs/proposals/app-html.md).
+- Language of the page for the site in several languages: the shell will need space for `lang` - it will give [internationalization](../docs/proposals/i18n.md).

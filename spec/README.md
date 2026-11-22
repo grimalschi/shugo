@@ -17,8 +17,8 @@ Documents are written together. Each of the three sections:
 | [Project structure](project-structure.md) | What folders and files are in the project and what they mean |
 | [Templates](templates.md) | `.shugo` files are components of Svelte 5: code, markup, blocks that output expressions where Shugo deviates from Svelte |
 | [Components](components.md) | Reusable parts of templates: parameters, snippets, common components |
-| [Layouts](layouts.md) | General binding of pages and `<svelte:head>` |
-| [File-based routing](routing.md) | How Page Files Turn into Addresses |
+| [Layouts](layouts.md) | Overall binding of pages, `src/site.html` and `<svelte:head>` shell |
+| [File-based routing](routing.md) | How page files are converted to addresses; files are not in HTML: `sitemap.xml.ts` |
 | [Dynamic pages](dynamic-pages.md) | Pages that come from data |
 | [Data loading](data-loading.md) | Where the data comes from and what you should know about it |
 | [Styles](styles.md) | Component styles, common files CSS and Tailwind |

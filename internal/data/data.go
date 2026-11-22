@@ -1,5 +1,5 @@
 // Package data is the database a project keeps its data in: one SQLite file
-// that pages read through Shugo.query.
+// that pages read through query from the module shugo.
 //
 // The database keeps a journal of itself. Triggers that this package puts on
 // every table note each row that is added, changed or removed, with what the

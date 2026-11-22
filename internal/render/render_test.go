@@ -37,11 +37,14 @@ func op(kind skeleton.Kind, text string, bodies ...[]skeleton.Op) skeleton.Op {
 
 func markup(text string) skeleton.Op { return op(skeleton.Markup, text) }
 
-// A site of three templates:
+// A site of three templates and a module:
 //
 //	0, the page:   <main> {text} <a href={…} {...attrs}> if/else-if, a loop, <Card>children</Card> </main>
 //	1, the card:   <section> {@render children()} {@render footer?.()} </section>
 //	2, the header: <header> {text} </header>
+//	3, a module that gives the file /feed.xml
+//
+// The page is route 0, the module route 1.
 var site = &skeleton.Site{Files: []skeleton.File{
 	{Path: "page.shugo", Parts: [][]skeleton.Op{
 		{
@@ -57,7 +60,8 @@ var site = &skeleton.Site{Files: []skeleton.File{
 		markup("<section>"), op(skeleton.Render, ""), op(skeleton.Render, ""), markup("</section>"),
 	}}},
 	{Path: "header.shugo", Parts: [][]skeleton.Op{{markup("<header>"), op(skeleton.Text, ""), markup("</header>")}}},
-}}
+	skeleton.ModuleFile("feed.xml.ts"),
+}, Routes: []skeleton.Route{{File: 0, Pattern: "/"}, {File: 3, Pattern: "/feed.xml", Extension: ".xml"}}}
 
 // page builds a record of the page with its card and a shared header.
 func page(m *memory, values ...string) *record.Record {
@@ -74,7 +78,7 @@ var good = []string{"<Tom>", `=/a?b="c"`, "+", "2", "id", "=x", "hidden", "+", "
 
 func TestPage(t *testing.T) {
 	m := &memory{}
-	html, err := Page(nil, site, page(m, good...), m)
+	html, err := Page(nil, site, 0, page(m, good...), m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,6 +89,26 @@ func TestPage(t *testing.T) {
 	}
 }
 
+// A page of templates stands in the shell of the site; the file a module
+// gives is its text, as it is.
+func TestShellAndFiles(t *testing.T) {
+	shelled := *site
+	shelled.Shell = skeleton.Shell{Before: "<html><head>", Middle: "</head><body>", After: "</body></html>"}
+	shelled.Mounts = map[string]string{"head": "<link>", "body": "<script></script>"}
+	m := &memory{}
+	html, err := Page(nil, &shelled, 0, &record.Record{Blocks: []record.Block{{File: 2, Values: tape("Shop")}}}, m)
+	if want := "<html><head><link></head><body><header>Shop</header><script></script></body></html>"; err != nil || string(html) != want {
+		t.Errorf("a page: %s %v, want %s", html, err, want)
+	}
+	file, err := Page(nil, &shelled, 1, &record.Record{Blocks: []record.Block{{File: 3, Values: tape("<rss>A & B</rss>")}}}, m)
+	if err != nil || string(file) != "<rss>A & B</rss>" {
+		t.Errorf("a file: %s %v", file, err)
+	}
+	if _, err := Page(nil, &shelled, 2, &record.Record{Blocks: []record.Block{{File: 3, Values: tape("x")}}}, m); err == nil {
+		t.Error("a page of a route the site does not have")
+	}
+}
+
 func TestSnippetsNobodyGave(t *testing.T) {
 	m := &memory{}
 	rec := &record.Record{Blocks: []record.Block{
@@ -92,7 +116,7 @@ func TestSnippetsNobodyGave(t *testing.T) {
 		// shows nothing there.
 		{File: 1, Values: tape("-", "f0:footer")},
 	}}
-	html, err := Page(nil, site, rec, m)
+	html, err := Page(nil, site, 0, rec, m)
 	if err != nil || string(html) != "<section></section>" {
 		t.Errorf("%s %v", html, err)
 	}
@@ -120,7 +144,7 @@ func TestValuesThatDoNotFit(t *testing.T) {
 	}
 	for name, values := range cases {
 		m := &memory{}
-		html, err := Page([]byte("before"), site, page(m, values...), m)
+		html, err := Page([]byte("before"), site, 0, page(m, values...), m)
 		if err == nil {
 			t.Errorf("%s: no error, got %s", name, html)
 		}
@@ -151,7 +175,7 @@ func TestRecordsThatDoNotFit(t *testing.T) {
 		m := &memory{}
 		rec := page(m, good...)
 		damage(m, rec)
-		if html, err := Page(nil, site, rec, m); err == nil {
+		if html, err := Page(nil, site, 0, rec, m); err == nil {
 			t.Errorf("%s: no error, got %s", name, html)
 		}
 	}

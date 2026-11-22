@@ -21,12 +21,14 @@ import (
 const small = `
 -- shugo.json --
 {"redirects": {"/old": "/about"}}
+-- src/site.html --
+<html><head><title>T</title>%shugo.head%</head><body>%shugo.body%</body></html>
 -- src/pages/+layout.shugo --
 <script>
 let { children } = $props()
 import "../styles/main.css"
 </script>
-<html><head><title>T</title></head><body>{@render children()}</body></html>
+{@render children()}
 -- src/pages/index.shugo --
 <h1>home</h1>
 -- src/pages/about.shugo --
@@ -330,7 +332,7 @@ func TestPagesStayWholeDuringUpdates(t *testing.T) {
 					failures <- fmt.Sprintf("the page was not built: %v", err)
 					return
 				}
-				html := string(page.HTML)
+				html := string(page.Body)
 				listed := strings.Count(html, "<li>")
 				if !strings.Contains(html, fmt.Sprintf("· %d products</header>", listed)) {
 					failures <- "the header and the list come from different states: " + html

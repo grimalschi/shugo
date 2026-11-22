@@ -50,7 +50,11 @@ func Build(p *project.Project) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	b := &builder{project: p, paths: paths, ids: map[string]int{}}
+	modules, err := p.PageModules()
+	if err != nil {
+		return nil, err
+	}
+	b := &builder{project: p, paths: paths, modules: modules, ids: map[string]int{}}
 	for id, path := range paths {
 		b.ids[path] = id
 	}
@@ -65,7 +69,11 @@ func Build(p *project.Project) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	site := &skeleton.Site{Origin: p.Config.Site, Redirects: p.Config.Redirects, Routes: routes}
+	shell, err := readShell(p)
+	if err != nil {
+		return nil, err
+	}
+	site := &skeleton.Site{Origin: p.Config.Site, Redirects: p.Config.Redirects, Routes: routes, Shell: shell}
 	if site.Origin == "" {
 		site.Origin = "http://localhost"
 	}
@@ -73,6 +81,9 @@ func Build(p *project.Project) (*Result, error) {
 	for i, path := range paths {
 		site.Files = append(site.Files, skeleton.File{Path: path, Parts: b.units[i].parts, Shared: bundled.shared[path]})
 		warnings = append(warnings, b.units[i].warnings...)
+	}
+	for _, path := range b.modules {
+		site.Files = append(site.Files, skeleton.ModuleFile(path))
 	}
 
 	output := p.Path(project.Output)
@@ -131,19 +142,39 @@ func Load(p *project.Project) (*Result, error) {
 }
 
 // sources is the list of what a project was compiled from: its templates,
-// and every file that went into the bundle with a hash of its content.
+// the modules among its pages, and every file that went into the bundle
+// with a hash of its content.
 type sources struct {
 	Templates []string          `json:"templates"`
+	Modules   []string          `json:"modules"`
 	Files     map[string]string `json:"files"`
 }
 
 // sources hashes the files of the project that the compiled result depends on.
 func (b *builder) sources(bundled []string) sources {
-	out := sources{Templates: b.paths, Files: map[string]string{}}
-	for _, name := range append(bundled, project.Settings) {
+	out := sources{Templates: b.paths, Modules: b.modules, Files: map[string]string{}}
+	for _, name := range append(bundled, project.Settings, project.Shell) {
 		out.Files[name] = hashFile(b.project.Path(filepath.FromSlash(name)))
 	}
 	return out
+}
+
+// readShell reads the shell every page stands in: src/site.html, or the
+// one of the framework.
+func readShell(p *project.Project) (skeleton.Shell, error) {
+	text := skeleton.DefaultShell
+	data, err := os.ReadFile(p.Path(filepath.FromSlash(project.Shell)))
+	switch {
+	case err == nil:
+		text = string(data)
+	case !errors.Is(err, fs.ErrNotExist):
+		return skeleton.Shell{}, err
+	}
+	shell, err := skeleton.ParseShell(text)
+	if err != nil {
+		return skeleton.Shell{}, fmt.Errorf("%s: %w", project.Shell, err)
+	}
+	return shell, nil
 }
 
 // hashFile returns a hash of the content of a file, or nothing if it cannot
@@ -157,9 +188,10 @@ func hashFile(path string) string {
 }
 
 // Changed tells whether the sources of the project are not what it was
-// compiled from: a template was added or removed, or a file that went into
-// the bundle has other content. Then the compiled project is out of date, and
-// computing it again would show the old code.
+// compiled from: a template or a module among the pages was added or
+// removed, or a file that went into the bundle has other content. Then the
+// compiled project is out of date, and computing it again would show the
+// old code.
 func Changed(p *project.Project) (bool, error) {
 	data, err := os.ReadFile(p.Path(project.Output, Sources))
 	if errors.Is(err, fs.ErrNotExist) {
@@ -175,7 +207,11 @@ func Changed(p *project.Project) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if !slices.Equal(templates, compiled.Templates) {
+	modules, err := p.PageModules()
+	if err != nil {
+		return false, err
+	}
+	if !slices.Equal(templates, compiled.Templates) || !slices.Equal(modules, compiled.Modules) {
 		return true, nil
 	}
 	for name, hash := range compiled.Files {
@@ -197,8 +233,11 @@ func digest(parts ...[]byte) string {
 type builder struct {
 	project *project.Project
 	paths   []string       // the .shugo files, sorted
-	ids     map[string]int // the number of every file: its place in paths
+	ids     map[string]int // the number of every template: its place in paths
 	units   []*unit
+	// modules are the modules among the pages that give files, sorted.
+	// Their numbers follow those of the templates.
+	modules []string
 }
 
 // roleOf tells what a file is by where it lies.
@@ -256,31 +295,48 @@ func (b *builder) compile() error {
 	return nil
 }
 
-// routes makes a route of every page and finds the layouts around it.
+// routes makes a route of every page and of every module among the pages,
+// and finds the layouts around the pages.
 func (b *builder) routes() ([]skeleton.Route, error) {
+	// A file among the pages: a page of templates, or a module, which has
+	// no unit and whose number follows those of the templates.
+	type source struct {
+		id   int
+		path string
+		unit *unit
+	}
+	var sources []source
+	for id, path := range b.paths {
+		if b.units[id].role == page {
+			sources = append(sources, source{id, path, b.units[id]})
+		}
+	}
+	for i, path := range b.modules {
+		sources = append(sources, source{len(b.paths) + i, path, nil})
+	}
+
 	var errs Errors
 	var out []skeleton.Route
-	segments := map[int][]route.Segment{} // by file
+	parsed := map[int]route.Route{} // by file
 	shapes := map[string]string{}
-	for id, path := range b.paths {
-		u := b.units[id]
-		if u.role != page {
-			continue
+	for _, f := range sources {
+		errorf := func(format string, arguments ...any) {
+			errs = append(errs, &syntax.Error{Path: f.path, Line: 1, Column: 1, Message: fmt.Sprintf(format, arguments...)})
 		}
-		parsed, _, err := route.Parse(strings.TrimPrefix(path, project.Pages+"/"))
+		p, _, err := route.Parse(strings.TrimPrefix(f.path, project.Pages+"/"))
 		if err != nil {
-			errs = append(errs, u.file.Errorf(0, "%s", err))
+			errorf("%s", err)
 			continue
 		}
-		if other, taken := shapes[route.Shape(parsed)]; taken {
-			errs = append(errs, u.file.Errorf(0, "this page and %s give the same addresses", other))
+		if other, taken := shapes[p.Shape()]; taken {
+			errorf("this file and %s give the same addresses", other)
 			continue
 		}
-		shapes[route.Shape(parsed)] = path
+		shapes[p.Shape()] = f.path
 
-		r := skeleton.Route{File: id, Pattern: route.Pattern(parsed), Segments: []skeleton.Segment{}, Layouts: []int{}}
+		r := skeleton.Route{File: f.id, Pattern: p.Pattern(), Segments: []skeleton.Segment{}, Extension: p.Extension, Layouts: []int{}}
 		dynamic := false
-		for _, s := range parsed {
+		for _, s := range p.Segments {
 			switch s.Kind {
 			case route.Param:
 				r.Segments = append(r.Segments, skeleton.Segment{Param: s.Name})
@@ -292,52 +348,31 @@ func (b *builder) routes() ([]skeleton.Route, error) {
 				r.Segments = append(r.Segments, skeleton.Segment{Text: s.Name})
 			}
 		}
-		if dynamic && !u.paths {
-			errs = append(errs, u.file.Errorf(0, "the name of this page has a parameter, so its script must say which pages there are: export function getStaticPaths({ query }) { return query(\"products\").select(\"slug\").all().map((row) => ({ params: { slug: row.slug } })) }; without a data database, return the list itself: [{ params: { … } }]"))
+		// What a module exports is known when it runs.
+		if f.unit != nil && dynamic && !f.unit.paths {
+			errorf(`the name of this page has a parameter, so its <script module> must say which pages there are: import { query } from "shugo"; export function getStaticPaths() { return query("products").select("slug").all().map((row) => ({ params: { slug: row.slug } })) }; without a data database, return the list itself: [{ params: { … } }]`)
 		}
-		// Every folder from src/pages/ down to the page may hold a layout.
-		for dir := project.Pages; ; {
+		// Every folder from src/pages/ down to a page may hold a layout. A
+		// module gives files that are not HTML, and has none.
+		for dir := project.Pages; f.unit != nil; {
 			if layout, found := b.ids[dir+"/"+route.Layout]; found {
 				r.Layouts = append(r.Layouts, layout)
 			}
-			rest := strings.TrimPrefix(path, dir+"/")
+			rest := strings.TrimPrefix(f.path, dir+"/")
 			name, _, deeper := strings.Cut(rest, "/")
 			if !deeper {
 				break
 			}
 			dir += "/" + name
 		}
-		errs = append(errs, b.provided(u, r.Layouts)...)
-		segments[id] = parsed
+		parsed[f.id] = p
 		out = append(out, r)
 	}
 	if len(errs) > 0 {
 		return nil, errs
 	}
-	route.Sort(out, func(r skeleton.Route) []route.Segment { return segments[r.File] })
+	route.Sort(out, func(r skeleton.Route) route.Route { return parsed[r.File] })
 	return out, nil
-}
-
-// provided checks that what a page and its layouts give the head of the
-// page in <svelte:head> has a <head> to go to: one that the page or one of
-// its layouts writes.
-func (b *builder) provided(page *unit, layouts []int) Errors {
-	units := []*unit{page}
-	for _, layout := range layouts {
-		units = append(units, b.units[layout])
-	}
-	for _, u := range units {
-		if u.writesHead {
-			return nil
-		}
-	}
-	var errs Errors
-	for _, u := range units {
-		if u.head >= 0 {
-			errs = append(errs, u.file.Errorf(u.head, `<svelte:head> gives markup to the <head> of the page, and neither the page nor a layout around it writes a <head>`))
-		}
-	}
-	return errs
 }
 
 // bundled is what the bundler made of the modules of all files.
@@ -353,10 +388,11 @@ type bundled struct {
 // library of the framework into one file.
 func (b *builder) bundle(routes []skeleton.Route) (*bundled, error) {
 	root := b.project.Root
-	// The entry names the module of every file: a page is computed from its
-	// route, and a shared block from its name alone, so any file may be what
-	// a computation starts from. The rest of what the run needs to know is
-	// in the skeleton of the site.
+	// The entry names the module of every file, the templates and then the
+	// modules among the pages: a page is computed from its route, and a
+	// shared block from its name alone, so any file may be what a
+	// computation starts from. The rest of what the run needs to know is in
+	// the skeleton of the site.
 	//
 	// Pages and layouts come first, in their order: style sheets apply in
 	// the order of imports, and that order starts from the pages.
@@ -370,8 +406,9 @@ func (b *builder) bundle(routes []skeleton.Route) (*bundled, error) {
 	var entry strings.Builder
 	entry.WriteString("import { run } from \"shugo:runtime\";\n")
 	var table []string
+	files := append(slices.Clip(b.paths), b.modules...)
 	for _, first := range []bool{true, false} {
-		for id, path := range b.paths {
+		for id, path := range files {
 			if routed[id] == first {
 				fmt.Fprintf(&entry, "import * as $%d from %s;\n", id, quote("./"+path))
 				table = append(table, fmt.Sprintf("[%d, $%d]", id, id))
@@ -381,8 +418,14 @@ func (b *builder) bundle(routes []skeleton.Route) (*bundled, error) {
 	fmt.Fprintf(&entry, "await run([%s]);\n", strings.Join(table, ", "))
 
 	plugin := api.Plugin{Name: "shugo", Setup: func(build api.PluginBuild) {
-		build.OnResolve(api.OnResolveOptions{Filter: `^shugo:`}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
-			return api.OnResolveResult{Path: args.Path, Namespace: "shugo"}, nil
+		// shugo is the module the code of a project imports from; shugo:…
+		// are the framework's own.
+		build.OnResolve(api.OnResolveOptions{Filter: `^shugo(:|$)`}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
+			path := args.Path
+			if path == "shugo" {
+				path = shugoModule
+			}
+			return api.OnResolveResult{Path: path, Namespace: "shugo"}, nil
 		})
 		build.OnLoad(api.OnLoadOptions{Filter: `.*`, Namespace: "shugo"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
 			contents := jsrt.Source
@@ -391,6 +434,8 @@ func (b *builder) bundle(routes []skeleton.Route) (*bundled, error) {
 				contents = entry.String()
 			case "shugo:query":
 				contents = jsrt.Query
+			case shugoModule:
+				contents = `export { query, paginate, page } from "shugo:runtime";`
 			}
 			return api.OnLoadResult{Contents: &contents, Loader: api.LoaderJS, ResolveDir: root}, nil
 		})
@@ -499,11 +544,14 @@ func (b *builder) diagnose(message api.Message) *syntax.Error {
 		text += "; markup cannot stand inside {…}: write {#if …}…{/if} or {#each …}…{/each} around it instead"
 	}
 	if strings.Contains(text, `"await" can only be used inside an "async" function`) {
-		text = "a page is computed without waiting: its data comes from Shugo.query, which answers at once, so there is nothing to wait for. " +
+		text = "a page is computed without waiting: its data comes from query of the module shugo, which answers at once, so there is nothing to wait for. " +
 			"What takes time and needs doing once, such as making a highlighter, can be awaited at the top of a module in lib/ and used here"
 	}
 	return u.file.Errorf(u.module.locate(at.Line-1, at.Column), "%s", text)
 }
+
+// shugoModule is the module shugo as the bundler knows it.
+const shugoModule = "shugo:module"
 
 // graph reads from the bundler which module imports which. It gives the
 // order of style sheets and tells which files can be computed once for all
@@ -531,10 +579,22 @@ func (b *builder) graph(metafile string, out *bundled) error {
 	sort.Strings(names)
 
 	// A file that depends on the page passes that on to all that import it.
+	// A template knows it of itself; another module of the project depends
+	// on the page when it takes page or paginate from the module shugo.
 	own := map[string]bool{}
 	for _, name := range names {
 		if id, known := b.ids[name]; known {
 			own[name] = b.units[id].own
+			continue
+		}
+		for _, imported := range meta.Inputs[name].Imports {
+			if strings.HasSuffix(imported.Path, shugoModule) {
+				source, err := os.ReadFile(b.project.Path(filepath.FromSlash(name)))
+				if err != nil {
+					return err
+				}
+				own[name] = importsPage(string(source))
+			}
 		}
 	}
 	for changed := true; changed; {

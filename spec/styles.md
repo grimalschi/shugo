@@ -49,7 +49,7 @@ The style file is connected by import to `<script>`. You can connect it in any `
 
 ### One stylesheet per site
 
-All connected files and styles of all components are collected in one file `_build/assets/styles.<hash>.css`. The order is the order of import. A link to the file is added before `</head>` of each page. The file name changes with the content, so the browser caches it forever.
+All connected files and styles of all components are collected into one `_build/assets/styles.<hash>.css` file. Order of Imports. A link to the file is added to the `<head>` of each page, in place of the `%shugo.head%` shell of the `src/site.html`, after having given the templates. The file name changes with the content, so the browser caches it forever.
 
 Fonts and images that styles link to via `url(…)` are copied alongside.
 

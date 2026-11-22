@@ -23,6 +23,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	shugoproject "github.com/grimalschi/shugo/internal/project"
 )
 
 func main() {
@@ -225,7 +227,7 @@ func sources(project string, c *compiled) ([]sourceFile, error) {
 			}
 			return nil
 		}
-		if !strings.HasSuffix(rel, ".shugo") && !strings.HasSuffix(rel, ".ts") && rel != "shugo.json" {
+		if !strings.HasSuffix(rel, ".shugo") && !strings.HasSuffix(rel, ".ts") && rel != "shugo.json" && rel != shugoproject.Shell {
 			return nil
 		}
 		source, err := os.ReadFile(path)
@@ -253,6 +255,8 @@ func order(path string) string {
 	switch {
 	case path == "shugo.json":
 		return "0"
+	case path == shugoproject.Shell:
+		return "1"
 	case strings.HasPrefix(path, "src/pages/"):
 		return "1" + path
 	case strings.HasPrefix(path, "src/components/"):

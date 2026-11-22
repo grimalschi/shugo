@@ -1,5 +1,6 @@
 <script module>
-  export function getStaticPaths({ query }) {
+  import { query, page } from "shugo"
+  export function getStaticPaths() {
     return query("categories").select("id").all().map((row) => ({ params: { id: row.id } }))
   }
 </script>
@@ -7,8 +8,8 @@
 <script>
   import ProductCard from "../../components/ProductCard.shugo"
 
-  const category = Shugo.query("categories").get(Shugo.params.id)
-  const products = Shugo.query("products").select("id").where({ category: category.id }).order("title").all()
+  const category = query("categories").get(page.params.id)
+  const products = query("products").select("id").where({ category: category.id }).order("title").all()
 </script>
 
 <svelte:head><title>{category.title} — Pottery Shop</title></svelte:head>

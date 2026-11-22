@@ -430,8 +430,15 @@ func (k *keeper) route(index int, text []byte) error {
 	return k.update.PutRoute(index, reads)
 }
 
-// fits tells whether an address can be of a page of the route.
+// fits tells whether an address can be of a page of the route. The address
+// of a file that a module gives ends with its extension, after a name.
 func fits(route *skeleton.Route, path string) bool {
+	if route.Extension != "" {
+		var named bool
+		if path, named = strings.CutSuffix(path, route.Extension); !named || strings.HasSuffix(path, "/") {
+			return false
+		}
+	}
 	var parts []string
 	if path != "/" {
 		parts = strings.Split(path[1:], "/")

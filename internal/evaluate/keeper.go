@@ -305,7 +305,7 @@ func (k *keeper) put(data []byte) error {
 			}
 		}
 	} else if known {
-		if old, _, err = k.update.Page(u.name); err != nil {
+		if old, _, _, err = k.update.Page(u.name); err != nil {
 			return err
 		}
 	}
@@ -513,7 +513,7 @@ func (k *keeper) remove(path string) error {
 	if err != nil || !found {
 		return err
 	}
-	old, _, err := k.update.Page(path)
+	old, _, _, err := k.update.Page(path)
 	if err != nil {
 		return err
 	}

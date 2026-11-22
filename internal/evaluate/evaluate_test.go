@@ -126,7 +126,7 @@ func (l *lab) held() (pages []string) {
 		if err != nil {
 			return err
 		}
-		err = v.Pages(func(path string, _ []byte) error {
+		err = v.Pages(func(path string, _ int, _ []byte) error {
 			pages = append(pages, path)
 			return nil
 		})
@@ -173,7 +173,7 @@ func (l *lab) mark() (mark store.Mark) {
 func (l *lab) changes(since int64) (built, gone []string) {
 	l.t.Helper()
 	err := l.store.View(func(v *store.View) error {
-		return v.Changes(since, func(path string, record []byte) error {
+		return v.Changes(since, func(path string, _ int, record []byte) error {
 			if record != nil {
 				built = append(built, path)
 			} else {
@@ -531,6 +531,8 @@ func TestValidPath(t *testing.T) {
 func TestFits(t *testing.T) {
 	special, slug, rest := &site.Routes[0], &site.Routes[1], &site.Routes[2]
 	nested := &skeleton.Route{Segments: []skeleton.Segment{{Text: "docs"}, {Rest: "path"}, {Text: "edit"}}}
+	sitemap := &skeleton.Route{Pattern: "/sitemap.xml", Segments: []skeleton.Segment{{Text: "sitemap"}}, Extension: ".xml"}
+	files := &skeleton.Route{Pattern: "/docs/[...path].md", Segments: []skeleton.Segment{{Text: "docs"}, {Rest: "path"}}, Extension: ".md"}
 	for _, c := range []struct {
 		route *skeleton.Route
 		path  string
@@ -540,6 +542,8 @@ func TestFits(t *testing.T) {
 		{slug, "/special", true}, {slug, "/a/b", false}, {slug, "/", false},
 		{rest, "/", true}, {rest, "/a", true}, {rest, "/a/b/c", true},
 		{nested, "/docs/edit", true}, {nested, "/docs/a/b/edit", true}, {nested, "/docs", false}, {nested, "/blog/a/edit", false},
+		{sitemap, "/sitemap.xml", true}, {sitemap, "/sitemap", false}, {sitemap, "/sitemap.xml/a", false}, {sitemap, "/a.xml", false},
+		{files, "/docs.md", true}, {files, "/docs/a/b.md", true}, {files, "/docs/.md", false}, {files, "/docs/a", false},
 	} {
 		if got := fits(c.route, c.path); got != c.fits {
 			t.Errorf("%s fits %s: %v", c.path, c.route.Pattern, got)

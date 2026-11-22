@@ -8,7 +8,7 @@ Proposal on how to make accurate queries with comparisons (`<`, `<=`, `>`, `>=`)
 
 ## Like now
 
-Each query through `Shugo.query` leaves a reading: a table, columns for which strings are found by equality, their values and columns, the change of which is important to the reader. When a string changes, the update takes its old and new values of these columns and finds out who read it. How it works in [Analysis of data changes](../change-tracking.md).
+Each query through `query` from the `shugo` module leaves a reading: a table, columns for which strings are found to be equal, their values and columns whose change is important to the reader. When a string changes, the update takes its old and new values of these columns and finds out who read it. How it works in [Analysis of data changes](../change-tracking.md).
 
 Equality of reading remembers exactly. `where({ category: "c1" })` only affects the string that was or became a `c1` category string.
 
@@ -21,14 +21,16 @@ Example: A movie with its neighbors:
 ```svelte
 <!-- src/pages/films/[slug].shugo -->
 <script module>
-  export function getStaticPaths({ query }) {
+  import { query, page } from "shugo"
+
+  export function getStaticPaths() {
     return query("films").select("slug").all().map(({ slug }) => ({ params: { slug } }))
   }
 </script>
 
 <script>
-  const film = Shugo.query("films").where({ slug: Shugo.params.slug }).first()
-  const near = Shugo.query("films")
+  const film = query("films").where({ slug: page.params.slug }).first()
+  const near = query("films")
     .where("rating", ">=", film.rating - 0.5)
     .where("rating", "<=", film.rating + 0.5)
     .where("id", "!=", film.id)

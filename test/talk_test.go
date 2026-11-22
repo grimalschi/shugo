@@ -79,7 +79,10 @@ func TestUpdateAsksNothingKnown(t *testing.T) {
 	// A question asked for the first time is still asked, and answered.
 	s.write(`
 -- src/pages/new.shugo --
-<p>{Shugo.query("products").where({ title: "Cup" }).order("price").all().length}</p>
+<script>
+import { query } from "shugo"
+</script>
+<p>{query("products").where({ title: "Cup" }).order("price").all().length}</p>
 `)
 	s.build()
 	if got := s.indexes(); !contains(got, "_shugo_products_title_price_id") {

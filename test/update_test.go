@@ -15,15 +15,17 @@ const shop = `
 {"data": "data/shop.db"}
 -- src/components/Header.shugo --
 <script>
-const motto = Shugo.query("settings").get(1).motto
-const count = Shugo.query("products").count()
+import { query } from "shugo"
+const motto = query("settings").get(1).motto
+const count = query("products").count()
 console.log("header computed")
 </script>
 <header>{motto} · {count} products</header>
 -- src/components/Card.shugo --
 <script>
+import { query } from "shugo"
 const { slug } = $props() as { slug: string }
-const { title, price } = Shugo.query("products").where({ slug }).first()
+const { title, price } = query("products").where({ slug }).first()
 </script>
 <a href={"/products/" + slug}>{title} — {price}</a>
 -- src/pages/+layout.shugo --
@@ -31,23 +33,25 @@ const { title, price } = Shugo.query("products").where({ slug }).first()
 let { children } = $props()
 import Header from "../components/Header.shugo"
 </script>
-<html><body><Header /><main>{@render children()}</main></body></html>
+<Header /><main>{@render children()}</main>
 -- src/pages/index.shugo --
 <script>
+import { query } from "shugo"
 import Card from "../components/Card.shugo"
-const products = Shugo.query("products").select("slug").order("position").all()
+const products = query("products").select("slug").order("position").all()
 </script>
 <ul>{#each products as p}<li><Card slug={p.slug} /></li>{/each}</ul>
 -- src/pages/about.shugo --
 <h1>About</h1>
 -- src/pages/products/[slug].shugo --
 <script module>
-export const getStaticPaths = ({ query }) => query("products").select("slug").all().map((p) => ({ params: { slug: p.slug } }))
+import { query, page } from "shugo"
+export const getStaticPaths = () => query("products").select("slug").all().map((p) => ({ params: { slug: p.slug } }))
 </script>
 <script>
 import Card from "../../components/Card.shugo"
-const p = Shugo.query("products").where({ slug: Shugo.params.slug }).first()
-const related = Shugo.query("related").where({ product: p.slug }).order("position").all()
+const p = query("products").where({ slug: page.params.slug }).first()
+const related = query("related").where({ product: p.slug }).order("position").all()
 </script>
 <h1>{p.title}</h1><p>{p.price}</p>{#each related as r}<Card slug={r.other} />{/each}
 `
@@ -104,7 +108,7 @@ func TestUpdates(t *testing.T) {
 	if n := strings.Count(s.printed.String(), "header computed"); n != 1 {
 		t.Errorf("the script of the header ran %d times for 5 pages", n)
 	}
-	expect(t, s.page("/products/jug"), `<html><body><header>Clay and wood · 3 products</header><main><h1>Jug</h1><p>10</p><a href="/products/cup">Cup — 5</a><a href="/products/tray">Tray — 7</a></main></body></html>`)
+	expect(t, s.page("/products/jug"), `<header>Clay and wood · 3 products</header><main><h1>Jug</h1><p>10</p><a href="/products/cup">Cup — 5</a><a href="/products/tray">Tray — 7</a></main>`)
 
 	t.Run("nothing changed", func(t *testing.T) {
 		r := s.update()
@@ -177,7 +181,7 @@ func TestUpdates(t *testing.T) {
 		expectChanges(t, s.update(),
 			evaluate.Changes{Added: 1, Changed: 1, AddedNames: []string{"/products/pot"}, ChangedNames: []string{"/"}},
 			evaluate.Changes{Added: 1, Changed: 1, AddedNames: []string{cardPot}, ChangedNames: []string{header}})
-		expect(t, s.page("/products/pot"), `<html><body><header>Handmade · 3 products</header><main><h1>Pot</h1><p>12</p></main></body></html>`)
+		expect(t, s.page("/products/pot"), `<header>Handmade · 3 products</header><main><h1>Pot</h1><p>12</p></main>`)
 	})
 
 	// After a template changes every record is written anew.

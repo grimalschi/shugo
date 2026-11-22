@@ -13,6 +13,7 @@ import (
 	"github.com/grimalschi/shugo/internal/evaluate"
 	"github.com/grimalschi/shugo/internal/project"
 	"github.com/grimalschi/shugo/internal/server"
+	"github.com/grimalschi/shugo/internal/skeleton"
 	"github.com/grimalschi/shugo/internal/store"
 )
 
@@ -28,13 +29,19 @@ type site struct {
 }
 
 // newSite makes a project of files written one after another, each under a
-// line "-- path --".
+// line "-- path --". A project that writes no src/site.html gets a bare one,
+// so that a page is the markup of its templates alone, with what they give
+// the head in front of it.
 func newSite(t testing.TB, files string) *site {
 	t.Helper()
 	s := openSite(t, t.TempDir())
+	s.write("-- " + project.Shell + " --\n" + bareShell)
 	s.write(files)
 	return s
 }
+
+// bareShell is the shell of a test project that writes none.
+const bareShell = skeleton.HeadPlace + skeleton.BodyPlace
 
 // openSite opens the store of the project in a folder.
 func openSite(t testing.TB, root string) *site {
@@ -154,7 +161,7 @@ func (s *site) page(address string) string {
 	if !page.Found {
 		s.t.Fatalf("there is no page %s", address)
 	}
-	return string(page.HTML)
+	return string(page.Body)
 }
 
 func (s *site) has(address string) bool {

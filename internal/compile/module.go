@@ -3,6 +3,7 @@ package compile
 import (
 	"encoding/base64"
 	"fmt"
+	"regexp"
 	"strings"
 	"unicode/utf8"
 
@@ -18,9 +19,6 @@ type module struct {
 	file  *syntax.File
 	lines []string
 	from  []origin
-	// page tells that some code reads what differs from page to page:
-	// Shugo.url, Shugo.params. Such a file cannot be computed once for all pages.
-	page bool
 	// last is where the latest code of the project ended. A mistake there
 	// usually shows up in the compiler's own line right after it.
 	last int
@@ -44,7 +42,6 @@ func (m *module) add(format string, arguments ...any) {
 
 // code writes code of the template on lines of its own, exactly as written.
 func (m *module) code(c code) {
-	m.page = m.page || readsPage(c.text)
 	offset := c.start
 	for _, line := range strings.SplitAfter(c.text, "\n") {
 		m.lines = append(m.lines, strings.TrimSuffix(line, "\n"))
@@ -119,37 +116,35 @@ func (m *module) segments(line string, offset int) []sourcemap.Segment {
 	}
 }
 
-// readsPage tells whether code uses Shugo for more than the data database:
-// Shugo.url, Shugo.params, Shugo.paginate, or Shugo as a value.
-func readsPage(text string) bool {
-	if !strings.Contains(text, "Shugo") {
-		return false
-	}
-	scan := syntax.NewScanner(text, 0)
-	after := ""
-	for {
-		token, err := next(scan)
-		if err != nil {
+// importsPage tells whether code imports from the module shugo what differs
+// from page to page: page, or paginate, which cuts a list by the number of
+// the page. A file that does cannot be computed once for all pages. A
+// namespace import counts as both; an import of types alone as neither.
+func importsPage(code string) bool {
+	for _, m := range shugoImport.FindAllStringSubmatch(code, -1) {
+		if m[1] != "" {
+			continue // import type { … }
+		}
+		clause := m[2]
+		if strings.Contains(clause, "*") {
 			return true
 		}
-		if token.Kind == syntax.EOF {
-			return false
+		open, close := strings.IndexByte(clause, '{'), strings.LastIndexByte(clause, '}')
+		if open < 0 || close < open {
+			continue
 		}
-		word := scan.Text(token)
-		if word == "Shugo" && after != "." {
-			peek := *scan
-			dot, _ := next(&peek)
-			member, _ := next(&peek)
-			switch name := peek.Text(member); {
-			case peek.Text(dot) != ".":
-				return true
-			case name != "query":
+		for _, spec := range strings.Split(clause[open+1:close], ",") {
+			fields := strings.Fields(spec)
+			if len(fields) > 0 && fields[0] != "type" && (fields[0] == "page" || fields[0] == "paginate") {
 				return true
 			}
 		}
-		after = word
 	}
+	return false
 }
+
+// shugoImport finds what an import or an export takes from the module shugo.
+var shugoImport = regexp.MustCompile(`\b(?:import|export)\s+(type\s+)?([^;'"]*?)\s*from\s*["']shugo["']`)
 
 // Columns of a source map count UTF-16 units, as JavaScript does.
 func utf16Length(text string) int {
