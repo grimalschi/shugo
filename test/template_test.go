@@ -116,6 +116,31 @@ text {items[0]} and {items[1]}
 		`<select><option>a</option><option selected="">b</option></select> <b>bounded</b>`)
 }
 
+// A template takes the modules of Svelte that have a use on a server from
+// the Svelte that Shugo ships; a project installs nothing for them.
+func TestModulesOfSvelte(t *testing.T) {
+	got := one(t, `<script>
+import { writable, get } from "svelte/store"
+import { SvelteMap } from "svelte/reactivity"
+import { cubicOut } from "svelte/easing"
+import { fade } from "svelte/transition"
+const count = writable(2)
+const names = new SvelteMap([["a", "A"]])
+</script>
+<p transition:fade>{get(count)} {names.get("a")} {cubicOut(1)}</p>`)
+	expect(t, got, "<p>2 A 1</p>")
+
+	s := newSite(t, `
+-- src/pages/index.svelte --
+<script>
+import { run } from "svelte/legacy"
+</script>
+<p>x</p>`)
+	if _, err := s.tryBuild(); err == nil || !strings.Contains(err.Error(), "svelte/legacy is not a part of it") {
+		t.Errorf("a module of Svelte that a server has no use for: %v", err)
+	}
+}
+
 // An address is written as it is given, as Svelte writes it: what a link
 // may lead to is the project's affair.
 func TestAddresses(t *testing.T) {
