@@ -56,23 +56,6 @@ func (r searchResponse) ids() []string {
 func TestSearchIslands(t *testing.T) {
 	demo := filepath.Join("..", "examples", "search")
 	s := openSite(t, t.TempDir())
-	var modules string
-	for _, dir := range []string{demo, filepath.Join("..", "examples", "islands"), "svelte"} {
-		candidate, err := filepath.Abs(filepath.Join(dir, "node_modules"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := os.Stat(filepath.Join(candidate, "svelte", "package.json")); err == nil {
-			modules = candidate
-			break
-		}
-	}
-	if modules == "" {
-		t.Skip("install Svelte with bun install --cwd examples/search --frozen-lockfile")
-	}
-	if err := os.Symlink(modules, filepath.Join(s.root, "node_modules")); err != nil {
-		t.Fatal(err)
-	}
 	if err := os.CopyFS(filepath.Join(s.root, "src"), os.DirFS(filepath.Join(demo, "src"))); err != nil {
 		t.Fatal(err)
 	}

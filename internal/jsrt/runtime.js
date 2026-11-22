@@ -44,6 +44,8 @@ export function requestSource(value, source) {
 //   c3      use 3 of the record stands here: a shared block, see use
 //   gname   what the place that shows this shared block gave it as name
 //   i2      island 2 of the record
+//   s<…>    the styles of a component compiled with css="injected", which go
+//           into the <head> once however many times it is shown
 //   [ ]     the HTML of {@html} starts, and ends
 //   h       what goes into the <head> ends; the <title> follows
 //
@@ -69,8 +71,17 @@ const comments = /<!--(?:\[(?:!|-?\d+)?|\]|\$[\w-]*|[a-z0-9]*)-->|<!>/g;
 function rendered(show, options) {
   const { head, body } = render(Rendered, { props: { show }, ...options });
   const end = head.lastIndexOf(headEnd);
-  return { body, head: head.slice(0, end), title: head.slice(end + headEnd.length) };
+  // After the head Svelte writes the <title>, then the styles of the
+  // components compiled with css="injected".
+  const after = head.slice(end + headEnd.length);
+  const close = after.startsWith("<title") ? after.indexOf("</title>") + "</title>".length : 0;
+  const styles = after.slice(close).replace(injected, (style) => mark("s" + style));
+  return { body, head: head.slice(0, end) + styles, title: after.slice(0, close) };
 }
+
+// injected finds a <style> that Svelte writes for a component compiled with
+// css="injected".
+const injected = /<style id="[^"]*">[\s\S]*?<\/style>/g;
 
 // Rendered is what every render starts from: what it is to show, then a
 // mark where what that gave the head ends. Svelte writes the <title> after
@@ -198,9 +209,31 @@ export function component(file, compiled) {
   return function shown($$renderer, props) {
     const shared = present?.record ? share(file, props) : null;
     const snippets = shared && apart(shared.given, props);
-    if (!snippets) return compiled($$renderer, props);
-    $$renderer.push(mark("c" + (present.record.uses.push({ name: shared.name, snippets }) - 1)));
+    if (snippets) {
+      $$renderer.push(mark("c" + (present.record.uses.push({ name: shared.name, snippets }) - 1)));
+      return;
+    }
+    if (showing.length === deepest) throw new Error(endless(file));
+    showing.push(file);
+    try {
+      return compiled($$renderer, props);
+    } finally {
+      showing.pop();
+    }
   };
+}
+
+// The files of the components being rendered in place, the outermost first.
+// A component that shows itself without end is told so, with the way round,
+// before the stack of JavaScript runs out.
+const showing = [];
+const deepest = 512;
+
+function endless(file) {
+  const from = showing.lastIndexOf(file);
+  if (from < 0) return `components are shown inside each other more than ${deepest} deep, the innermost ${site.files[file].path}`;
+  const round = [...showing.slice(from), file].map((one) => site.files[one].path);
+  return `${round[0]} shows itself without end: ${round.join(" → ")}`;
 }
 
 // share tells whether a component is shown as a shared block: its file reads
@@ -381,7 +414,7 @@ export function query(table) {
   return new Query(data, present.reads, table);
 }
 
-// paginate cuts a list into pages, the way Astro describes them. In
+// paginate cuts a list into pages. In
 // getStaticPaths it takes how many items there are and says which pages
 // there are. In a page it takes the list itself, a query or an array, and
 // returns the page whose number stands in the address: { data, total,
@@ -723,7 +756,8 @@ function pageSegment(route) {
 // With [...page] the first page has no number in its address.
 const pageNumber = (segment, page) => (segment.rest !== undefined && page === 1 ? undefined : String(page));
 
-// paged describes one page of a list the way Astro does.
+// paged describes one page of a list: its rows, where they stand in the
+// list, and the addresses of the pages around it.
 function paged(route, segment, params, rows, start, size, total, current) {
   const last = Math.max(1, Math.ceil(total / size));
   const link = (page) => (page < 1 || page > last ? undefined : address(route, { ...params, page: pageNumber(segment, page) }));
@@ -838,8 +872,8 @@ export async function run(modules) {
 }
 
 // getStaticPaths and GET take nothing: what they need comes from the module
-// shugo. One that takes { query, paginate } or { params }, as in Astro, is
-// told where to find it.
+// shugo. One that takes { query, paginate } or { params } is told where to
+// find it.
 function noArguments(what, instead) {
   return new Proxy({}, {
     get(_, name) {
@@ -848,14 +882,12 @@ function noArguments(what, instead) {
   });
 }
 
-// Authors who know Astro reach for its global by habit, and the global
-// Shugo is gone.
+// The global Shugo of the first version is gone: code that reaches for it
+// is told what to write.
 const hints = { props: "let { … } = $props()", params: "page.params, with import { page } from \"shugo\"", url: "page.url, with import { page } from \"shugo\"", query: "query(…), with import { query } from \"shugo\"", paginate: "paginate(…), with import { paginate } from \"shugo\"", slots: "a snippet taken from $props(): {#if children}" };
-for (const global of ["Astro", "Shugo"]) {
-  globalThis[global] ??= new Proxy({}, {
-    get(_, name) {
-      const instead = hints[String(name)];
-      throw new Error(`There is no ${global}.${String(name)} in Shugo${instead ? `: write ${instead}` : ""}`);
-    },
-  });
-}
+globalThis.Shugo ??= new Proxy({}, {
+  get(_, name) {
+    const instead = hints[String(name)];
+    throw new Error(`There is no Shugo.${String(name)} in Shugo${instead ? `: write ${instead}` : ""}`);
+  },
+});

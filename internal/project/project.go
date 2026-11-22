@@ -37,9 +37,14 @@ func IsIsland(path string) bool {
 
 // IsModule tells whether a file is a module of code: among the pages, a
 // module gives a file of the site that is not HTML. Declarations of types
-// are no modules.
+// and modules with runes, .svelte.ts and .svelte.js, are code to import.
 func IsModule(path string) bool {
-	return (strings.HasSuffix(path, ".ts") || strings.HasSuffix(path, ".js")) && !strings.HasSuffix(path, ".d.ts")
+	for _, code := range []string{".d.ts", ".svelte.ts", ".svelte.js"} {
+		if strings.HasSuffix(path, code) {
+			return false
+		}
+	}
+	return strings.HasSuffix(path, ".ts") || strings.HasSuffix(path, ".js")
 }
 
 // Config is what shugo.json holds. Every field may be left out.

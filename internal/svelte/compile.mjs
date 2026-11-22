@@ -1,29 +1,37 @@
 // The compiler of Svelte as Shugo runs it. It reads requests from its input,
-// one JSON line each, { path, source, module }, and answers each with one
-// JSON line: the code Svelte compiled for a server, its source map, the
-// styles of the component and the warnings of Svelte, with what Shugo needs
-// to know of the file; or the errors in it. A module, module: true, is a
-// .svelte.js file with runes, in JavaScript: it has code alone.
+// one JSON line each, and answers each with one JSON line, or with the
+// errors in the file:
 //
-// The compiler is the one Shugo ships, vendor/compiler-<version>.cjs, so a
-// project does not install Svelte to have pages. It is given as a path and a
-// version after the code.
+//   { path, source }                a template: the code Svelte compiled for
+//                                   a server, its source map, the styles of
+//                                   the component, the warnings of Svelte and
+//                                   what Shugo needs to know of the file
+//   { path, source, module }        a module with runes, a .svelte.js file:
+//                                   its code for a server
+//   { path, source, island }        a component of an island, or a module
+//                                   with runes when module is set too: its
+//                                   code for the browser and for the server
+//   { path, source, lower }         the server code of an island bound to a
+//                                   request: the program Go builds its HTML
+//                                   by, see island-program.mjs
+//
+// The compiler is the one Shugo ships, vendor/compiler-<version>.cjs, and so
+// is acorn, the parser of JavaScript it uses: a project does not install
+// Svelte. They are given as paths and the version after the code.
 
 import { createRequire } from 'node:module';
 import { createInterface } from 'node:readline';
 
-const [compilerFile, version] = process.argv.slice(-2);
+const [compilerFile, acornFile, version] = process.argv.slice(-3);
 const svelte = createRequire(compilerFile)(compilerFile);
 if (svelte.VERSION !== version) throw new Error(`Shugo ships Svelte ${version}, and the compiler it started is ${svelte.VERSION}`);
+const acorn = createRequire(acornFile)(acornFile);
+const parseGenerated = (code) => acorn.parse(code, { ecmaVersion: 'latest', sourceType: 'module', locations: true });
 
 
 // compileTemplate compiles one template of a project for the server.
 function compileTemplate(path, input) {
   const source = input.charCodeAt(0) === 0xfeff ? input.slice(1) : input;
-  const front = source.length - source.trimStart().length;
-  if (source.startsWith('---', front)) {
-    return { errors: [problem(source, front, 'the code of a component goes into <script>…</script>, as in Svelte, not between "---" lines')] };
-  }
   let result;
   try {
     result = svelte.compile(source, {
@@ -36,7 +44,7 @@ function compileTemplate(path, input) {
     });
   } catch (error) {
     if (!Array.isArray(error?.position)) throw error;
-    return { errors: [problem(source, error.position[0], messages[error.code] ?? error.message)] };
+    return { errors: [problem(source, error.position[0], told(source, error))] };
   }
   const look = new Look(source, result.ast);
   if (look.errors.length > 0) return { errors: look.errors };
@@ -58,13 +66,61 @@ function compileModule(path, source) {
     result = svelte.compileModule(source, { filename: path, generate: 'server' });
   } catch (error) {
     if (!Array.isArray(error?.position)) throw error;
-    return { errors: [problem(source, error.position[0], messages[error.code] ?? error.message)] };
+    return { errors: [problem(source, error.position[0], told(source, error))] };
   }
   return {
     code: result.js.code,
     map: JSON.stringify(result.js.map),
     warnings: result.warnings.filter((w) => !staticPages.has(w.code)).map((w) => problem(source, w.position?.[0] ?? 0, w.message)),
   };
+}
+
+// compileIsland compiles a component of an island, or a module with runes,
+// for the browser and for the server, with the same options as a template.
+// Its styles come from the code for the browser.
+function compileIsland(path, source, module) {
+  let client, server;
+  try {
+    if (module) {
+      client = svelte.compileModule(source, { filename: path, generate: 'client' });
+      server = svelte.compileModule(source, { filename: path, generate: 'server' });
+    } else {
+      const options = { filename: path, css: 'external', runes: true, discloseVersion: false };
+      client = svelte.compile(source, { ...options, generate: 'client' });
+      server = svelte.compile(source, { ...options, generate: 'server' });
+    }
+  } catch (error) {
+    if (!Array.isArray(error?.position)) throw error;
+    return { errors: [problem(source, error.position[0], told(source, error))] };
+  }
+  return {
+    client: client.js.code,
+    server: server.js.code,
+    map: JSON.stringify(server.js.map),
+    css: client.css?.code ?? '',
+    warnings: client.warnings.map((w) => problem(source, w.position?.[0] ?? 0, w.message)),
+  };
+}
+
+// lower makes the program of an island bound to a request from its server
+// code. A mistake is told at its place in that code.
+function lower(code) {
+  try {
+    return { program: lowerIsland(code, parseGenerated) };
+  } catch (error) {
+    const at = error.start ?? error.loc;
+    if (at === undefined) throw error;
+    return { errors: [{ line: at.line, column: at.column + 1, message: error.message.replace(/\s*\(\d+:\d+\)$/, '') }] };
+  }
+}
+
+// told is what Shugo says of a mistake: the message of Svelte, or one that
+// tells better what to write.
+function told(source, error) {
+  if (error.code === 'js_parse_error' && /^<[a-zA-Z]/.test(source.slice(error.position[0]))) {
+    return 'markup cannot stand inside {…}: show it under a condition with {#if …}…{/if}, and repeat it with {#each … as …}…{/each}';
+  }
+  return messages[error.code] ?? error.message;
 }
 
 // What Shugo says in place of Svelte, for a mistake it explains better.
@@ -96,7 +152,7 @@ function problem(source, at, message) {
   return { line, column: [...source.slice(start, at)].length + 1, message: message.replace(/\s*\n\s*/g, ' ') };
 }
 
-// The tags of Shugo's first syntax and of Astro, with what to write instead.
+// The tags of Shugo's first syntax and of Svelte 4, with what to write instead.
 const oldTags = {
   'g-if': '{#if condition}…{:else if other}…{:else}…{/if}',
   'g-else-if': '{:else if condition} inside {#if}',
@@ -106,7 +162,6 @@ const oldTags = {
   'g-slot': '{@render children?.()}, with children taken from $props()',
   'g-fragment': "{#snippet name()}…{/snippet} inside the component's tag",
   slot: '{@render children?.()}, with children taken from $props(): Svelte 5 passes markup as snippets',
-  Fragment: "{#snippet name()}…{/snippet} inside the component's tag",
 };
 
 // The functions of Svelte that pass values down the tree of components
@@ -133,6 +188,10 @@ class Look {
     this.quiet = new Set(); // where a warning of Svelte is answered by Shugo
     this.facts = { page: false, context: false, id: false, select: false, renders: false, paths: false, islands: [] };
     this.islands = new Map(); // the name an island is imported under → { source, request }
+    if (ast.options?.runes === false) {
+      const at = ast.options.attributes.find((a) => a.name === 'runes')?.start ?? ast.options.start;
+      this.error(at, 'runes={false} turns on the syntax of Svelte 4, and the templates of Shugo are written with runes: take this option away, take props with $props() and write $derived(…) in place of $:');
+    }
     if (ast.module) this.script(ast.module, true);
     if (ast.instance) this.script(ast.instance, false);
     this.fragment(ast.fragment, [], null);
@@ -314,6 +373,8 @@ function walk(node, visit) {
 const reply = (message) => process.stdout.write(JSON.stringify(message) + '\n');
 reply({ ready: true });
 for await (const line of createInterface({ input: process.stdin })) {
-  const { path, source, module } = JSON.parse(line);
-  reply(module ? compileModule(path, source) : compileTemplate(path, source));
+  const { path, source, module, island, lower: program } = JSON.parse(line);
+  if (program) reply(lower(source));
+  else if (island) reply(compileIsland(path, source, module));
+  else reply(module ? compileModule(path, source) : compileTemplate(path, source));
 }

@@ -153,7 +153,7 @@ export function GET() { return { a: 1 } }`, "GET of src/pages/feed.json.ts must 
 		{"a GET that returns a Response", `
 -- src/pages/feed.xml.ts --
 export function GET() { return new Response("x") }`, "a Response is read by waiting, so return the text itself"},
-		{"a GET that takes the params of Astro", `
+		{"a GET that takes params", `
 -- src/pages/[id].txt.ts --
 export const getStaticPaths = () => [{ params: { id: "a" } }]
 export function GET({ params }) { return params.id }`, `GET gets no params: import { query, page } from "shugo" at the top of the module, and read page.params and page.url`},

@@ -62,6 +62,9 @@ func annotate(data []byte) []byteRow {
 			case 'i':
 				take(1, fmt.Sprintf("  hole %d: i is an island", h+1))
 				text("    island JSON")
+			case 's':
+				take(1, fmt.Sprintf("  hole %d: s is the component's styles with css=\"injected\"", h+1))
+				text("    <style>")
 			default:
 				take(len(data)-at, "corrupt data")
 			}
@@ -134,6 +137,8 @@ func pieces(f record.Fragment, rec *record.Record) []piece {
 			out = append(out, piece{Hole: true, Text: "snippet " + string(hole.Text) + " from the call site"})
 		case record.Island:
 			out = append(out, piece{Hole: true, Text: "island " + string(hole.Text)})
+		case record.Style:
+			out = append(out, piece{Hole: true, Text: "styles included once per page: " + string(hole.Text)})
 		}
 	}
 	return out
@@ -154,6 +159,8 @@ func fragmentText(f record.Fragment) string {
 			fmt.Fprintf(&out, "⟨snippet %s⟩", hole.Text)
 		case record.Island:
 			out.WriteString("⟨island⟩")
+		case record.Style:
+			out.WriteString("⟨styles⟩")
 		}
 	}
 	return out.String()

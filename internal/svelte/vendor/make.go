@@ -1,15 +1,20 @@
 //go:build ignore
 
-// make writes the server runtime of Svelte that Shugo ships, runtime/*.js,
-// from an installed svelte package and its dependencies:
+// make writes what Shugo ships of an installed svelte package and its
+// dependencies, all but the compiler:
 //
 //	npm install --prefix /tmp/svelte-vendor svelte@5.59.1
 //	go run internal/svelte/vendor/make.go /tmp/svelte-vendor
 //
-// Every module a page may import from Svelte is one file, named after it;
-// the code they share is in chunks, so that they share their state too, as
-// the modules of the package do. The code is that of the package as it is,
-// bundled for a server in production: esm-env answers DEV false and BROWSER
+// It writes runtime/, the server runtime, for pages and for the islands
+// rendered on the server; runtime-browser/, the browser runtime, for islands
+// in the browser; and acorn.cjs, the parser of JavaScript that Svelte uses,
+// unmodified, for reading the server code of an island bound to a request.
+//
+// In a runtime every module a page or an island may import from Svelte is
+// one file, named after it; the code they share is in chunks, so that they
+// share their state too, as the modules of the package do. The code is that
+// of the package as it is, bundled for production: esm-env answers DEV
 // false.
 package main
 
@@ -25,10 +30,26 @@ import (
 // The modules of Svelte a page may import. Each becomes a file named after
 // it: svelte/internal/server is internal-server.js, as Runtime of package
 // svelte expects.
-var modules = []string{
+var server = []string{
 	"svelte",
 	"svelte/internal/server",
 	"svelte/server",
+	"svelte/store",
+	"svelte/reactivity",
+	"svelte/reactivity/window",
+	"svelte/easing",
+	"svelte/transition",
+	"svelte/animate",
+	"svelte/motion",
+	"svelte/events",
+	"svelte/attachments",
+}
+
+// The modules of Svelte an island may import in the browser.
+var browser = []string{
+	"svelte",
+	"svelte/internal/client",
+	"svelte/internal/init-operations",
 	"svelte/store",
 	"svelte/reactivity",
 	"svelte/reactivity/window",
@@ -49,6 +70,25 @@ func main() {
 	if err != nil {
 		fail(err)
 	}
+	// Run from the root of the repository.
+	vendor, err := filepath.Abs(filepath.Join("internal", "svelte", "vendor"))
+	if err != nil {
+		fail(err)
+	}
+	bundle(root, server, filepath.Join(vendor, "runtime"), api.PlatformNode)
+	bundle(root, browser, filepath.Join(vendor, "runtime-browser"), api.PlatformBrowser)
+	acorn, err := os.ReadFile(filepath.Join(root, "node_modules", "acorn", "dist", "acorn.js"))
+	if err != nil {
+		fail(err)
+	}
+	if err := os.WriteFile(filepath.Join(vendor, "acorn.cjs"), acorn, 0o644); err != nil {
+		fail(err)
+	}
+	fmt.Printf("%7d acorn.cjs\n", len(acorn))
+}
+
+// bundle writes the modules of Svelte for a platform into a folder.
+func bundle(root string, modules []string, out string, platform api.Platform) {
 	var points []api.EntryPoint
 	for _, module := range modules {
 		name := "svelte"
@@ -57,18 +97,13 @@ func main() {
 		}
 		points = append(points, api.EntryPoint{InputPath: module, OutputPath: name})
 	}
-	// Run from the root of the repository.
-	out, err := filepath.Abs(filepath.Join("internal", "svelte", "vendor", "runtime"))
-	if err != nil {
-		fail(err)
-	}
 	result := api.Build(api.BuildOptions{
 		EntryPointsAdvanced: points,
 		AbsWorkingDir:       root,
 		Bundle:              true,
 		Splitting:           true,
 		Format:              api.FormatESModule,
-		Platform:            api.PlatformNode,
+		Platform:            platform,
 		Target:              api.ES2022,
 		Conditions:          []string{"production"},
 		MinifySyntax:        true, // drops what only runs in development
@@ -92,7 +127,7 @@ func main() {
 		if err := os.WriteFile(file.Path, file.Contents, 0o644); err != nil {
 			fail(err)
 		}
-		fmt.Printf("%7d %s\n", len(file.Contents), filepath.Base(file.Path))
+		fmt.Printf("%7d %s/%s\n", len(file.Contents), filepath.Base(out), filepath.Base(file.Path))
 	}
 }
 
