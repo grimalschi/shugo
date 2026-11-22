@@ -10,7 +10,6 @@
 //
 // Runs on Bun and on Node.
 
-import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 import { render } from "svelte/server";
@@ -48,7 +47,10 @@ export function requestSource(value, source) {
 //   i2      island 2 of the record
 //   [ ]     the HTML of {@html} starts, and ends
 //   h       what goes into the <head> ends; the <title> follows
-const word = randomBytes(12).toString("base64url");
+//
+// The word comes from the crypto of the web, which Bun and Node both have at
+// hand; node:crypto takes Bun milliseconds to load.
+const word = Buffer.from(crypto.getRandomValues(new Uint8Array(12))).toString("base64url");
 const mark = (what) => "\0" + word + what + "\0";
 const marks = new RegExp("\0" + word + "([^\0]*)\0");
 const headEnd = mark("h");

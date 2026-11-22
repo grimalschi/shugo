@@ -25,14 +25,13 @@ The document describes how to work with styles: component styles, common files C
 </style>
 ```
 
-As in Svelte:
+The component styles rewrite Svelte itself:
 
-- Each component element receives a `svelte-…` class from the file path hash, and each selector requires this class. `.card` will not touch another component of `.card` from this file.
+- The element that selects a component selector receives the `svelte-…` class from the file path hash, and each selector requires this class. `.card` from this file will not affect the `.card` of another component.
+- A selector that does not select any component element, Svelte removes from styles and warns about this when assembling.
 - `:global(…)` and the `:global { … }` block are valid for the entire site.
 - The `@keyframes` names get the component prefix; the `-global-` at the beginning of the name leaves it as is.
 - The component does not stylize the elements that came into it with a snippet: they belong to the template that wrote them.
-
-One difference: Svelte puts the class only on elements that some selector chooses, and throws selectors that do not choose anything. Shugo puts the class on all elements of the component and leaves all selectors. The page looks the same.
 
 `<style>` inside the element or in `<svelte:head>` remains in the page as written, as in Svelte.
 
@@ -70,4 +69,4 @@ Classes are in both markup and code lines: `` class={`rounded-lg ${look}`} ``. A
 
 ## Open questions
 
-- Whether to put the component class only on selected elements and whether to throw out extra selectors like Svelte. The 22 of November 2026 has been postponed.
+- Whether to put the component class only on selected elements and whether to throw out extra selectors like Svelte. Delayed 22 November 2026 year. *Closed 22 November 2026 year by the decision of the author of the project that the templates compiles Svelte: so it is done.*

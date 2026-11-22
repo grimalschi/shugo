@@ -10,7 +10,7 @@ The document describes what the page is built of and how the change in data reac
 - The same blocks are not repeated, no matter how many pages they show.
 - A block is calculated only if the page reaches it: the unselected branch of the condition is not met.
 - If the recalculation gave the previous result, the page does not touch.
-- Everything is stored in disassembled form. The page does not contain its components, but calls them: the rantime collects it from layouts and components. The speed is obtained not because the rantime is written in Go, but because the whole structure and all the data are at hand.
+- Everything is stored in a disassembled form. The page does not contain its components, but calls them: rantime collects it from layouts and components. The speed is not because the runtime is written in Go, but because the entire structure and all the data are at hand. The *Changed by the decision of the author of the project 22 November 2026 year - templates renders Svelte ("okay, take a swelt"):* page contains HTML components that are rendered on-site, and layouts and shared blocks still call.
 - The general block for the entire site, such as a header, does not touch the page entries when changing.
 - If the fifth item is removed from the list in 100,000, the remaining 99,995 is not considered changed.
 - The layout is stored separately from the pages: the layout change does not touch the page entries, the page change is a layout. The layout that reads the page address is stored with its own entry on each page (the decision of the author of the project 22 November 2026, according to his opinion).
@@ -19,11 +19,11 @@ The document describes what the page is built of and how the change in data reac
 
 ### Page records
 
-- **Block** is one display of one template: a page, layout, component or snippet.
-- **Tape** — block expression values in the order of the template. There is no markup in the tape: it lies in the project framework, one for all template impressions.
-- **Page Record** is a list of its blocks. The block has its template, its tape, the blocks inside it, the snippets that the caller gave it, and the blocks that its template gave `<head>` pages in `<svelte:head>`.
+- **Block** is part of a page in the entry: HTML, which rendered one component along with everything it showed on site; a snippet that the display location gave to the shared block; or a link to the shared block.
+- **HTML with holes** is what lies in the block: HTML, as it was rendered by Svelte, without hydration comments. In holes, it is what is substituted when the page is shown: a common block, a snippet that gave the place of display, an island.
+- **Page Record** is a list of its blocks. The HTML block has HTML itself written down, what it gives `<head>` pages from `<svelte:head>`, and the last `<title>` among this. The link to the common block has - what snippets this place gave it.
 - **Shared block** is a component that shows the same thing on any page. It has its own record under the name; pages link to this name. Layout is always a separate record: common to the entire site or its own to each page.
-- **File not in HTML** is what gives a module among pages, for example `src/pages/sitemap.xml.ts`. Its record is one block with one value: the text that returned the function `GET`. What `GET` read from the database is written to this record like a page.
+- **File not in HTML** is what gives a module among pages, for example `src/pages/sitemap.xml.ts`. Its record is one block with text that returned the function `GET`. What `GET` read from the database is recorded on this record like a page.
 
 Product page in the store from [examples/catalog](../examples/catalog/README.md):
 
@@ -31,18 +31,39 @@ Product page in the store from [examples/catalog](../examples/catalog/README.md)
 page entry /products/jug
 └─ layout src/pages/+layout.svelte{|children} common: one for the whole site
    ├─ Header general: one for the whole site
-   ├─ {@render children()}: page block in page entry
-   │  ├─ <svelte:head>: block <title> in page entry
-   │  ├─ feed page "Kuvshin", "$2,400", ...
-   │  ├─ Badge{text: "from the oven"} common: one for all such icons
-   │  ├─ Variant  3 own tapes, in page record
-   │  └─ ProductCard{id: p7} General: one to all pages with this product
+   ├─ {@render children()}: HTML pages in page entries
+   │  ├─ <title> and what is given in <head> in the page entry
+   │  ├─ "Kuvshin", "$2,400", options  3 HTML, rendered on site
+   │  ├─ Badge{"text":"from the oven"} hole: common, one on all such icons
+   │  └─ ProductCard{"id":"p7"} hole: common, one to all pages with this product
    └─ Footer general: one for the whole site
 ```
 
-The layout doesn’t read anything about the page, so it’s one-on-one for the entire site. The page gives him a snippet of `children` herself. Snippet names are in the common block name after `|`. The snippet itself is calculated in the page and lies in its entry; in the layout entry, in its place, there is a link "snippet `children` of the one who showed me".
+The layout doesn’t read anything about the page, so it’s one-on-one for the entire site. The page gives him a snippet of `children` herself. Snippet names are in the common block name after `|`. The snippet itself is rendered in the page and lies in its entry; in the layout entry, a hole "snippet `children`" is in its place, which gave the location of the display.
 
 The documents around — `<!doctype>`, `<html>`, `<head>`, `<body>` — are not in the records. This is the shell of `src/site.html`, one for the entire site; it lies in the project framework, cut into its places `%shugo.head%` and `%shugo.body%`.
+
+### Shared components
+
+A component is rendered as a shared block when it shows the same thing everywhere it stands with the same parameters:
+
+- it does not depend on the page: does not import `page` and `paginate` from the `shugo` module - neither itself nor through what it imports;
+- it does not depend on the place where it stands: it does not take the context of Svelte (`getContext`, `setContext`, `hasContext`, `getAllContexts`, `createContext`) and does not call `$props.id()` - neither itself, nor through what it shows or imports;
+- it is given simple values — strings, finite numbers, `true` and `false`, `null` — and snippets without parameters written inside its tag.
+
+Then it is calculated once for each set of parameters, and pages refer to it by name: `src/components/Card.svelte{"id":"p7"|children}`. Otherwise, it's rendered on the spot, in the record of the person who showed it. Context and `$props.id()` are location-specific: context gives components around, and the `$props.id()` number counts components that have been rendered before. The common block, rendered separately, would not see either of them.
+
+A snippet that has all the default parameters, `{#snippet row(n = 1)}`, is considered a snippet without parameters: it renders where it is written, without arguments. If the common component shows it with arguments, `{@render row(5)}`, the calculation will stop with an error and prompt to remove default values: then the component will render in place.
+
+### How HTML is split into blocks
+
+Svelte renders a page with one line. Where the common block is located and what the place of display gave it, mark the tags that no page can write: byte 0, a random word selected to run, which means the label and again byte 0.
+
+1. Each template in the build is shown through the Shugo function of `component(file number, component Svelte)`. For a common component, it does not render it, but labels "here is the block N of this record" and starts a link to the common block in the record. Snippets without the parameters that it was given place, it renders right between the beginning and end labels.
+2. The common block is calculated separately, by its name: parameters are taken from the name, and instead of each snippet that was given to it, a plug that puts a label "snippet `children`, which gave the place of display".
+3. When Svelte is finished, the runtime cuts the string by labels: the block label and the snippet label become holes, the text between the start and end labels of the snippet is a separate record block referenced by a link to the shared block.
+4. From text outside `{@html}` Comments are cut out which Svelte Writes for hydration in the browser: `<!---->`, `<!--[-->`, `<!--[!-->`, `<!--[1-->`, `<!--[-1-->`, `<!--]-->`, `<!--$s1-->` U -  `$props.id()` and hash component around it `<svelte:head>`. Static page they are not needed: it is a quarter byte of the page. `{@html}` in templates Shugo The same function Sveltebut his HTML stands between the labels, and comments remain in it. The islands render Svelte The project, and their hydration marks remain: on them the island comes to life in the browser.
+5. What the components gave `<head>`, Svelte writes separately, and the last `<title>` writes after it. Shugo puts a label at the end of what is given in `<head>`, and so separates `<title>`.
 
 ### Layouts
 
@@ -51,7 +72,9 @@ The layout never lies in the page entry. The page stores a link to it and its sn
 - **A model that does not read a page**, — one entry for the entire site: `src/pages/+layout.svelte{|children}`.
 - **A model that reads the address** `page.url` or `page.params` from the `shugo` module, for example, to highlight the current menu item own entry to each page. Its name is the route and address of the page: `src/pages/+layout.svelte{"@path":"/c1","@route":0|children}`. The name of the entry is calculated by itself: from the address you get `page` - `page.url` and `page.params`, like a page.
 
-Whether the template reads a page, the compiler learns by imports. The template or module that imports `page` or `paginate` from the `shugo` module depends on the page, and with it everyone who imports it: for example, a layout that imports the module from `src/lib/`, where the function reads `page.url`. Such a layout is a record for each page, such a component is not a common block: it is calculated on each page anew, in the record of the one who showed it. `query` does not depend on the page: what it read is written on who is currently being calculated.
+Whether the template reads a page, the compiler learns by imports. The template or module that imports `page` or `paginate` from the `shugo` module depends on the page, and with it everyone who imports it: for example, a layout that imports the module from `src/lib/`, where the function reads `page.url`. Such a layout is a record for each page, such a component is not a common block: it is rendered on each page anew, in the record of the one who showed it. `query` does not depend on the page: what it read is written on who is currently being calculated.
+
+The layout is rendered separately from the page, so the context it sets through `setContext` sees its components but not the page inside it. `$props.id()` in the layout gives names with the file number of the layout, `b3-s1`, so that they do not match the page names.
 
 Readings of the layout are recorded on his record, readings of the page are recorded on it. Therefore:
 
@@ -65,20 +88,20 @@ A page that is no longer there takes its own layout record with it: no one shows
 
 ### Page head
 
-What the template writes in `<svelte:head>` is its own writing blocks: the template block has a head block list and a separate list of `<title>` blocks. The layout, which is calculated once on the entire site, stores its head blocks at home, the page - at home.
+What the components write in `<svelte:head>` is in the HTML block they render: separately what is given in `<head>`, and separately the last `<title>`. The layout, which is calculated once on the entire site, stores its own page, the common block - at itself.
 
-The head of the page is collected by the server. As it shows a page, it remembers the head blocks of each template it met, in order: the outer layout is before the inner one, the layout before the page is the document order, as in Svelte. When the page is shown, it shows the blocks that are remembered, and of `<title>`, only the last one, after the rest, then a link to the styles, and puts all this in place of `%shugo.head%`'s shell `src/site.html`. Where this place is, the server knows from the frame: the shell lies there cut into three pieces - up to `%shugo.head%`, between places and after `%shugo.body%`.
+The head of the page is collected by the server. While it shows the page, it remembers what each block gave in `<head>`, in order of display: the external layout is before the internal layout before the page is like the document order in Svelte. When a page is shown, it writes the remembered one, then the last `<title>`, then a style reference, and puts all of this in place of the `%shugo.head%` shell of `src/site.html`. Where this is, the server knows from the frame: the shell lies there cut into three pieces - up to `%shugo.head%`, between places and after `%shugo.body%`.
 
-Tapes lie inside records, common blocks are separate records under their own name. The reasons are in [2](../spec/decisions.md#2-values-are-stored-by-content-and-shared-blocks-by-name) and [3](../spec/decisions.md#3-which-blocks-are-shared).
+HTML lies within records, shared blocks are separate records under their own name. The reasons are in [2](../spec/decisions.md#2-values-are-stored-by-content-and-shared-blocks-by-name) and [3](../spec/decisions.md#3-which-blocks-are-shared).
 
 ### Snippets
 
 The component receives markup from the caller in the same way as in Svelte: snippets. They are stored in two ways.
 
-- **Snippet without parameters, written inside the component tag**, including `children`, anything in the tag except `{#snippet}`. It is calculated where it is written, when the component call is calculated, whether its component shows or not. Its block is in the record of the caller, and the block component is written: a snippet with that name - these blocks. Therefore, a component with snippets without parameters remains a common block: from snippets in its record only names.
-- **Other snippets**with parameters and those declared in the template itself, rather than in the component tagare calculated where `{@render}` shows them: the values of snippet expressions with parameters depend on the arguments. Its block is the nested block of the one who showed it. The component to which such a snippet was passed is not a common block: the function cannot be named in the name.
+- **Snippet without parameters, written inside the tag of the common component**, including `children`, anything in the tag except `{#snippet}`. It renders where it is written, when the component call is rendered, whether its component is shown or not. Its block is in the record of the one who called, and the link to the common block is written: a snippet with this name is this block. Therefore, a component with snippets without parameters remains a common block: from snippets in its record only names.
+- **Other snippets** with parameters and those that are declared in the template itself, and not in the component tag Svelte renders where `{@render}` shows them, as always. The component to which such a snippet was transmitted is not a common block: the function cannot be named in the name.
 
-In place of `{@render}` in the tape stands, what is the case and how many components between it and the one who wrote the snippet. Details - in [Storage](storage.md#tape).
+The component that renders on-site gets all of its snippets as in Svelte: from the snippets, Shugo stores nothing separately.
 
 ### Updates
 
@@ -91,7 +114,7 @@ All this is one transaction. If something falls, nothing is recorded: the site r
 
 ### Effects of data changes
 
-Shop on 100,000 products: 104,202 pages, 100,009 common blocks, 1.3 million blocks. Update after price change of one product — 29 ms, after changing the cap — 0.12–0.13 s. Full table and launch — in [README booth](../examples/catalog/README.md#results).
+Shop on 100,000 products: 104,202 pages, 100,009 common blocks, 0.9 million blocks. Update after price change of one product — 31 ms, after changing the cap — 0.12–0.17 s. Full table and launch — in [README booth](../examples/catalog/README.md#results).
 
 | What changed in the data | Page entries rewritten | Common blocks rewritten | Pages with new HTML |
 | --- | ---: | ---: | ---: |
@@ -131,7 +154,7 @@ Now the header loads its data itself and is calculated once. The page stores its
 | --- | --- |
 | Dependency tree: what data fields each block reads | lines from the database themselves remember which columns they have read, more precisely the tree: with precision to the branch conditions and through functions and components ([Change tracking](change-tracking.md)) |
 | Accuracy rules: `a.b.c` - one field, method call - the whole object | the same |
-| List Item Key | the tape elements are not dependent on neighbors; key `{#each items as item (item.id)}` Svelte allows, Shugo takes it and does not use for anything |
+| List Item Key | HTML element is already independent of neighbors; the key `{#each items as item (item.id)}` Svelte allows and on the server does not use |
 | “The Significance of the Entry Hash” | hash is taken from the record, not from the input |
 | Banning a component from calling itself | the limitation of the prototype |
 

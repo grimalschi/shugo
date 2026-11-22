@@ -4,7 +4,7 @@ Rantime is a server on Go that collects HTML pages from storage.
 
 ## Decisions
 
-- Rantime uses the project framework and saved values. The project code does not execute and does not calculate anything. The only thing he reads on demand is the search for the island that is tied to it: from the published index, according to the address parameters. JavaScript is not working on the server: HTML is collecting Go under the SSR program, which the assembly prepares from the output of Svelte (22 solution November 2026 year).
+- Rantime uses the project framework and saved values. With the 22 of November, the 2026 is saved it is the HTML that has rendered the Svelte. The project code does not execute and does not calculate anything. The only thing he reads on demand is the search for the island that is tied to it: from the published index, according to the address parameters. JavaScript is not working on the server: HTML is collecting Go under the SSR program, which the assembly prepares from the output of Svelte (22 solution November 2026 year).
 - All pages and all data are known in advance. There are no pages that depend on cookies, API routes and processing forms. The query string changes only the islands associated with the search and the search address from which the browser island takes the same JSON issue.
 - The main mode is to assemble the page on the fly with each request. When data changes often, writing thousands of HTML files in advance makes no sense: the runtime collects a page from ready-made pieces very quickly.
 - The second mode is a one-time generation of all HTML-files of the site.
@@ -12,7 +12,7 @@ Rantime is a server on Go that collects HTML pages from storage.
 - Several processes work with one storage: one updates the values, others give the pages. The page is entirely collected from one data state.
 - The common runtime, not the one collected for the project. One project per process; multi-project service is foreseen for the future. Confirmed by 21 on November 2026: Several projects in one process are postponed, but the Rantime device should allow this. How the server selects a project on request will be decided then.
 - Everything that runs Go is safe and can work outside containers.
-- The stored values for the runtime are untrusted data: each is screened at the insertion location.
+- The stored values for the runtime are untrusted data: each is screened at the insertion location. *Changed by the decision of the author of the project 22 November 2026 year - templates renders Svelte ("okay, take a swelt"):* screens Svelte when rendering a page as in SvelteKit. Rantime doesn't trust the record as it is, but checks its device, not every value: [What Rantime Doesn't Trust](#what-rantime-doesnt-trust).
 - Development mode is needed: reassembly when changing files and updating a page in the browser. How to speed it up - [live Reload](proposals/live-reload.md).
 - The server does not keep the site in memory: for each request, it gets from SQLite what the page needs. Storage requests should be optimized. Solved 20 November 2026 year. Confirmed by 21 November: there will be no copies in memory and as acceleration, including a copy that loads in the background after the first request runtime in the future can serve many sites.
 - The page that is no longer in the route list is deleted: the server responds to its 404 address, the export deletes its file. It was solved by 21 on November 2026 year.
@@ -27,15 +27,15 @@ Rantime is a server on Go that collects HTML pages from storage.
 There are no copies of the site in the server memory. For each request, it:
 
 1. It takes a connection from the reading pool to the storage and opens a reading transaction.
-2. Reads the build name. It parses the templates once for each build and keeps them in memory: it is code, not data, and updating the data does not change it.
-3. Finds the page record and its route number - one search by key. Values ribbons lie inside the record.
+2. Reads the name of the build. Site frame - shell, routes, island programs - it parses once for each build and keeps in mind: updating data does not change it.
+3. Finds the page entry and its route number - one search by key. HTML lies inside the record.
 4. Writes the `src/site.html` shell to the `%shugo.head%` location, remembers this location and writes the shell further, to the `%shugo.body%`. The shell lies in the frame already cut through these locations.
-5. It follows the framework of the template of the first block. The markup is copied, the next value is taken from the block tape and screens it on the place of expression.
-6. At the call point, the component moves to the next sub-block. The shared block reads from its own record, also by a single search; the block shown on the page twice is read once.
-7. In place, `{@render}` shows a snippet. The snippet with the parameters is the next nested block. The snippet without the parameters that the caller gave is blocks from the caller's record: the component block has written what blocks they are ([Storage](storage.md#tape)).
-   On the island writes it HTML from the record, data for hydration and a link to its browser module. If the island is tied to a search through `request:`, and the address has search parameters, the server takes the index version from the same transaction, reads the issue by parameters and collects the HTML of the island anew on its SSR program.
+5. Writes HTML of the first block as it is, and puts what fills it in each hole ([Storage](storage.md#record)).
+6. In the hole of the common block, it shows a record of it, also read by one search; the block shown on the page twice is read once.
+7. In the snippet hole inside the shared block shows the blocks that gave the place where this shared block stands: the reference to the shared block is written, what are these blocks.
+   In the island hole writes it HTML from the record, data for hydration and a link to its browser module. If the island is tied to a search through `request:`, and the address has search parameters, the server takes the index version from the same transaction, reads the issue by parameters and collects the HTML of the island anew on its SSR program.
 8. When the page is shown, it adds a body framework markupin development mode, this is a reboot scriptand the rest of the shell.
-9. The `<svelte:head>` blocks of each template that he showed he memorized along the way. Now shows them in order, from `<title>` - only the last one, adds a link to styles and inserts all this into the remembered place of `%shugo.head%` ([Blocks](blocks.md#page-head)).
+9. What each block shown gave `<head>`, he memorized on the go. Now writes it in order, from `<title>` - only the last, adds a link to the styles and inserts it all into the memorable place of `%shugo.head%` ([Blocks](blocks.md#page-head)).
 10. Closes the transaction and returns the connection to the pool.
 
 The file is not in HTML, for example `/sitemap.xml` from the `src/pages/sitemap.xml.ts` module, the server recognizes by route: the module route has an extension. The record of such a file is one block with the text that returned `GET`; the server gives this text as it is, without shell and without head.
@@ -84,18 +84,18 @@ The first version kept a copy of all the pages and after each update built it al
 | Same without `mmap` | 74–76 µs | 66–69 µs |
 | For comparison: a copy in memory | 9 µs | — |
 
-Time determines the number of searches by key, not the number of SQL queries: to collect them in bundles or in one query does not help. The store page is her entry and about 10 shared blocks; with the tapes a separate table was added to them about 15 search feeds. So it is done: tapes inside records, the file is displayed in memory, the driver on Go.
+Time determines the number of searches by key, not the number of SQL queries: to collect them in bundles or in one query does not help. The store page is her entry and about 10 shared blocks; with the tapes a separate table was added to them about 15 search feeds. So it is done: tapes, and with 22 November 2026 year HTML, inside records, the file is displayed in memory, driver on Go.
 
 ### What Rantime Doesn't Trust
 
-Values came from the stage that executed the project code. Therefore:
+The records came from a stage that executed the project code. HTML wrote Svelte in them and screened, as always: in the text of `&` and `<`, in the attribute of `"`; without shielding - only `{@html}`. Runtime takes this HTML as is, and checks the recording device:
 
-- text and attribute values are always saved, as in Svelte: in the text of `&` and `<`, in the attribute of `"`; without the screen, only the value of `{@html}` is inserted and the file text is not in HTML, which returned `GET`: it and the file;
-- attribute name from `{...attributes}` and tag name `<svelte:element>` are checked;
-- tape that does not match the template gives the answer 500, and not a corrupted page - as it happens, described in [Storage](storage.md#how-the-tape-can-not-fit-with-the-page);
-- the nesting of components is limited by 256 levels, the page size is 64 MB.
+- the record is read without trusting the lengths and when received is checked: blocks are folded into one tree, each shown in exactly one place ([Storage](storage.md#how-the-recording-can-not-come-together));
+- the island to which the request data is attached is checked when receiving: Go on its program gives the same HTML that Svelte, byte byte; island parameters and HTML, which Go collects on request, screens Go;
+- hole of unknown appearance, missing common block, common block inside itself give the answer 500, not a corrupted page;
+- the nesting of common blocks is limited by 256 levels, the page size is 64 MB.
 
-The project framework is data, not code. The worst thing that a wrong frame or tape can do is to have a wrong HTML or an error.
+The project framework is data, not code. The worst thing that a wrong framework or record can do is a wrong HTML or an error.
 
 ### Export
 
@@ -111,23 +111,25 @@ His work grows with the change, not with the site. Update for this nothing to no
 
 If there is no list, exports build all pages and do not delete anything. If the list is from another storage or version before the project is completely reassembled, the export builds all pages and removes `.html` files from the folder, which are not among the pages of the site or among the copied files, as well as module files from the previous list, which the site no longer gives. The rest of the files and folders whose name starts with a dot, it does not touch. The file with the previous content is not rewritten.
 
-Measured on the store in 100,000 products, 104,202 pages, Bun disk ext4, one run of 21 November 2026 year. After each change — `shugo update`, then `shugo export`:
+Measured on the store in 100,000 products, 104,202 pages, Bun disk ext4, one run of 22 November 2026 year. After each change — `shugo update`, then `shugo export`:
 
 | What changed | Pages with new HTML | Update | Export |
 | --- | ---: | ---: | ---: |
-| First export to an empty folder | all | — | 5.0 s |
-| Nothing. | 0 | 0.16 s | 7 ms |
-| Price of one product | 7 | 29 ms | 8 ms |
-| Prices 20 products | 70 | 34 ms | 17 ms |
-| Last product removed: 88 pages, one file removed | 88 | 0.40 s | 36 ms |
-| Product name of the month: header on all pages | all | 0.12 s | 8.2 s |
-| Product added: counters in the menu on all pages | all | 0.48 s | 8.3 s |
+| First export to an empty folder | all | — | 3.5 s |
+| Nothing. | 0 | 28 ms | 6 ms |
+| Price of one product | 7 | 31 ms | 7 ms |
+| Prices 20 products | 70 | 37 ms | 14 ms |
+| Last product removed: 88 pages, one file removed | 88 | 0.43 s | 23 ms |
+| Product name of the month: header on all pages | all | 0.13 s | 4.4 s |
+| Product added: counters in the menu on all pages | all | 0.49 s | 4.5 s |
+
+21 November 2026 year, while the pages were collected from tape values on the frame templates, the first export was 5.0 s, and exports after changing the cap — 8.2 s: stitch ready pieces of HTML twice as fast.
 
 After 21 changes the folder that the export updated in steps, the file is the same as the file with the export of the same base from scratch.
 
 Previously, exports collected HTML of all pages to compare with what lies on the disk, and cost 7 s after any change.
 
-- The change that is visible on all pages overwrites all files — about 8 s. For disk files, this is not to be circumvented. `shugo serve` shows the same change from the next query.
+- The change that is visible on all pages overwrites all files — about 4.5 s. For disk files, this is not to be circumvented. `shugo serve` shows the same change from the next query.
 
 ### Development Mode
 

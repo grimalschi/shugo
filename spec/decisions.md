@@ -2,7 +2,7 @@
 
 Here is written what is decided without direct confirmation of the author of the project: where the answer was “don’t know”, “decision” or question before. Every decision has a reason. After approval, the decision is transferred to the “Decision” section of its document, after refusal redone. The numbers don’t change so that the links don’t break; every decision above tells you what happened to it.
 
-Decisions 1–27 taken during the assembly of the first version, 28–35 when switching to syntax Svelte 21 November 2026 years, 36–38 — 22 November 2026 The year when the shell appeared `src/site.html` Files are not HTML, 39 Same time there was one search.
+Decisions 1–27 taken during the assembly of the first version, 28–35 when switching to syntax Svelte 21 November 2026 years, 36–38 — 22 November 2026 The year when the shell appeared `src/site.html` Files are not HTML, 39 When there is only one search, 40–47 — the same time when the templates began to compile and render themselves Svelte.
 
 ## 1. Data loading and expression are counted together, Go compares the result
 
@@ -260,6 +260,8 @@ Export follows the previous one: in the folder, it leaves a list of which storag
 - Svelte version update new benchmarks and correction of discrepancies.
 - Derogations: hydration labels are not written, style class is placed on all elements ([32](#32-style-class-on-all-component-elements)), `<svelte:head>` - only in the page and layout ([30](#30-sveltehead-and-title)), there are no availability warnings, runes are not checked. Derogations are listed in [Templates](templates.md#how-shugo-differs-from-svelte).
 
+*With 22 November, 2026 compiles and renders the templates itself Svelte (the author's decision): the page matches Svelte's output on construction, and the deletions left are the cut-out hydration comments and what comes from the Shugo blocks, the [43](#43-what-comes-from-the-shugo-blocks).*
+
 **Why so strict.** The template should be transferred to Svelte And then there will be islands. Svelte. If only Shugo Repetitive Svelte "about", the agent could not count on any of the rules: gaps at the edges of the blocks, `false` in the text, `class` from the array.
 
 ## 29. `<script module>` and export
@@ -275,13 +277,15 @@ Export follows the previous one: in the folder, it leaves a list of which storag
 - Contents `<svelte:head>` falls into place `%shugo.head%` shell `src/site.html`, in the order of the document: external layouts, internal, page. `<title>` is one the last, and stands after the rest. This is what Svelte does. Since November 22 2026, the head assembles the server when it shows the page: `<svelte:head>` blocks lie in the record of the template that wrote them ([Blocks](../docs/blocks.md#page-head)).
 - `<svelte:head>` works only in the page and in the layout. In the normal component, this is an error: the common component, which is calculated once per entire site, does not have a page in which `<head>` to write. Allow it in components that are not common, you can: the head of the page collects the server from the blocks of all the templates that he showed.
 
+*With 22 November 2026 year `<svelte:head>` works in any component, as in Svelte: what gave the common component lies in its record, and the server puts this in the head of each page where this block is shown.*
+
 ## 31. Snippets and common blocks
 
 The **Waiting for approval.** Snippet without parameters, written inside the component tag (`children` too), is calculated where written and stored in the caller's record. The component to which such snippets were transferred remains a common block. Therefore, the layout is stored by its own record, although each page passes it its `children`. The snippet with parameters is calculated where it is shown by `{@render}`, - [Blocks](../docs/blocks.md).
 
 ## 32. Style class on all component elements
 
-**Deferred** is the author of the project 22 November 2026 year. Svelte puts the `svelte-…` class only on items that some selector chooses, and throws selectors that do not choose anything. Shugo puts the class on all components and leaves all selectors.
+**Deferred** is the author of the project 22 November 2026 year. *Closed the same day by the decision of the author of the project that the templates compiles Svelte: class puts itself Svelte, only on selected elements, and throws out extra selectors.* As it was: Svelte puts the class `svelte-…` only on the elements that selector selects, and throws selectors that do not choose anything. Shugo put a class on all components and left all selectors.
 
 **Why not.** To select elements like Svelte, you need to parse selectors and match with a template, including blocks and dynamic classes, a noticeable part of the Svelte compiler. The page view does not change from this. The question is whether to do exactly in [Styles](styles.md#open-questions).
 
@@ -289,13 +293,15 @@ The **Waiting for approval.** Snippet without parameters, written inside the com
 
 **Approved 22 November 2026 year.** Common templates have the extension `.svelte`. The suffix `.island.svelte` marks components that are hydrated when called from Shugo; the filename shows this in the editor, project tree and imports. Linking data from the address is specified in the call. [Svelte islands](scripts.md#svelte-islands)
 
-The analysis of the usual templates is translated into the official parser Svelte 5.59.1. The assembly of Shugo still writes the framework and code that marks the reading of the data. TypeScript is written in `<script lang="ts">`, as in Svelte.
+The analysis of the usual templates is translated into the official parser Svelte 5.59.1. The assembly of Shugo still writes the framework and code that marks the reading of the data. TypeScript is written in `<script lang="ts">`, as in Svelte. *The same day, the author of the project decided that Svelte compiles templates: there is no more template framework, data readings are marked in the same way, and HTML writes Svelte.*
 
 **It was.** Before the 22 of November, 2026 files were called `.shugo`, parsed by their parser Shugo, and TypeScript was accepted in any `<script>`. The file extension says that the `Shugo.query` file is not a component of the Svelte file. With the `shugo` module and the official parser, this argument has disappeared. The `.shugo` template is now an assembly error with a hint on how to rename it.
 
 ## 34. What is checked the same as in Svelte
 
-**Waiting for approval.** C 22 November 2026 the Parser Markup Svelte, so parsing errors are his own. Errors and warnings Sveltewhich change the appearance of the page or break it, Shugo Repeats: nesting elements, confused tags, outdated `<svelte:self>` and `<svelte:component>`, `<slot>` and `export let` the City of Svelte 4. Accessibility Warnings (`a11y_…`, them in Svelte A few dozen) not.
+**Waiting for approval.** With 22 November 2026 year templates compile Svelte, so errors and warnings are its own, all: nesting elements, mixed tags, runes places, outdated `<svelte:self>` and `<svelte:component>`, availability (`a11y_…`), non-implication The Svelte message is displayed as is, citing its explanation: `https://svelte.dev/e/…`. Not only warnings about what is changing in the browser are displayed: `state_referenced_locally`, `non_reactive_update`, `binding_property_non_reactive`, `perf_avoid_inline_class`, `perf_avoid_nested_class`, `store_rune_conflict`. A static page is rendered once, and the island they are important to, Svelte compiles for the browser and alerts there. Shugo adds its errors to the Svelte errors: shell, islands, first syntax tags Shugo, `<slot>` and `slot="…"` from Svelte 4.
+
+The *As it was before this day:* parsing errors were Svelte, and the rest was repeated by Shugo, without warnings about availability and rune site checks.
 
 ## 35. Folder `src`
 
@@ -353,4 +359,56 @@ The analysis of the usual templates is translated into the official parser Svelt
 - Old search tests that checked for common propertiesreader accuracy, route enumeration, module level search, write during calculationwere rewritten for general search.
 
 **What's lost.** Old search changed price right in the index by journal; general builds the table index anew when its column changes: on 100,000 products near 1.2 s.
+
+## 40. Server part of Svelte is sewn into Shugo
+
+**Waiting for approval.** Compiler Svelte 5.59.1 was sewn into Shugo and before. Now its server part is also nearby: modules `svelte`, `svelte/internal/server`, `svelte/server`, `svelte/store`, `svelte/reactivity`, `svelte/reactivity/window`, `svelte/easing`, `svelte/transition`, `svelte/animate`, `svelte/motion`, `svelte/events`, `svelte/attachments`. Each - one file, the common code - in the common pieces, 265 KB. They collect esbuild from package npm the same version of the script `internal/svelte/vendor/make.go`for server and without code, which works only during development. Import another module Svelte from a template, for example `svelte/legacy`Error with the list of those that are available.
+
+**Why not.** The code that the compiler has issued only works with the server part of the same version. To take it from the `node_modules` project would be to require `npm install svelte@5.59.1` from each project, even without islands, and check the version. The islands need `svelte` package in the project as before: their browser code takes the browser part of Svelte from there.
+
+## 41. Rune-only templates
+
+**Waiting for approval.** Templates are compiled with `runes: true`: syntax Svelte 4 — `export let`, `$:`, `$$props` error Svelte. `<slot>`, `slot="…"`, `let:` and `<svelte:fragment>` Svelte In this case, you still have to take a warning. Shugo I think it's a snippet tip.
+
+**Why not.** One entry for all - fewer errors in the agent. Slots Svelte 4 Svelte transmits differently than the snippets, and the common block to which they were given could not show what was given to it.
+
+## 42. Shared components do not use context or $props.id()
+
+**Waiting for approval.** The General Component Rule[3](#3-which-blocks-are-shared)) added: component that takes context Svelte — `getContext`, `setContext`, `hasContext`, `getAllContexts`, `createContext`or call `$props.id()`, itself or through what imports and shows, renders on the spot. The layout is rendered separately from the page, so its context does not reach the page, and the names of `$props.id()` It starts with the file number: `b3-s1`.
+
+**Why not.** The shared block is rendered once, separately from the places where it stands. The context would give it components around — they are not with a separate render. `$props.id()` counts components that were previously rendered on the page there is no such account in the common block, and one name would appear on the page twice. Before Svelte, these funds were not in Shugo.
+
+## 43. What comes from the Shugo blocks
+
+**Waiting for approval.** Svelte renders a page with one line, and Shugo cuts it into blocks. From this, three differences from Svelte:
+
+- The layout context does not reach the page ([42](#42-shared-components-do-not-use-context-or-propsid)).
+- `<title>` remains the last in the order in which the blocks are shown, not the order of the document. The difference is visible only when `<svelte:head>` stands in the layout after `{@render children()}`: Svelte will leave the layout title, Shugo - pages.
+- A snippet that has all the default parameters is considered a snippet without the parameters: JavaScript does not distinguish it by the number of parameters. The general component renders it where it is written, without arguments. If the component shows it with arguments, the calculation will stop with an error and prompt to write parameters without default values.
+
+**Why not.** This is the price of having a shared block computed once. Otherwise, you would have to render the entire page and then look for repetitions in it, and the point update is based on the fact that each block knows what it has read.
+
+## 44. Comments of hydration are cut by sight
+
+**Waiting for approval.** The author of the project decided to cut out comments Svelte everywhere except islands. Comments of the type that writes Svelte 5.59.1: `<!---->`, `<!--[-->`, `<!--[!-->`, `<!--[1-->`, `<!--[-1-->`, `<!--]-->`, `<!--$s1-->` and hash component like `<!--1f5b1r6-->`. `{@html}` in templates Shugo The same function Sveltebut her HTML Stands between labels ShugoThe comments are still there, even the same kind.
+
+**Why not.** Svelte can not help but write these comments: Svelte 5 does not have such a parameter. There are no other comments in the Svelte output — he does not display the template comments, except those brought by `{@html}`, and their Shugo does not touch. There is one possibility of error: the text `<!--[-->` inside `<script>` or `<style>`, written directly in the markup; this was not the case.
+
+## 45. Storage page table — with rowid
+
+**Waiting for approval.** Table `page` storage declared without `WITHOUT ROWID`; storage layout is `8`.
+
+**Why not.** In a table without a rovid SQLite holds about a quarter of its volume on a file page, about 1,000 bytes, and takes the rest to a separate page, almost empty. Records with HTML — about 850 bytes on average and more on product pages — are often longer: on 10,000 of goods, the file was 32 MB, of which 13 MB is empty; with rovid, 20 MB. Price is another search for the index on the page query, the return from this has not slowed down.
+
+## 46. TypeScript in templates is the one that accepts Svelte
+
+**Waiting for approval.** `<script lang="ts">` compiles Svelte: it erases types, and `enum`, namespaces with values and other constructs that TypeScript converts into code, is a Svelte error. Previously, Shugo had been running the script through esbuild and `enum` was running. Instead of `enum`, it is a `as const` object and type from it. The `.ts` modules are still processed by esbuild.
+
+**Why not.** So in Svelte: SvelteKit by default also does not pass scripts through TypeScript. The agent who knows Svelte 5 knows this rule as well.
+
+## 47. Posts by Svelte with reference
+
+**Waiting for approval.** Errors and warnings Svelte are displayed in its text, in one line, with reference to the explanation: `` `</div>` attempted to close an element that was not open https://svelte.dev/e/element_invalid_closing_tag ``. Shugo messages are still in English, without references ([22](#22-message-language)). Only one Svelte message is replaced by its own: about the `await` in the Shugo component explains that the page is computed without waiting.
+
+**Why not.** The agent finds a rule and example of correction in Svelte.
 

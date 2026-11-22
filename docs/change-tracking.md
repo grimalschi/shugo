@@ -30,13 +30,13 @@ The words of the author of the project, 20 November 2026 year.
 - **Pages are calculated without waiting**, one by one, is decided by 21 in November: [Data loading](../spec/data-loading.md#decisions).
 - **Conversation Go and JS** without repetition. At the beginning of Go, one message says what is known from past launches: types of readings and questions for which there is already an index. JS asks only about the new one, and for price changes there is one request Go and one answer JS with records.
 - **Project without database**: The update does not compute anything until the project itself has changed ([26](../spec/decisions.md#26-project-without-database)).
-- **Value tapes inside records** and **server without a copy of the site** solved: [Storage](storage.md#decisions), [Runtime](runtime.md#decisions).
+- **Value tapes inside records** (with 22 November 2026 years instead of tapes there HTML) and **server without a copy of the site** - solved: [Storage](storage.md#decisions), [Runtime](runtime.md#decisions).
 - **Exports by change.** The page and shared block record stores the version in which the last time changed; it is written by the update itself along with the record. Export builds only pages with a record newer than its version and pages that show such a common block - it is decided: [Runtime](runtime.md#decisions).
 - **Failed upgrade not complete** solved: [Build pipeline](build-pipeline.md#failed-updates).
 
 22 November 2026 also began to track files not in HTML, which give modules among the pages, for example `src/pages/sitemap.xml.ts`. The `GET` function of such a module is calculated as a page: what it read through `query` is written to the file record, and the update only calculates the file again when the read changes ([Routing](../spec/routing.md#files-not-in-html)).
 
-Measurements on the store in 100,000 products — in [README booth](../examples/catalog/README.md#results): price of one product — update 28 ms and export 8 ms; cap on all pages — update 0.12 s; first assembly — 14.1 s. After 21 changes, the site updated and exported in steps coincides with the build from scratch file to file.
+Measurements on the store in 100,000 products — in [README booth](../examples/catalog/README.md#results): price of one product — update 31 ms and export 7 ms; cap on all pages — update 0.12–0.17 s; first assembly — 14.6 s. After 21 changes, the site updated and exported in steps coincides with the build from scratch file to file.
 
 Internal formats and connections on the small store show the stand "Shugo inside": `go run ./cmd/inside examples/inside`, the report - `examples/inside/report/index.html`.
 

@@ -115,8 +115,9 @@ The component is calculated and stored once, if it is independent of the page an
 ```
 
 - The component depends on the page, if it itself or the module it imports takes `page` or `paginate` from the `shugo` module: this is visible by imports, without starting the code. Such a component is calculated on each page anew.
+- The component depends on where it stands if it is itself or what it imports and shows takes the context of Svelte `getContext`, `setContext`, `hasContext`, `getAllContexts`, `createContext` or calls `$props.id()`. Such a component is also rendered where it stands: context gives the components around, and the number in `$props.id()` counts the components rendered earlier on the page ([42](decisions.md#42-shared-components-do-not-use-context-or-propsid)).
 - Simple parameters are strings, numbers, `true`, `false`, `null`.
-- Snippets transferred to a common component do not prevent it from being shared: their markup is counted in the template that wrote them and stored with it. Therefore, the layout is usually shared: the page it receives with the snippet `children`.
+- Snippets without parameters, written inside the tag of the common component, do not prevent it from being common: their markup is rendered in the template that wrote them, and stored with it. Therefore, the layout is usually common: he receives a snippet `children`. A snippet with the parameters of a component shows with its arguments, so such a component is rendered in place.
 
 Hence the reception: it is better to give the card the number of goods, and she will find the goods herself. Then the card is considered once, and when changing the goods, one record changes, no matter how many pages it shows.
 
