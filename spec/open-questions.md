@@ -4,42 +4,28 @@ Questions are numbered: answer the numbers. Where there is advice, yes - to acce
 
 ### 1. Which component is common
 
-A component that does not read the page address and is called without parameters or with simple values - rows, numbers, `true`, `false`, `null` - is calculated and stored once: `<Header />` - one entry on 100,000 pages, `<ProductCard id="p5" />` - one per product. The snippets that are passed inside do not interfere with it.
+This is a rule about how many times Shugo computes and stores a component. The normal component is calculated on each page where it stands: the cap on 100,000 pages is 100,000 times. The total is calculated once per site for each set of parameters, and pages store only a link to it.
 
-**The Council:** approve [3](decisions.md#3-which-blocks-are-shared) and warn when assembly is needed when one component has too many entries (`<Price value={n} />`).
+The component becomes common itself, without markings, if both conditions are met:
 
-### 2. Pages not in HTML
+1. It does not depend on the page: neither he nor the modules he imports take `page` or `paginate` from the `shugo` module. This is visible from the imports, the code does not need to run.
+2. It was called without parameters or with simple values: strings, numbers, `true`, `false`, `null`.
 
-In SvelteKit, `sitemap.xml`, `robots.txt` and RSS writes a file on TypeScript, not a template: `src/routes/sitemap.xml/+server.ts` with `prerender = true` and the function of `GET`.
+| Challenge | How many times is calculated |
+| --- | --- |
+| `<Header />` | once for the entire site |
+| `<ProductCard id="p5" />` | once per item, no matter how many pages it shows |
+| `<ProductCard item={product} />` | once per page because the prop is an object |
+| `<Menu />`, which highlights the current item on `page.url` | on each page again |
 
-**The Council:** also: `src/pages/sitemap.xml.ts` exports `GET({ query })` and returns text; Shugo tracks what it has read from the database as from the page, and writes the `sitemap.xml` file.
+Snippets passed inside do not interfere. Therefore, the layout is common, although the page it receives with the snippet `children`.
 
-### 3. Development mode: page on request
+Profit: the product has changed - one card is calculated, not all the pages where it stands. Price: A component that is called with very different values, for example `<Price value={n} />`, gives a record for each number, and almost every record shows one page - there is no need to store it separately.
 
-The entire site in development mode does not need to be calculated: the page is calculated when asked, and stored until the code or lines it read have changed. This is how SvelteKit and Astro work. Price — an error in the page that was not opened, will find only `shugo build`. See also [Live Reload](../docs/proposals/live-reload.md).
+**The Council:** approve the rule ([3](decisions.md#3-which-blocks-are-shared)) and warn when assembling when the common component shares almost nothing: it has many records, and each shows one page on average.
 
-**The Council:** do development mode like this.
+### 2. Solutions 36–38
 
-### 4. `query` and `page` from the module `shugo`
+The `src/site.html` shell, files from modules with `GET` and their export are made according to your answers. The details I chose are in the [36](decisions.md#36-the-srcsitehtml-shell), [37](decisions.md#37-files-not-in-html-module-with-get) and [38](decisions.md#38-exporting-module-files) solutions. Main: no `src/site.html` — takes the framework shell; `<html>`, `<head>` or `<body>` in the template is an assembly error; `GET` returns only a string, without `Response`; module without file type in name (`data.ts`) is an error.
 
-Instead of global `Shugo`, `import { query, paginate, page } from "shugo"`, where `page.url`, `page.params`, `page.route.id` and `page.status` are like `page` in SvelteKit. Details — [proposal](../docs/proposals/shugo-module.md).
-
-**The Council:** yes, and at once, without two entries at the time of transition.
-
-### 5. Page shell: `app.html` or `site.html`
-
-`<html>`, `<head>` and `<body>` in a separate file with places `%shugo.head%` and `%shugo.body%`The root is a common component, such as `+layout.svelte` the City of London SvelteKitand is transferred between them without editing. Detailed — [proposal](../docs/proposals/app-html.md).
-
-**The Council:** `src/app.html`: This agent name knows by SvelteKit and will write himself.
-
-### 6. Image cache
-
-Its project folder outside `_build/`, `.shugo-cache/images/`, with the setting where to transfer it; files are called by the image hash, parameters and compression method; cleaning command. Details - [proposal](../docs/proposals/image-cache.md).
-
-**The Council:** yes.
-
-### 7. Compatible with Svelte
-
-`lang="ts"`, runes locations, availability alerts, `<svelte:head>` in any component, `$lib` is [proposal](../docs/proposals/svelte-compatibility.md). Style class has been postponed. The main question is whether to check files with a real Svelte compiler in `shugo check` or transfer it to checks in Go.
-
-**The Council:** is short — in the Shugo compiler, Svelte checks — its own compiler in `shugo check`.
+**The Council:** approve.

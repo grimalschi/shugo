@@ -18,6 +18,7 @@ The document describes the `.shugo` files: what parts they are and how to write 
 - Addresses in `href`, `src` and similar attributes are displayed as is, as in Svelte: `javascript:` address replacement is canceled (22 November 2026 year solution).
 - The file extension remains `.shugo` (22 solution of November 2026 year).
 - An error in expression shows a row and column in the `.shugo` file.
+- Data and page address are taken by import from the module `shugo`: `import { query, paginate, page } from "shugo"`; `page` How to `page` the City of `$app/state` the City of London SvelteKitGlobal facility `Shugo` No, and the transition time with two records is also (decision 22 November 2026 years).
 
 ## Implemented, pending approval
 
@@ -26,7 +27,9 @@ The document describes the `.shugo` files: what parts they are and how to write 
 ```svelte
 <script module>
   // Once per module. List of route pages is here.
-  export function getStaticPaths({ query }) {
+  import { query, page } from "shugo"
+
+  export function getStaticPaths() {
     return query("products").select("slug").all().map(({ slug }) => ({ params: { slug } }))
   }
 </script>
@@ -37,8 +40,8 @@ The document describes the `.shugo` files: what parts they are and how to write 
   import { price } from "@/lib/shop"
 
   let { limit = 10 } = $props()
-  const item = Shugo.query("products").where({ slug: Shugo.params.slug }).first()
-  const related = Shugo.query("related").where({ product: item.id }).order("position").limit(limit).all()
+  const item = query("products").where({ slug: page.params.slug }).first()
+  const related = query("related").where({ product: item.id }).order("position").limit(limit).all()
 </script>
 
 <svelte:head><title>{item.title}</title></svelte:head>
@@ -54,8 +57,19 @@ The document describes the `.shugo` files: what parts they are and how to write 
 - `<script module>` is executed once when the module is loaded. It contains `getStaticPaths` and everything you need once: constants, functions, imports. Its names are visible to the rest of the file.
 - `<script>` is executed every time a file is shown: once for a page, once for each component call. Common blocks are an exception, see. [Components](components.md#common-components). Export from it can not: the compiler will prompt you to transfer exports to `<script module>`. `export let` — parameters Svelte 4 — also an error with a hint about `$props()`.
 - The component parameters are `let { … } = $props()`, as in Svelte 5.
-- The `Shugo` object is visible in `<script>` and in markup: `Shugo.query(…)` asks the project database ([Data loading](data-loading.md)), `Shugo.params` is the address parameters, `Shugo.url` is the page address, `Shugo.paginate(…)` is part of the list for the page with the number ([Dynamic pages](dynamic-pages.md)). `<script module>` does not have it: `getStaticPaths` gets `query` and `paginate` by argument.
-- `await` no: the page is calculated without waiting, because `Shugo.query` responds immediately. What is expected and done once - for example, code highlighting - is expected at the top level of the module from `src/lib/`.
+- What framework knows is imported from the `shugo` module, in any file page, layout, component, module from `src/lib/`:
+
+  | Name | What is it |
+  | --- | --- |
+  | `query(table)` | question to the project database, see [Data Download](data-loading.md) |
+  | `paginate(…)` | for the list part of the page with the number, see [Dynamic pages](dynamic-pages.md#pagination) |
+  | `page.url` | page address, `URL`, on the site from `shugo.json` |
+  | `page.params` | address options: `{ slug: "jug" }` for `/products/[slug]` |
+  | `page.route.id` | route: `/products/[slug]` |
+  | `page.status` | 200, and the page `404.shugo` — 404 |
+
+  The query belongs to what is being calculated: a page or a common component. Outside of computing for example, at the top level of a module it is an error with an explanation. The component that takes `page` or `paginate`, either by itself or through imported modules, is calculated for each page separately, see. [Components](components.md#common-components). Writing `Shugo.query` and `Astro.params` is an error with a hint of what to import.
+- `await` no: the page is calculated without waiting, because `query` responds immediately. What is expected and done once - for example, code highlighting - is expected at the top level of the module from `src/lib/`.
 - TypeScript is accepted in any `<script>`. Svelte requires `lang="ts"`; for the file to be transferred to Svelte, write `<script lang="ts">`.
 - `@/` in import path means folder `src/`.
 - Runes Svelte work as on the server Svelte: `$state(x)` - just the value of `x`, `$derived(…)` is considered once, `$effect` is not executed. Page is static, in the browser its code does not work.
@@ -139,7 +153,7 @@ The expression is a regular TypeScript, and only it: you can not write the marku
 
 | Element | What does |
 | --- | --- |
-| `<svelte:head>` | markup for `<head>` pages: title, meta tags. Written in the page and in the layout, see [Layouts](layouts.md) |
+| `<svelte:head>` | markup for `<head>` pages: title, meta tags. It is written in the page and in the layout and gets to the place of `%shugo.head%` shell `src/site.html`, see [Layouts](layouts.md) |
 | `<svelte:element this={tag}>` | element with a calculated name; empty name shows nothing |
 | `<svelte:boundary>` | shows its content |
 | `<svelte:window>`, `<svelte:document>`, `<svelte:body>`, `<svelte:options>` | they do nothing on the server. |
@@ -179,12 +193,14 @@ Svelte Rules:
 | `g-if`, `g-for`, `<g-slot>`, `<g-html>`, `<g-fragment>` | prompt which Svelte record is needed |
 | `<slot>`, `slot="…"`, `<svelte:fragment>` (Svelte 4) | snippets needed: `{@render children?.()}` and `{#snippet name()}…{/snippet}` |
 | `export let title` (Svelte 4) | `let { title } = $props()` |
-| `Shugo.props`, `Shugo.slots` | `$props()` is needed; caller snippet is parameter |
+| `Shugo.props`, `Shugo.slots`, `Astro.props` | `$props()` is needed; caller snippet is parameter |
+| `Shugo.query`, `Shugo.params`, `Astro.params`, `Astro.url` | import from `shugo` module: `query`, `page.params`, `page.url` |
+| `<html>`, `<head>`, `<body>`, `<!doctype>` | written in `src/site.html` shell, see [Layouts](layouts.md#shell-srcsitehtml) |
 | `{cond && <b>…</b>}`, `{list.map(x => <li>…</li>)}` | markup can not stand inside `{…}`: you need `{#if}` and `{#each}` |
 
 ## Open questions
 
-- How to remove remaining deviations from Svelte — `lang="ts"`, runes, availability warnings, style class, `<svelte:head>` in components, `$lib` — [Svelte compatibility offer](../docs/proposals/svelte-compatibility.md).
+- How to remove remaining deviations from Svelte — `lang="ts"`, runes, availability warnings, style class, `<svelte:head>` in components, `$lib` — [Svelte compatibility offer](../docs/proposals/svelte-compatibility.md). Delayed entirely (22 decision November 2026 year).
 - Type check: it is decided to make a separate command `shugo check` together with verification of component parameters ([Command line](cli.md#decisions)). While the types are only erased.
 - Warning when an object is displayed in the text: it is almost always a mistake. In Svelte it is not.
 

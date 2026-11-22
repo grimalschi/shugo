@@ -7,6 +7,7 @@ The proposal of how `shugo dev` shows changes in the browser: what is rebooted, 
 - Development mode is needed: reassembly when changing files and updating the page in the browser ([Command line](../../spec/cli.md)).
 - Changing the project code calculates the entire site anew - and it should be. The words of the author of the project, 21 November 2026 year.
 - For development you need Live Reload. It is done separately; while this is a proposal, without implementation. Words of the author of the project, 21 November 2026 year.
+- Development mode calculates the page when asked, rather than the entire site like SvelteKit and Astro; a page error that was not opened will find `shugo build` (22 November decision 2026). As it is arranged - below, in "[Page is calculated on request](#page-is-calculated-on-request)". Not done yet.
 
 ## Like now
 
@@ -14,7 +15,7 @@ The proposal of how `shugo dev` shows changes in the browser: what is rebooted, 
 
 1. Follows all project files except `_build`, `node_modules` and hidden. After the change, 80 ms is waiting: editors write the file in several receptions.
 2. Does the same thing as `shugo update`. Changed source code - compiles the project and calculates all pages. Changed database - calculates what read the changed lines. Changed other files, for example in `public/` - does not calculate anything.
-3. In each page before `</body>` adds a short script. It keeps a connection to the server (`EventSource` on `/_shugo/live`) and according to the word of the server does `location.reload()`.
+3. Each page, immediately after it in place of `%shugo.body%` shell, adds a short script. It keeps a connection to the server (`EventSource` on `/_shugo/live`) and according to the server's word makes `location.reload()`.
 4. After each successful update, **all** is reloaded with open pages.
 5. A project error does not stop development: it is printed in the terminal, and the server shows the last successful site until the next change.
 

@@ -1,13 +1,15 @@
 # Writing a Shugo site
 
-Shugo builds static sites. A page, a layout and a component are each a `.shugo` file, and a `.shugo` file is a **Svelte 5 component**: `<script>`, markup, `<style>`. Shugo renders it exactly as the server renderer of Svelte 5.59 does, so what you know of Svelte holds: `$props()`, `{#if}`, `{#each}`, snippets, `{@render}`, `{@html}`, scoped styles, the same whitespace rules. What is Shugo's own: data comes from the site's SQLite database through `Shugo.query`, and a page with a parameter in its name lists its pages with `getStaticPaths`. The section [Coming from Svelte and SvelteKit](#coming-from-svelte-and-sveltekit) lists what differs.
+Shugo builds static sites. A page, a layout and a component are each a `.shugo` file, and a `.shugo` file is a **Svelte 5 component**: `<script>`, markup, `<style>`. Shugo renders it exactly as the server renderer of Svelte 5.59 does, so what you know of Svelte holds: `$props()`, `{#if}`, `{#each}`, snippets, `{@render}`, `{@html}`, scoped styles, the same whitespace rules. What is Shugo's own: data comes from the site's SQLite database through `query`, imported from the module `shugo`, and a page with a parameter in its name lists its pages with `getStaticPaths`. The section [Coming from Svelte and SvelteKit](#coming-from-svelte-and-sveltekit) lists what differs.
 
 ## Project layout
 
 ```
 shugo.json       settings (optional)
 src/
-  pages/         pages and layouts; the path of a file is its address
+  site.html      the document every page stands in: <html>, <head>, <body>
+  pages/         pages and layouts; the path of a file is its address;
+                 sitemap.xml.ts and the like give files that are not HTML
   components/    components
   lib/           shared TypeScript: helpers
   styles/        style sheets
@@ -29,7 +31,7 @@ Only `src/pages/` is required. Every `.shugo` file lives in `src/`. `@/` in an i
 }
 ```
 
-`site` is where the site is published; `Shugo.url` is built from it (`http://localhost` without it). `data` is the SQLite database the pages read their data from: see [Data](#data). `runtime` is `bun` or `node`.
+`site` is where the site is published; `page.url` is built from it (`http://localhost` without it). `data` is the SQLite database the pages read their data from: see [Data](#data). `runtime` is `bun` or `node`.
 
 ## Commands
 
@@ -49,16 +51,17 @@ Run `shugo build` after every change and read the errors and warnings: each name
 
 `shugo serve` keeps nothing of the site in memory: every request reads its page from the store, so a page shows an update as soon as the update ends.
 
-`shugo export` writes `/about` as `about.html` and `/` as `index.html`, as SvelteKit prerenders, the page for missing addresses as `404.html`, and copies `public/` and the style sheet. It leaves a list in the folder, `.shugo-export.json`, and the next export follows it: it builds only the pages whose HTML changed since, removes the files of pages that are gone, and copies only the files that changed. After `shugo build`, or into the folder of another project, it builds every page and removes the page files the site no longer has. The folder belongs to the export: a file edited there by hand stays so until its page changes, and a folder whose name starts with a dot is left alone. `-out` names another folder.
+`shugo export` writes `/about` as `about.html` and `/` as `index.html`, as SvelteKit prerenders, the page for missing addresses as `404.html`, a file such as `/sitemap.xml` under its own name, and copies `public/` and the style sheet. It leaves a list in the folder, `.shugo-export.json`, and the next export follows it: it builds only the pages whose HTML changed since, removes the files of pages that are gone, and copies only the files that changed. After `shugo build`, or into the folder of another project, it builds every page and removes the page files the site no longer has. The folder belongs to the export: a file edited there by hand stays so until its page changes, and a folder whose name starts with a dot is left alone. `-out` names another folder.
 
 ## A page
 
 ```svelte
 <script lang="ts">
+  import { query } from "shugo"
   import Card from "../components/Card.shugo"
   import { price } from "@/lib/shop"
 
-  const products = Shugo.query("products").order("title").all()
+  const products = query("products").order("title").all()
   const total = products.reduce((sum, item) => sum + item.price, 0)
 </script>
 
@@ -79,7 +82,7 @@ Run `shugo build` after every change and read the errors and warnings: each name
 - The `<script>` is optional: a file may be markup alone.
 - `<script>` runs once for every page the file gives, and once for every place a component is shown. Everything it declares is visible in the markup.
 - `<script module>` runs once, when the module loads. `getStaticPaths` goes there, and so does any other export: an export from `<script>` is an error.
-- There is no `await`: a page is computed without waiting, since `Shugo.query` answers at once. What takes time and needs doing once, such as making a highlighter, can be awaited at the top of a module in `src/lib/`. Top-level `return` is an error.
+- There is no `await`: a page is computed without waiting, since `query` answers at once. What takes time and needs doing once, such as making a highlighter, can be awaited at the top of a module in `src/lib/`. Top-level `return` is an error.
 - TypeScript: write `<script lang="ts">`, as in Svelte. Types are removed, not checked: a type error does not stop the build, and `post.titel` shows nothing.
 - Runes behave as on Svelte's server: `$state(x)` is just `x`, `$derived(…)` is computed once, `$effect` never runs. The page is static.
 
@@ -179,16 +182,24 @@ A component is a `.shugo` file. Import it in the script and use it as a tag that
 - A component shows itself by importing itself: `import Tree from "./Tree.shugo"` inside `Tree.shugo`.
 - A component in a variable is shown by its tag: `const View = compact ? List : Grid`, then `<View {items} />`.
 
-### `Shugo`
+### The module `shugo`
+
+What the framework knows is imported from the module `shugo`, in any file: a page, a layout, a component, a module of `src/lib/`.
+
+```ts
+import { query, paginate, page } from "shugo"
+```
 
 | | |
 | --- | --- |
-| `Shugo.query("table")` | a question to the data database: see [Data](#data) |
-| `Shugo.paginate(query, { pageSize })` | one page of a long list: see [Pages from data](#pages-from-data) |
-| `Shugo.params` | the parameters of the address of the page |
-| `Shugo.url` | the address of the page, a `URL` |
+| `query("table")` | a question to the data database: see [Data](#data) |
+| `paginate(query, { pageSize })` | one page of a long list: see [Pages from data](#pages-from-data) |
+| `page.params` | the parameters of the address of the page: `{ slug: "jug" }` |
+| `page.url` | the address of the page, a `URL` |
+| `page.route.id` | the route: `/products/[slug]` |
+| `page.status` | 200, and 404 on `src/pages/404.shugo` |
 
-Props come from `$props()`, not from `Shugo`.
+`page` is the `page` of `$app/state` in SvelteKit, with the fields a static page has. Props come from `$props()`. There is no global `Shugo` or `Astro`: writing one is an error that names the import.
 
 ## Layouts
 
@@ -205,24 +216,32 @@ Props come from `$props()`, not from `Shugo`.
 
 <svelte:head><title>My site</title></svelte:head>
 
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-  </head>
-  <body>
-    <Header />
-    <main>{@render children()}</main>
-  </body>
-</html>
+<Header />
+<main>{@render children()}</main>
 ```
 
 - `{@render children()}` is where the page goes. A layout must show it.
-- The root layout writes `<html>`, `<head>` and `<body>` itself; there is no `app.html`.
-- A page gives its title and meta tags with `<svelte:head>` at its top level. They go to the end of the `<head>`, in the order of the document: outer layouts first, the page last. A page has one `<title>`, the last one, as in Svelte, so the layout above gives a default and a page replaces it.
+- A layout starts with what goes into the `<body>`, like `+layout.svelte`. The document itself is `src/site.html`, as `src/app.html` in SvelteKit:
+
+  ```html
+  <!doctype html>
+  <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      %shugo.head%
+    </head>
+    <body>
+      %shugo.body%
+    </body>
+  </html>
+  ```
+
+  `%shugo.body%` is the page in its layouts, `%shugo.head%` what the templates give in `<svelte:head>` and then the link to the style sheet. Each stands once. The file is plain HTML, copied as it is: no expressions. Without it Shugo uses the one above, without `lang`. `<html>`, `<head>`, `<body>` or `<!doctype>` in a template is an error.
+- A page gives its title and meta tags with `<svelte:head>` at its top level. They go to `%shugo.head%`, in the order of the document: outer layouts first, the page last. A page has one `<title>`, the last one, as in Svelte, so the layout above gives a default and a page replaces it.
 - `<svelte:head>` works in pages and layouts, not in other components.
 - Pages do not import or call layouts.
-- A layout is kept apart from its pages: once for the whole site when it reads nothing of the page, once for every page when it reads `Shugo.url` or `Shugo.params`, for example to highlight the current menu item. A change of what the layout reads computes the layout and not the pages; a change of a page computes the page and not its layout.
+- A layout is kept apart from its pages: once for the whole site when it reads nothing of the page, once for every page when it imports `page` from `shugo`, for example to highlight the current menu item. A change of what the layout reads computes the layout and not the pages; a change of a page computes the page and not its layout.
 
 ## Addresses
 
@@ -235,6 +254,7 @@ Props come from `$props()`, not from `Shugo`.
 | `src/pages/(shop)/cart.shugo` | `/cart` — a folder in parentheses is not a part of the address |
 | `src/pages/_parts/x.shugo` | not a page |
 | `src/pages/404.shugo` | shown for addresses that have no page |
+| `src/pages/sitemap.xml.ts` | `/sitemap.xml`: a file that is not HTML, see [Files that are not HTML](#files-that-are-not-html) |
 
 Names that start with `+` are kept for the framework; only `+layout.shugo` exists. Addresses have no slash at the end: the server sends `/about/` on to `/about`.
 
@@ -242,61 +262,88 @@ When two files could give one address, the one that names more of it wins: `blog
 
 ## Pages from data
 
-A file with a parameter in its name must say which pages there are. `getStaticPaths`, exported from `<script module>`, gets `query` to ask the data database:
+A file with a parameter in its name must say which pages there are. `getStaticPaths`, exported from `<script module>`, takes nothing and asks the data database with `query`:
 
 ```svelte
 <!-- src/pages/products/[slug].shugo -->
 <script module>
-  export function getStaticPaths({ query }) {
+  import { query, page } from "shugo"
+
+  export function getStaticPaths() {
     return query("products").select("slug").all().map(({ slug }) => ({ params: { slug } }))
   }
 </script>
 
 <script>
-  const product = Shugo.query("products").where({ slug: Shugo.params.slug }).first()
+  const product = query("products").where({ slug: page.params.slug }).first()
 </script>
 
 <h1>{product.title}</h1>
 ```
 
-`getStaticPaths` runs once; `<script>` runs for every address it returned. `Shugo.params` holds the parameters as they stand in the address of the page: always text, and only the ones the file name has.
+`getStaticPaths` runs once; `<script>` runs for every address it returned. `page.params` holds the parameters as they stand in the address of the page: always text, and only the ones the file name has. `getStaticPaths({ query })` as in Astro is an error: import instead.
 
 **`getStaticPaths` returns addresses alone, `{ params }`, and every page asks for its own data by them.** Then one product that changes has one page computed. An item with `props` is an error. An address returned twice is one page, as in SvelteKit: no need to remove repeats.
 
 The list of addresses is the one place where `select` pays: of a hundred thousand rows it fetches one column instead of all.
 
-For lists split into pages name the file `[...page].shugo`. `paginate` in `getStaticPaths` takes the number of items and says which pages there are; `Shugo.paginate` in the page takes a query, or an array, and returns the items of that page:
+For lists split into pages name the file `[...page].shugo`. `paginate` in `getStaticPaths` takes the number of items and says which pages there are; `paginate` in the page takes a query, or an array, and returns the items of that page:
 
 ```svelte
 <!-- src/pages/blog/[...page].shugo gives /blog, /blog/2, /blog/3 … -->
 <script module>
-  export function getStaticPaths({ query, paginate }) {
+  import { query, paginate } from "shugo"
+
+  export function getStaticPaths() {
     return paginate(query("posts").count(), { pageSize: 10 })
   }
 </script>
 
 <script>
-  const page = Shugo.paginate(Shugo.query("posts").order("date", "desc"), { pageSize: 10 })
+  const list = paginate(query("posts").order("date", "desc"), { pageSize: 10 })
 </script>
 
-{#each page.data as post}…{/each}
-{#if page.url.prev}<a href={page.url.prev}>Newer</a>{/if}
-{#if page.url.next}<a href={page.url.next}>Older</a>{/if}
+{#each list.data as post}…{/each}
+{#if list.url.prev}<a href={list.url.prev}>Newer</a>{/if}
+{#if list.url.next}<a href={list.url.next}>Older</a>{/if}
 ```
 
 | | |
 | --- | --- |
-| `page.data` | the rows of this page |
-| `page.currentPage`, `page.lastPage` | numbers from 1 |
-| `page.total`, `page.size` | the number of all items, and of items on a page |
-| `page.start`, `page.end` | the places of the first and the last item of this page, from 0 |
-| `page.url.current`, `.prev`, `.next`, `.first`, `.last` | addresses; `undefined` where there is no such page |
+| `list.data` | the rows of this page |
+| `list.currentPage`, `list.lastPage` | numbers from 1 |
+| `list.total`, `list.size` | the number of all items, and of items on a page |
+| `list.start`, `list.end` | the places of the first and the last item of this page, from 0 |
+| `list.url.current`, `.prev`, `.next`, `.first`, `.last` | addresses; `undefined` where there is no such page |
 
-With `[page].shugo` the first page is `/blog/1`. `paginate(count, { pageSize, params })` adds `params` to every page, for a list inside something else: `src/pages/tags/[tag]/[...page].shugo` with `params: { tag }`. The same `pageSize` goes to both calls.
+With `[page].shugo` the first page is `/blog/1`. `paginate(count, { pageSize, params })` adds `params` to every page, for a list inside something else: `src/pages/tags/[tag]/[...page].shugo` with `params: { tag }`. The same `pageSize` goes to both calls. Do not name the result `page`: that is the page of the module `shugo`.
+
+## Files that are not HTML
+
+A module among the pages gives a file whose type stands in its name before `.ts`: `src/pages/sitemap.xml.ts` gives `/sitemap.xml`, `src/pages/robots.txt.ts` gives `/robots.txt`. It exports `GET`, which takes nothing and returns the text of the file:
+
+```ts
+// src/pages/sitemap.xml.ts
+import { query, page } from "shugo"
+
+export function GET() {
+  const products = query("products").select("slug").order("slug").all()
+  const urls = products.map((p) => `<url><loc>${new URL("/products/" + p.slug, page.url)}</loc></url>`)
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls.join("")}</urlset>`
+}
+```
+
+- `GET` returns a string, at once: not `async`, not a `Response`. Data comes from `query`, the address from `page`, as in a page; `page.url` is the full address of the file on the site of `shugo.json`.
+- What `GET` reads is tracked as for a page: the file is computed again when a row it read changes, here when a product is added, removed or gets another slug.
+- A parameter works as in a page: `src/pages/api/[slug].json.ts` with `getStaticPaths` gives `/api/jug.json`; `GET` reads `page.params.slug`.
+- The text reaches the file as it is: no shell, no layouts, no escaping. Escape what you put into XML yourself.
+- The server answers with the type of the extension, as for `public/`; the export writes the file under its address.
+- A module without a type in its name, `src/pages/data.ts`, is an error. Code for such modules to import goes to `src/lib/` or into a file whose name starts with `_`.
 
 ## Data
 
-The data of a site lives in one SQLite database, named in `shugo.json`: `{ "data": "data/site.db" }`. Whatever brings data to the site — an import script, a sync with a CMS, a person with a SQL console — writes to that database. Pages read it with `Shugo.query`, and only with it.
+The data of a site lives in one SQLite database, named in `shugo.json`: `{ "data": "data/site.db" }`. Whatever brings data to the site — an import script, a sync with a CMS, a person with a SQL console — writes to that database. Pages read it with `query` from the module `shugo`, and only with it.
 
 That is what makes updates exact. Shugo notes for every page and every shared component which rows it asked for and which columns of them were read while it was computed — in its script, in its template, in the functions they call, in the components the template gives a row to. The database keeps a journal of the rows that change. `shugo update` computes what read a changed column of a changed row. Nothing has to be marked, declared or invalidated, and a query need not name its columns.
 
@@ -312,7 +359,7 @@ That is what makes updates exact. Shugo notes for every page and every shared co
 ### Queries
 
 ```ts
-Shugo.query("products")                       // a table
+query("products")                             // a table
   .where({ category: "c9", available: true }) // equal values
   .where("price", "<", 1000)                  // =  !=  <  <=  >  >=  like  in
   .order("position")                          // .order("price", "desc")
@@ -333,7 +380,7 @@ Shugo.query("products")                       // a table
 - The primary key is in every row, selected or not.
 - **A page depends on what is read of its rows, not on what a query took.** A row notes every column that is read of it: `item.title` in a template, `item.price` inside a function that got the row, `variant.stock` in a component that got the row. A change of any other column does not reach the page. A branch of `{#if}` that is not taken reads nothing; when the data sends the page into it, the page is computed again.
 - Taking a row as a whole reads all of it: `{ ...row }`, `JSON.stringify(row)`, `Object.keys(row)`, `{...row}` among attributes. Read the columns you show instead.
-- **A row belongs to the script that asked for it.** Do not keep rows, `Shugo` or a query in a variable of a module for other pages: read there, a row would leave that page depending on nothing, so it throws and says so. Let every script ask for its rows; the database is fast.
+- **A row belongs to the script that asked for it.** Do not keep rows or a query in a variable of a module for other pages: read there, a row would leave that page depending on nothing, so it throws and says so. Let every script ask for its rows; the database is fast.
 - `structuredClone(row)` does not work on a row; copy with `{ ...row }`.
 - **Compare with values of the column's kind**: a text for a text column, a number for a number column. `where({ id: 5 })` on a text column is an error that says what to write.
 - `where({ column: null })` finds rows without a value.
@@ -343,9 +390,9 @@ Shugo.query("products")                       // a table
 ### Where to ask
 
 - **In the page**, for what the page shows.
-- **In a component called with an id**, for what many pages show: `<ProductCard id={row.id} />` with `let { id } = $props()` and `Shugo.query("products").get(id)` inside. Such a component is computed once for every id and kept on its own, so when the product changes its card is computed, and none of the pages that show it. A component is computed once like this when neither it nor any component it imports reads `Shugo.url` or `Shugo.params`, and it is called with plain values (strings, numbers, booleans) or without props.
+- **In a component called with an id**, for what many pages show: `<ProductCard id={row.id} />` with `let { id } = $props()` and `query("products").get(id)` inside. Such a component is computed once for every id and kept on its own, so when the product changes its card is computed, and none of the pages that show it. A component is computed once like this when neither it nor any module it imports takes `page` or `paginate` from `shugo`, and it is called with plain values (strings, numbers, booleans, `null`) or without props.
 - **In a component without props**, for what every page shows: `<Header />` reads the menu itself.
-- Not in a module of `src/lib/` when it is imported: a query belongs to the page or component that asks, so only `Shugo.query` and the `query` of `getStaticPaths` can ask. A helper takes the query function or the rows as an argument.
+- In a function of `src/lib/` that a page or a component calls: the query belongs to whoever is computed when it runs. Not at the top of a module: nothing is computed there, so it is an error. A module of `src/lib/` that imports `page` makes every component that imports it depend on the page.
 - A component that got a row from its page (`<Variant variant={row} />`) needs no query: it shows what the page asked for, and the page depends on what the component reads of the row.
 - Throw an error when a row that must be there is not: `if (!product) throw new Error(…)`.
 
@@ -365,13 +412,13 @@ Create `Intl.NumberFormat`, `Intl.DateTimeFormat` and the like once in a module,
 | --- | --- |
 | `.svelte` | `.shugo`; the same component inside |
 | `+page.svelte` in a folder per address | a file per address in `src/pages/` |
-| `+layout.svelte`, `+layout.ts` with `load` | `+layout.shugo`; data comes from `Shugo.query` in whoever shows it |
-| `+page.ts` with `load`, `entries` | `<script>` asks `Shugo.query`; `getStaticPaths` in `<script module>` lists the pages |
-| `page` from `$app/state` | `Shugo.params`, `Shugo.url` |
+| `+layout.svelte`, `+layout.ts` with `load` | `+layout.shugo`; data comes from `query` in whoever shows it |
+| `+page.ts` with `load`, `entries` | `<script>` asks `query`; `getStaticPaths` in `<script module>` lists the pages |
+| `page` from `$app/state` | `page` from `shugo`: `page.params`, `page.url`, `page.route.id`, `page.status` |
 | `$lib/…` | `@/lib/…` |
-| `src/app.html` | the root layout writes `<html>`, `<head>`, `<body>` |
+| `src/app.html` with `%sveltekit.head%`, `%sveltekit.body%` | `src/site.html` with `%shugo.head%`, `%shugo.body%` |
 | `+error.svelte` | `src/pages/404.shugo` |
-| `+server.ts` | not there yet |
+| `+server.ts` with `GET` and `prerender` | `src/pages/sitemap.xml.ts` with `GET` that returns a string |
 | `<svelte:head>` in any component | in pages and layouts |
 | TypeScript only with `lang="ts"` | also without it, but write `lang="ts"` so the file moves to Svelte as it is |
 | hydration, `$state` that changes, events | none: pages are static |

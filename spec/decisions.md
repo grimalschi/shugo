@@ -2,7 +2,7 @@
 
 Here is written what is decided without direct confirmation of the author of the project: where the answer was “don’t know”, “decision” or question before. Every decision has a reason. After approval, the decision is transferred to the “Decision” section of its document, after refusal redone. The numbers don’t change so that the links don’t break; every decision above tells you what happened to it.
 
-1–27 solutions are made when the first version is assembled, 28–35 - when Svelte 21 2026 is switched to syntax on November.
+Decisions 1–27 taken during the assembly of the first version, 28–35 when switching to syntax Svelte 21 November 2026 years, 36–38 — 22 November 2026 The year when the shell appeared `src/site.html` Files are not HTML.
 
 ## 1. Data loading and expression are counted together, Go compares the result
 
@@ -37,7 +37,7 @@ Here is written what is decided without direct confirmation of the author of the
 **Waiting for approval.** The author asked if the component is stored without dependencies once: yes — the answer is in [questions](open-questions.md).
 
 **What's done.** The component is calculated and stored once if both conditions are met:
-- he himself and everything he imports does not read `Shugo.url` and `Shugo.params` and does not pass the markup to layouts;
+- neither he nor the modules he imports take `page` or `paginate` from the `shugo` module (before 22 November 2026 years — did not read `Shugo.url` and `Shugo.params`);
 - it is called with simple parameters: lines, numbers, `true`, `false`, `null` or without parameters.
 
 The name of the shared block is composed of the file path and parameters: `components/ProductCard.shugo{"id":"p7"}`.
@@ -68,16 +68,9 @@ The name of the shared block is composed of the file path and parameters: `compo
 
 ## 7. Object `Shugo`
 
-**Changed to 21 on November 2026 of the year, pending approval.** With the transition to Svelte, the parameters of the component are taken from `$props()`, the snippets of the calling are also parameters, and the component calls itself import. The following remained in the `Shugo` facility:
+**Replaced by the decision of the author of the project 22 November 2026 year:** global object is not, `query`, `paginate` and `page` imported from the module `shugo`, immediately, without a transition time — [Templates](templates.md#file-structure). `Shugo.query` and `Astro.params` give an error with a hint of what to import.
 
-| Field | What is it |
-| --- | --- |
-| `Shugo.query(table)` | request to the project database |
-| `Shugo.params` | page Address Settings |
-| `Shugo.url` | page address, object `URL` |
-| `Shugo.paginate(request, ...)` | part of the list for the page with the number |
-
-On `Shugo.props`, `Shugo.slots` and `Astro.props` — error with a hint. The author asked if there are alternatives to the object — they are in [questions](open-questions.md).
+**It was.** C 21 November 2026 the Year in the Facility `Shugo` remained `Shugo.query`, `Shugo.params`, `Shugo.url` and `Shugo.paginate`The parameters of the component were already taken from `$props()`.
 
 ## 8. Slots
 
@@ -88,7 +81,7 @@ On `Shugo.props`, `Shugo.slots` and `Astro.props` — error with a hint. The aut
 **Changed to 21 on November 2026 of the year, pending approval.** Layout is a component of Svelte: the page it shows `{@render children()}`, the title and meta tags the page writes in `<svelte:head>`; this is the author's decision. The rest awaits approval:
 
 - `+layout.shugo` in the folder wraps all pages of this folder and nested; the nested layout turns out to be **inside** external, as in SvelteKit, Next.js and PocketPages. Replaces only Nuxt, where the page has one named layout.
-- The root layout itself writes `<html>`, `<head>` and `<body>`; in SvelteKit they write `src/app.html` - [proposal](../docs/proposals/app-html.md).
+- The root layout was written by `<html>`, `<head>` and `<body>`. Replaced by the decision of the author 22 November 2026: the document is written in the shell `src/site.html`, the root layout is a normal component ([Layouts](layouts.md#shell-srcsitehtml), [36](#36-the-srcsitehtml-shell)).
 
 Reset Chain`+page@.svelte` the City of London SvelteKit) postponed. Resolved 22 November 2026 Year: The official name remains `+layout.shugo`; data from layout to page, how `load` the City of London `+layout.ts` SvelteKit, no and will not; the layout is stored separately from the pages - one entry for the entire site or, if reading the address, with its entry for each page ([Blocks](../docs/blocks.md#layouts)).
 
@@ -122,7 +115,7 @@ Reset Chain`+page@.svelte` the City of London SvelteKit) postponed. Resolved 22 
 
 **It was.** As in Astro: the function returned a list of `{ params, props }`, and all pages data could be retrieved with one request. But then it was impossible to calculate one page: its data was only in the list, and changing any read route of the line calculated all its pages.
 
-**Like now.** Page takes its data by itself, by `Shugo.params`: a line change calculates the page of this line. `paginate` in `getStaticPaths` gets the number of elements, and `Shugo.paginate` in the page cuts the query or array.
+**Like now.** Page takes its data by itself, by `page.params`: a line change calculates the page of this line. `paginate` in `getStaticPaths` receives the number of elements, and in the page cuts the query or array. With the 22 November 2026 year `getStaticPaths` gets nothing by argument: `query` and `paginate` are imported from the `shugo` module.
 
 ## 12. What outputs `{expression}` and `attribute={expression}`
 
@@ -275,7 +268,7 @@ Export follows the previous one: in the folder, it leaves a list of which storag
 
 **Waiting for approval.**
 
-- The contents of `<svelte:head>` fall at the end of `<head>`, which writes a page or one of its layouts, in the order of the document: external layouts, internal, page. `<title>` is the last one, and stands after the rest. This is what Svelte does. Since November 22 2026, the head assembles the server when it shows the page: `<svelte:head>` blocks lie in the record of the template that wrote them ([Blocks](../docs/blocks.md#page-head)).
+- Contents `<svelte:head>` falls into place `%shugo.head%` shell `src/site.html`, in the order of the document: external layouts, internal, page. `<title>` is one the last, and stands after the rest. This is what Svelte does. Since November 22 2026, the head assembles the server when it shows the page: `<svelte:head>` blocks lie in the record of the template that wrote them ([Blocks](../docs/blocks.md#page-head)).
 - `<svelte:head>` works only in the page and in the layout. In the usual component, this is an error: the common component, which is calculated once per entire site, does not have a page in which `<head>` to write. Allow it in components that are not common, in [the Compatibility Proposal](../docs/proposals/svelte-compatibility.md).
 
 ## 31. Snippets and common blocks
@@ -292,7 +285,7 @@ The **Waiting for approval.** Snippet without parameters, written inside the com
 
 **`.shugo` extension is still left** is the 22 solution of November 2026 year. TypeScript is accepted in any `<script>`, and Svelte requires `lang="ts"`: whether to require it — in [the Compatibility Proposal](../docs/proposals/svelte-compatibility.md).
 
-**Why `.shugo`.** File with `Shugo.query` and `getStaticPaths` is not a component of Svelte, and the real Svelte will not assemble it: its extension says this honestly. Price - the editor does not recognize the file without setting up.
+**Why `.shugo`.** File with `Shugo.query` and `getStaticPaths` was not a component of Svelte: its expansion was honest about it. Since November 22, 2026, `query` and `page` have been imported from the `shugo` module, and for the Svelte compiler, the file is a regular import component; the argument has been weakened but the extension has been left by the author's decision. Price: Editor doesn't recognize file without setting.
 
 ## 34. What is checked the same as in Svelte
 
@@ -306,3 +299,40 @@ The **Waiting for approval.** Snippet without parameters, written inside the com
 - `.shugo` files are only searched in `src/`; importing a `.shugo` file from another location is a prompt error;
 - `@/` in import means `src/`, as is customary in Vite projects;
 - the store stand scripts moved to `examples/catalog/scripts/`: only the site code remained in `src/lib/`.
+
+## 36. The `src/site.html` shell
+
+**Waiting for approval.** Separate file with places `%shugo.head%` and `%shugo.body%` and name `site.html` — the author's decision. Details:
+
+- No file - takes the shell of the framework: `<!doctype html>`, `<meta charset="utf-8">`, `<meta name="viewport" …>` and both places; `lang` is not in it.
+- Each place stands exactly once, the head is before the body. Otherwise, the assembly stops with an error that says what is wrong.
+- The shell is copied as written: there are no expressions in it, essences and gaps are not touched.
+- The template that `<html>`, `<head>`, `<body>` or `<!doctype>` write is an assembly error, one per file, with a hint about the shell and `<svelte:head>`.
+- In place of `%shugo.head%`, what the templates gave in `<svelte:head>` is followed by a link to styles; in place of `%shugo.body%`, a page is followed by, then, in development mode, a script reboot.
+- Modify shell - change project: the next build calculates the site again, as after editing the template.
+
+**Why not.** This is how `src/app.html` is arranged in SvelteKit, and the agent knows this technique. Error instead of silent `<html>` inside `<body>` says where to move the markup. Compute the site again after the shell is not necessary - pages do not depend on it - but any project revision is also arranged; a separate path for the shell can be done if this becomes noticeable.
+
+## 37. Files not in HTML: module with `GET`
+
+**Waiting for approval.** Module `src/pages/sitemap.xml.ts` with `GET` — Author's decision. Details:
+
+- `GET` nothing gets and returns the line. `async`The promise, `Response` and the object is a bug with a hint: for the object - `JSON.stringify`, for `Response` — return the text itself. Astro recording `GET({ params })` Error with a hint about `page.params`.
+- File type is an extension in the name before `.ts` or `.js`. Module without it (`data.ts`) - error: so in the page folder does not hide the code that does not give anything. A module whose name or folder starts with `_` is an import code; `.d.ts` is a type declaration, not a module.
+- `index` in the module name is a common name: `blog/index.xml.ts` gives `/blog/index.xml`, not `/blog.xml`.
+- Options and `getStaticPaths` are like a page; an address that has no name left before the extension is an error.
+- There are no layouts and shell in the file: the text is written as is.
+- The server responds with an extension type, just like for files from `public/`; the unknown extension is `application/octet-stream`.
+- When two routes name the same parts of an address, the first one is the one with the extension: `/[id].json` before `/[slug]`.
+
+**Why not.** This is how Astro files are written.`src/pages/rss.xml.js` S `GET`) and SvelteKit (`+server.ts` S `GET`A line instead of `Response` Because the pages in Shugo It is not written without waiting, but text. `Response` is read only by waiting. The file is the same page for storage and analysis of changes: one entry from one block, so the update calculates it on the same lines read.
+
+## 38. Exporting module files
+
+**Waiting for approval.**
+
+- The module file is written under its address: `/sitemap.xml` - `sitemap.xml`, `/api/jug.json` - `api/jug.json`.
+- The repository remembers the route of the page that is missing, and the export deletes the file with the correct name: `api/jug.json`, not `api/jug.json.html`.
+- Export list `.shugo-export.json` lists the files of the modules. Export, which builds all pages again, removes from them those that the site no longer has; it finds pages in HTML by extension `.html`, as before.
+
+**Why not.** The page file name in HTML is output from the address, and the module file name is not: `/v1.2` can be both a `v1.2.html` page and a file. Without the route, exports would not know what to delete, and would leave an outdated file.

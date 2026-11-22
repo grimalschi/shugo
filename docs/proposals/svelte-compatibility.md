@@ -8,6 +8,7 @@ Proposal on how to make the `.shugo` file even closer to the Svelte component: t
 - The file extension remains `.shugo` (22 solution of November 2026 year).
 - `javascript:` addresses are displayed as is, as in Svelte: replacement cancelled (22 November 2026 decision).
 - Compatibility improvement is a separate proposal, this document (22 decision of November 2026 year).
+- The proposal has been postponed as a whole: neither short edits in the compiler, nor checks by the Svelte compiler in `shugo check` are yet done (22 decision of November 2026 year; the reason for the author of the project will explain later).
 
 ## What's going on
 
@@ -66,7 +67,7 @@ The 2, 3 and 4 paragraphs are several thousand lines of checks in the Svelte com
 | For | works with each assembly, without dependencies | match by construction, all rules at once, new versions of Svelte - free |
 | Against | big work, lag from Svelte | need `svelte` package in the project; check by separate command, not for every build |
 
-The `.shugo` file is a component of the Svelte: `Shugo.query` for the Svelte compiler is just a name, `<script module>` with `getStaticPaths` is a regular module. Therefore, the second path works without reworking files.
+The `.shugo` file is a component of the Svelte: `import { query, page } from "shugo"` for the Svelte compiler is a normal import, `<script module>` with `getStaticPaths` is a normal module. Therefore, the second path works without reworking files.
 
 **The Council:** Items 1, 5 and 6 in compiler Shugo: they are short. Item 3 Also in the compiler: it changes HTMLParagraphs 2 and 4 compiler Svelte the City of London `shugo check`which is already decided to do for type checking.
 

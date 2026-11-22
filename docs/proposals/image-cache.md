@@ -4,7 +4,7 @@ Proposal about where and how compressed pictures are stored to compress each onc
 
 ## Decisions
 
-Nothing yet.
+- Image cache is arranged according to this offer: own project folder outside `_build/`, `.shugo-cache/images/`with customization `cache`where to transfer it; files are called by the hash of the picture, parameters and compression method; written through a temporary name; unnecessary deletes the command `shugo images clean` (decision 22 November 2026 years). Not yet done: pictures in Shugo Not yet.
 
 ## Why
 
@@ -58,5 +58,4 @@ The photo is in three widths, 400, 800 and 1600, in WebP about 20, 70 and 250 KB
 
 ## Open questions
 
-- Default folder name: `.shugo-cache/` or other.
-- Whether the cleanup command is needed or if it is enough that the cache can simply be removed.
+Not yet.
