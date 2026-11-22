@@ -31,7 +31,7 @@ Dynamic page - one file, which collects many pages. Their list is taken from the
 <p>Address: {page.url.pathname}, Parameter: {page.params.slug}</p>
 ```
 
-- `getStaticPaths` is exported from `<script module>`: it is performed once per route, and `<script>` is exported for each page. Export from `<script>` is a build error with a hint.
+- `getStaticPaths` is exported from `<script module>`: it runs once per route, and `<script>` is for each page. `getStaticPaths` in `<script>` is a build error with a hint.
 - `getStaticPaths` is synchronous and receives nothing. It takes data from the project database via `query` from the `shugo` module. The function that waits for arguments, like in Astro - `getStaticPaths({ paginate })`, gets an error with a hint of what to import.
 - It is called when the page list needs to be read: during assembly and when the string that he read has changed. Returns the list of `{ params }`. The element with `props` is a build error with a hint.
 - The page code is for each address in the list. It has `page.params` address settings; the page asks for its data. `page` is read in the page and in what it shows, not in `getStaticPaths`: there is no page yet.

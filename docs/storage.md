@@ -5,10 +5,10 @@ Storage is what remains between the computation stage and the runtime: the proje
 ## Decisions
 
 - The storage is SQLite.
-- Everything is in disassembled form: the page stores links to its parts, not their contents.
+- Everything is broken down: the page stores links to its parts, not their contents. *Changed by the decision of the author of the project 22 November 2026 year - templates renders Svelte ("okay, take a swelt"):* HTML components that render on-site are in the page record; the links remain layouts and common blocks.
 - Several processes work with one storage: one updates, others give pages. The page is completely assembled from one state.
 - Expression values are written in a flat list in the order of the template. *Replaced by the decision of the author of the project 22 November 2026 year - templates render Svelte ("okay, take a swelt"):* is written in HTML, which renders Svelte, with holes for common blocks.
-- Value tapes lie inside page records and shared blocks, not a separate table: the page is read by one search per record. Solved by 21 November 2026 year. With 22 November 2026 year records also lies HTML.
+- Value tapes lie inside page records and shared blocks, not a separate table: the page is read by one search per record. Solved 21 November 2026 year. *Changed by the decision of the author of the project 22 November 2026 year - templates renders Svelte ("okay, take a swelt"):* tape is no more, in their place inside the records lies HTML.
 - SQLite driver is on pure Go, without cgo. Solved 21 November 2026 year.
 
 ## Implemented, pending approval
@@ -40,7 +40,7 @@ The version grows with each update. The version of the record is the one in whic
 
 Recording - a list of blocks and the block number from which the display begins. The block is of two types.
 
-- **HTML** is what rendered one component with everything it showed on the spot, or the snippet that the spot gave the shared block. It records HTML with holes, what it gives `<head>` pages, also HTML with holes, and the last `<title>` among this; the head of the page is assembled by the server ([Blocks](blocks.md#page-head)). The head snippet and `<title>` have no: that the snippet gave `<head>`, got into the head of the one who rendered it.
+- **HTML** is what rendered one component with everything it showed on the spot, or the snippet that the spot gave the shared block. It records HTML with holes, what it gives `<head>` pages, also HTML with holes, and the last `<title>` among this; the head of the page is assembled by the server ([Blocks](blocks.md#page-head)). The snippet given to the common block is rendered separately, so the head and `<title>` have their own.
 - **Link to the common block** is the number of the common block and the snippets that gave it this place: name and blocks. The snippet blocks themselves lie in the same record. How the snippets get into records is in [Blocks](blocks.md#snippets).
 
 HTML with holes is written as texts between which there are holes. Holes are of three types:
@@ -53,13 +53,13 @@ HTML with holes is written as texts between which there are holes. Holes are of 
 
 Writing a file not in HTML, which gives a module among pages, is one block of HTML: text that returned `GET`, without holes.
 
-The numbers are written in the record as varint. In the store on 100,000 goods page entry takes an average of 854 byte, the record of the common block - 135 byte; while the record was tape values, not HTML, - 399 and 75 byte.
+Numbers are written in the record as varint. In the store on 100,000 The average page entry is 854 byte, write the common block 135 byte; 21 November 2026 years when the records contained value tapes, not HTML, — 399 and 75 byte.
 
 ### Why HTML, not Values
 
-Before 22 November 2026 years in the record lay not HTML, and the values of expressions - tape, and marking each template Shugo kept in the frame, one for all impressions. The records were half as large: in the store on 10,000 products 4.9 MB tapes against 10.2 MB HTML. But the tape and frame was written by his compiler Shugo, which repeated the rules of Svelte: spaces, attributes, style classes. The author of the project decided that the templates compiles Svelte itself, - then discrepancies with Svelte can not be built, and the record is what Svelte renders.
+Before 22 November 2026 years in the record lay not HTML, and the values of expressions - tape, and the marking of each template Shugo kept in the frame, one for all impressions. The records were half as large: in the store on 10,000 products 4.9 MB tapes against 10.2 MB HTML. But the tape and frame was written by his compiler Shugo, who had to repeat the rules of Svelte: spaces, attributes, style classes. 22 November 2026 the author of the project decided that the templates compile and render himself Svelte ("okay, take the swelt"): its template compiler Shugo no longer, and the record is HTML, which is rendered Svelte.
 
-Tracking changes from this has not changed: the records are the same - a page, a common block, a layout - and they read the same. On the catalog stand, all 21 data changes calculate and change exactly the same as before.
+The tracking of changes from this has not changed: the records are the same - a page, a common block, a layout - and they read the same. On the catalog stand, all 21 data changes calculate and change exactly the same as 21 November 2026 year, on the value tapes.
 
 ### How the recording can not come together
 
@@ -78,7 +78,7 @@ When the project is compiled again, all records are written again: in the names 
 
 ### Size
 
-Store on 100,000 products: 104,202 pages, 100,009 shared blocks - file 202 MB. Of these, the page table is 114 MB, the readings (`reads`) are 27 MB, `shows` is 24 MB, the common blocks are 24 MB, and the indexes are around 14 MB. While the records contained value feeds, the file was 140 MB, the page table was 58 MB, and the common blocks were 17 MB.
+Store on 100,000 products: 104,202 pages, 100,009 shared blocks - file 202 MB. Of these, the page table is 114 MB, the readings (`reads`) are 27 MB, `shows` is 24 MB, the common blocks are 24 MB, and the indexes are around 14 MB. 21 November 2026 year, when the records lay value tapes, the file was 140 MB, the page table - 58 MB, the common blocks - 17 MB.
 
 The page table is with rowid: the entry in a kilobyte or other remains on the file page along with its string. In a table without a rouvid SQLite holds about a quarter of it on the file page, the rest takes to its almost empty page: the store file on 10,000 goods was 32 MB instead of 20.
 

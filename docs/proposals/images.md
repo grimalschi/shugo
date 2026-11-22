@@ -129,7 +129,7 @@ The format "depending on what the browser supports" is chosen by the browser its
 
 The choice of the header `Accept` is not needed: on static hosting it is not, and caches in front of the server it is often confused. WebP understand all browsers that are currently in use, so in built-in mode, one `<img>` is enough.
 
-To not collect addresses with your hands, you need a function `Shugo.image("/photos/jug.jpg", { width: 800 })` The finished component that it produces `<picture>` with formats from settings, `srcset` for several widths, `width` and `height` against page jumps and `loading="lazy"`. An example of such a component — `<enhanced:img>` the City of London SvelteKit.
+To not collect addresses with your hands, you need a function `image("/photos/jug.jpg", { width: 800 })` from module `shugo` The finished component that it produces `<picture>` with formats from settings, `srcset` for several widths, `width` and `height` against page jumps and `loading="lazy"`B. SvelteKit He does the same `<enhanced:img>`. It is not a component but a tag that plugin `@sveltejs/enhanced-img` rewrites in source to compiler Sveltewithout such step Svelte Detox `<enhanced:img>` On the page as is.
 
 ### How to choose a format: options
 
@@ -156,7 +156,7 @@ Compression of photos is tenths of a second, thousands of photos are minutes. Th
 
 ### Export
 
-- Export finds `/_img/…` addresses in the collected pages: rantime knows which attributes contain addresses (`src`, `srcset`, `href`).
+- Export finds `/_img/…` addresses in HTML pages that it writes: in `src`, `srcset` and `href` attributes. Know them in advance of the runtime is nowhere to be found: with the 22 November 2026 year, the records are the finished HTML by Svelte, not the values that the runtime itself put into the attributes it knows.
 - For each address, take a ready file from the cache or compress the picture and write it next to the pages.
 - Exporting by changes only writes pictures that are not yet in the folder.
 
@@ -170,13 +170,13 @@ Rantime compresses only project files and does not go to the network: otherwise 
 
 ### imgproxy
 
-The third way remains possible: then the runtime only builds signed addresses. In the free version of imgproxy there is no cache of results, it is needed outside.
+The third way remains possible: then Shugo does not compress the pictures, but only builds signed addresses. In the free version of imgproxy there is no cache of results, it is needed outside.
 
 ## Open questions
 
 - How `shugo` gets libvips: start with the `vipsthumbnail` command as suggested, or download the library immediately while running.
 - Address type: `/_img/w800/…` prefix as here, or file name ending; format last extension (`jug.jpg.webp`) or instead of original (`jug.webp`).
-- Finished image component: your own or write SvelteKit `<enhanced:img>`.
+- The finished image component: its Svelte component, which gives Shugo, or a SvelteKit record `<enhanced:img>` — then Shugo would rewrite it in the source to the Svelte compiler, as does the SvelteKit plugin.
 - The cache is [separate offer](image-cache.md).
 
 ## Sources

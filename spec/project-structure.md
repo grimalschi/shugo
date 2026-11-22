@@ -29,8 +29,9 @@ _build/ result of the framework; git is not included
 ```
 
 - Only the `src/pages/` folder is required. Without `src/site.html`, the framework shell is taken.
+- Svelte for pages do not need to be set: compiler and server part Svelte 5.59.1 Shugo brings with you. Package `svelte` The same version is required in `node_modules` Islands only: Compile them Svelte project, and their browser code takes Svelte from there.
 - `src/components/`, `src/lib/` and `src/styles/` are agreements: framework finds files by import, not by folder names.
-- `.svelte` files are only searched in `src/`, except for `node_modules` and hidden folders. Importing a `.svelte` file from another location is an build error with a hint of where it belongs.
+- `.svelte` files are only searched in `src/`, except for `node_modules` and hidden folders. Importing a `.svelte` file on the way out of `src/` is an assembly error with a hint of where it belongs. The `.svelte` component from the npm package does not compile: on Bun, the page with it falls when calculating, on Node the calculation process itself falls, without a hint.
 - Islands can lie next to pages in `src/pages/`. The address is set by the page using the island. For ordinary components, the `_components/` folder will be suitable next to the page.
 - `@/` in import means folder `src/`: `import { price } from "@/lib/shop"`.
 - `public/`, `data/` and `shugo.json` lie at the root, as do `static/` and settings in SvelteKit and `public/` in Astro.
@@ -59,19 +60,19 @@ All fields are optional. Unknown field is an error.
 
 | File | What is it |
 | --- | --- |
-| `eval.mjs`, `eval.mjs.map` | the entire JS project for the calculation stage and source map |
-| `site.json` | project framework: files, routes, island shell and programs |
-| `sources.json` | from which files the project is assembled, with each hash, together with `src/site.html`, and versions of the framework and Svelte: on it `shugo update` understands that the project needs to be reassembled |
+| `eval.mjs`, `eval.mjs.map` | the entire JS project for the computation phase, together with the server part of Svelte, and the source map |
+| `site.json` | project framework: files, routes, page shell, link to island styles and programs |
+| `sources.json` | from which files the project is assembled, with each hash, together with `src/site.html`; frame format, version of Svelte and build revision: `shugo update` understands that the project needs to be reassembled |
 | `assets/` | collected island styles and browser modules; files of previous builds are not deleted so that the server that still shows their pages finds them |
 | `search-*.sqlite` | `search(…)` Search Indexes |
 | `store.db` | storage |
 | `dist/` | site in files after `shugo export` |
 
-Packages from npm to `eval.mjs` are not sewn: they are taken from the `node_modules` project at launch.
+Packages from npm to `eval.mjs` are not sewn: they are taken from `node_modules` project at launch. Server part of Svelte is not a project package: its Shugo brings and sews into `eval.mjs`.
 
 ### Switching from `.shugo`
 
-Rename `.shugo` templates to `.svelte` and fix the import paths: the build finds both old files and old imports and tells you how to name them. In TypeScript components, add `lang="ts"`. Then run `shugo build`: the repository of the previous version of Shugo is not readable, and the site is re-calculated.
+Rename `.shugo` templates to `.svelte` and fix the import paths: the build finds both old files and old imports and tells you how to name them. In TypeScript components, add `lang="ts"`. Types there erases Svelte, so type import via `import type`, and instead of `enum` write object `as const`. Then run `shugo build`: the repository of the previous version of Shugo is not readable, and the site is re-calculated.
 
 ## Open questions
 

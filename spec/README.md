@@ -22,7 +22,7 @@ Documents are written together. Each of the three sections:
 | [Dynamic pages](dynamic-pages.md) | Pages that come from data |
 | [Data loading](data-loading.md) | Where the data comes from and what you should know about it |
 | [Styles](styles.md) | Component styles, common files CSS and Tailwind |
-| [Page scripts](scripts.md) | Code that runs in the browser |
+| [Page scripts](scripts.md) | Code that runs in the browser and islands Svelte |
 | [Command line and development mode](cli.md) | `shugo` commands and their reports |
 | [A note for the agent](authoring.md) | A short guide for someone writing a website on Shugo (in English) |
 | [Decisions pending approval](decisions.md) | What is decided without the author’s confirmation and why |
@@ -33,7 +33,7 @@ Documents are written together. Each of the three sections:
 - Shugo generates static sites. All pages and all data are known in advance; the project code is not executed at the request of the visitor.
 - **This is framework for agents.** Project code is written by agents, not people. Two solutions are chosen to make the agent make fewer mistakes. Therefore, expressions are written in JS, not something faster: agents know JS perfectly.
 - **Templates use syntax Svelte 5.** Ordinary pages, layouts and components are written in `.svelte`. The entry points for the browser-based Svelte are marked with the suffix `.island.svelte`. [Svelte islands](scripts.md#svelte-islands)
-- The entire framework is written in Go: project compilation, start-up calculation, page assembly.
+- The entire framework is written in Go: project compilation, start calculation, page assembly. *Since November 22 year 2026 templates compile and render itself Svelte (the author's decision): its compiler and server part are sewn into Shugo and run on Bun or Node running Go.*
 - In the source code of the project everywhere TypeScript. This is a rule and requirement.
 - The project is divided into stages. The result of each stage is the following, and the boundary between the stages is clear. Details - in [Assembly Sequences](../docs/build-pipeline.md).
 - Everything that runs Go must be safe and can work outside of containers. The stage with JS can be run in the sandbox or without it, the result does not change. The sandbox is not part of the Shugo: it is enough to describe how to run it (21 solution of November 2026 year).

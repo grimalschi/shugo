@@ -25,7 +25,7 @@ A folder is a project; without it, the current one is taken.
 | --- | --- |
 | `-json` | `build`, `update` and `export` report in JSON |
 | `-check` | with `update`: calculate everything and name pages that have changed, although no line of the database they read has changed |
-| `-runtime bun` or `node` | than to perform JS in `build`, `update` and `dev`; otherwise `"runtime"` from `shugo.json`, otherwise Bun if it is installed, otherwise Node |
+| `-runtime bun` or `node` | than to execute JS - the Svelte compiler and project code - in `build`, `update` and `dev`; otherwise `"runtime"` from `shugo.json`, otherwise Bun, if it is installed, otherwise Node |
 | `-addr address` | where they listen to `serve` and `dev`; by default `localhost:4321` |
 | `-out folder` | where `export` writes; default `_build/dist` |
 
@@ -46,18 +46,18 @@ The option that the command does not use is an error ([27](decisions.md#27-comma
 ### When a team
 
 - The data has changed — `shugo update`. It does not compile the project, but runs the already collected JS and calculates only what the changed lines read.
-- If you run `shugo update` after changing the project itself, it will notice this, compile the project and calculate everything. To do this, the compiler writes hashes of all files from which the project is collected. So the site can not show the result of the old code.
+- If you run `shugo update` after changing the project itself, it will notice this, compile the project and calculate everything. To do this, the build records hashes of all files from which the project is collected, and a version of Svelte. So the site can not show the result of the old code.
 - `shugo build` calculates everything always. It is needed if pages read something past the database.
 - `shugo serve` can not be restarted: it sees each update from the next request.
 
 ### Reports
 
-Shop on 100,000 products, changed the price of one product:
+Shop on 100,000 products, changed the price of one product; run 22 November 2026 years:
 
 ```
 $ shugo update
-updated in 28 ms: 104202 pages, 100010 shared blocks
-  computed 1 pages and 1 shared blocks, 13 blocks in all
+updated in 31 ms: 104202 pages, 100009 shared blocks
+  computed 1 pages and 1 shared blocks, 9 blocks in all
   1 rows of the data have changed
   pages: 0 added, 1 changed, 0 removed
     changed: /products/product-5
@@ -76,13 +76,13 @@ In JSON, the same time of each step is in milliseconds:
   "rebuilt": false,
   "data": { "whole": false, "rows": 1, "routes": 0, "position": 5060 },
   "computed": { "pages": 1, "shared": 1 },
-  "blocks": 13,
+  "blocks": 9,
   "pages": { "total": 104202, "added": 0, "changed": 1, "removed": 0, "changedNames": ["/products/product-5"] },
-  "shared": { "total": 100010, "added": 0, "changed": 1, "removed": 0, "changedNames": ["src/components/ProductCard.svelte{\"id\":\"p5\"}"] },
+  "shared": { "total": 100009, "added": 0, "changed": 1, "removed": 0, "changedNames": ["src/components/ProductCard.svelte{\"id\":\"p5\"}"] },
   "render": 7,
   "renderNames": ["/", "/categories/c5", "/products/product-5", "…"],
   "shadowed": 0,
-  "time": { "open": 0.3, "data": 5.1, "list": 0.1, "compute": 20.9, "save": 0.5, "total": 27 }
+  "time": { "open": 0.3, "data": 3.7, "list": 0.1, "compute": 24.0, "save": 0.2, "total": 28 }
 }
 ```
 
@@ -94,13 +94,19 @@ In JSON, the same time of each step is in milliseconds:
 
 ### Errors
 
-An error in the project is shown with the space in the project file and a line of code:
+An error in the project is shown with a place in the project file and a line of code. Errors and warnings Svelte displayed by its text, with reference to the explanation:
 
 ```
-error: src/pages/about.svelte:4:14: </div> does not close <span> opened at 4:3
-     3 | <div>
-     4  <span>text</div>
-       |              ^
+error: src/pages/about.svelte:4:15: `</div>` attempted to close an element that was not open https://svelte.dev/e/element_invalid_closing_tag
+     3 | <section>
+     4  <p>text</p></div>
+       |               ^
+```
+
+The warning is written in one line and the assembly does not stop. It is printed when the project is compiled:
+
+```
+warning: src/pages/about.svelte:3:1: `<img>` element should have an alt attribute https://svelte.dev/e/a11y_missing_attribute
 ```
 
 The error during the calculation shows the page that was calculated and the place in the original file, not in the JS collected:

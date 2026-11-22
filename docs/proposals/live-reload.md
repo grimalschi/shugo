@@ -21,7 +21,7 @@ The proposal of how `shugo dev` shows changes in the browser: what is rebooted, 
 
 What is missing:
 
-- **The code has changed waiting for the whole site.** The page in the browser will only reboot when all pages have been calculated. In examples, this is a fraction of a second; on the store in 100,000, the products are about 14 s, although the developer looks at one page.
+- **The code has changed waiting for the whole site.** The page in the browser will only reboot when all pages have been calculated. In examples, this is a fraction of a second; on the store in 100,000, the products are about 15 s, although the developer looks at one page.
 - **Reload and pages that have not changed.** Changed the price of one product - all open tabs were reloaded.
 - **The error is visible only in the terminal.** The browser has an old page, and it is easy not to notice that the edit did not come.
 - **Changed only styles - the page is rebooted entirely**, and before that the entire site is calculated: the style file is included in the collected project, and its change is considered a code change.
@@ -37,7 +37,7 @@ The idea of the author of the project, 22 November 2026 years: in development mo
 - A request has come - this page is calculated, with the current code and current data, and given to the browser. Its record with what it read remains in the development mode store.
 - The next request of the same page is given from the repository, if since then neither the code nor the lines it has read have changed. Otherwise it is calculated again. There is no obsolete page: it is either checked or calculated anew.
 - Whether there is a page at the address says `getStaticPaths` of its route. It is calculated when first asked for the address of this route, and stored in the same way, until you change what you read.
-- Price: in the running process, the recording is calculated in tens of microseconds - the first assembly of the store calculates 204,000 records of pages and common blocks for 9.1 s, about 45 µs per record. The roads are just starting the process, 20–24 ms on Bun ([Change tracking](../change-tracking.md)), and it happens once.
+- Price: in the running process, the recording is calculated in tens of microseconds. 21 November 2026 the First Assembly of the Store 204,000 the Page Records and General Blocks 9.1 s, about 45 µs for recording; c 22 November page render SvelteAnd the whole first collection is almost the same 14.6 s Against 14.5 s. Roads are just the start of the process, 20–24 ms the National Bun ([Change tracking](../change-tracking.md)And it happens once.
 
 The error in the page that was not opened, the development mode will not show: it will find `shugo build` before laying out.
 
@@ -47,7 +47,7 @@ The error in the page that was not opened, the development mode will not show: i
 | --- | --- | --- |
 | Templates and code: `.svelte`, `.ts` in `src/`, `shugo.json` | compiling; pages - when asked | open pages are reloaded and re-computed |
 | Data | nothing at once; a page whose lines have changed when asked | reloads open pages that have read the changed lines |
-| Styles only: `.css` or `<style>` in template | nothing | new style file is replaced in open pages without rebooting |
+| Styles only: `.css`; `<style>` in template if template code from Svelte has not changed | nothing | new style file is replaced in open pages without rebooting |
 | Files in `public/` | nothing | reload all open pages |
 
 To know which pages are open, the page script names its address when it connects: `/_shugo/live?path=/products/jug`.
@@ -57,6 +57,8 @@ To know which pages are open, the page script names its address when it connects
 All site styles are collected in one file with a hash in the name, and a link to it framework inserts each page into `<head>` when it collects it HTML. The page entries on this file know nothing. Changing some styles therefore does not require calculating any pages: open pages get the word `css` with a new address and replace `<link>` as in Vite.
 
 Now `.css` changes the build name, and everything is calculated anew: a link to styles is included in the site framework. It must be considered outside the build name.
+
+`<style>` In this case, the template may change and HTML. Class `svelte-…` Svelte puts only on elements that a component selector chooses: the new selector adds a class to the markup, the remote one removes. The class name itself is a hash of the file path, it does not depend on the styles. It is simple to distinguish: the template is compiled again, and if the code that gave Svelte, the former, only styles have changed. If not, this is a code change: pages are calculated anew when asked. Checked on Svelte 5.59.1 22 November 2026 Year: Other Color in `h1 { … }` gives the same code, new selector `p { … }` Puts the class on `<p>`. Until that day, the class put Shugo, on all component elements with styles, and editing within `<style>` HTML I haven't.
 
 ### Error in browser
 
@@ -68,7 +70,7 @@ Before rebooting, the script remembers scrolling the page in `sessionStorage`, a
 
 ### What is beyond the box
 
-- Replacement of components on the fly, without reboot (HMR). It can be taken from Svelte when the islands of Svelte appear in the browser.
+- Replacement of components on the fly, without rebooting (HMR). There is nothing to replace the static part of the page: its components in the browser do not work. The islands work, and it can be given by means of Svelte: its compiler prepares components for replacement (`hmr`) and waits for the collector `import.meta.hot`, like Vite.
 - Replacing HTML pages without rebooting (morphdom and the like). A complete reboot is easier and not wrong.
 - Live Reload in `shugo serve`: This is a server for visitors.
 

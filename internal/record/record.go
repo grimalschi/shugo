@@ -39,7 +39,8 @@ type Block struct {
 
 	// Body is the HTML of the block. Head is what it gives the <head> of the
 	// page in <svelte:head>, and Title the <title> among it that it rendered
-	// last, as HTML; a snippet has neither.
+	// last, as HTML. A snippet given to a shared block has them too: it is
+	// rendered apart, and they go where the shared block shows it.
 	Body, Head Fragment
 	Title      []byte
 }

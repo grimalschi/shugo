@@ -1,6 +1,6 @@
 # Components
 
-Component is the reusable part of the template: the cap, the product card, the footer. This is a `.svelte` file, the same component of Svelte 5 as the page and layout.
+Component is a reusable part of the template: a cap, a product card, a footer. It is a component of Svelte 5 in the `.svelte` file, like a page and a layout.
 
 ## Decisions
 
@@ -9,10 +9,10 @@ Component is the reusable part of the template: the cap, the product card, the f
 - The components are written as in Svelte 5, with the same markup logic (the decision of the author of the project 21 November 2026 year): parameters - `$props()`, markup inside the component is transmitted by snippets, the styles of the component act only on it. This replaces the previous solutions "parameters are read in code, as in Astro" and `<g-slot>` slots.
 - The component can upload its data.
 - The calling pattern can transfer the markup inside the component.
-- Component call is the block boundary: the block is stored and updated separately. As it is arranged in [Blocks and point update](../docs/blocks.md).
+- Component call — block boundary: the block is stored and updated separately. As it is arranged — in [Blocks and point update](../docs/blocks.md). *With 22 November, 2026 compiles and renders the Svelte itself (the author's decision): a separate block remains the call of the common component, and the component that is rendered in place is included in HTML of the one who showed it.*
 - Functions and components are connected by explicit imports.
 - The component to which the object was transferred for example, a base line is calculated on each page where it is shown. Remember it by the content of the parameter is not necessary: so the page would depend on all columns of the line. Who needs a common unit, he transmits the key (solution 22 November 2026 year).
-- **What a common component.** A component that does not take `page` and `paginate` from `shugo` neither itself nor through its imports and receives only simple values strings, numbers, `true`, `false`, `null` or nothing all of these are stored once per page. Snippets passed inside are not considered parameters. No markings needed. The build warns when the common component shares almost nothing: it has many entries, and each shows one place on average (22 solution of November 2026 year).
+- **What a common component.** A component that does not take `page` and `paginate` from `shugo` neither itself nor through its imports and receives only simple values strings, numbers, `true`, `false`, `null` or nothing all of these are stored once per page. Snippets passed inside are not considered parameters. No markings needed. The build warns when the common component shares almost nothing: it has many entries, and each shows one place on average (22 solution of November 2026 year). *C 22 November 2026 the Year Templates Compiles and Renders Himself Svelte (the author's decision): the general component does not take context SvelteIt doesn't call `$props.id()`It doesn’t show a snippet inside. `<select>`, does not receive `bind:` Snippets with parameters solutions [42](decisions.md#42-shared-components-do-not-use-context-or-propsid) and [43](decisions.md#43-render-shared-block-snippets-separately)Waiting for approval.*
 
 ## Implemented, pending approval
 
@@ -28,7 +28,7 @@ Component is the reusable part of the template: the cap, the product card, the f
 <ui.Button href="/cart">To cart</ui.Button>
 ```
 
-The component is imported into `<script>`, as in Svelte. The capital letter or dot tag is a component. The file can lie anywhere inside `src/`; the `src/components/` folder is an agreement.
+The component is imported into `<script>`. The capital or dot tag is the component. The file can lie anywhere inside `src/`; the `src/components/` folder is an agreement.
 
 The parameters are written as attributes: `title="text"` transmits a string, `featured` transmits `true`, `price={2400}` transmits an expression value, `{price}` transmits the same value as `price={price}`, and `{...props}` transmits all object fields.
 
@@ -106,7 +106,7 @@ What is inside the component tag, the component gets the parameter `children`. N
 
 ### Common components
 
-The component is calculated and stored once, if it is independent of the page and called with simple parameters:
+The component is calculated and stored once, if it does not depend on the page or the place where it stands, and is called with simple parameters:
 
 ```svelte
 <Header />                      <!-- once for the entire site -->
@@ -116,8 +116,9 @@ The component is calculated and stored once, if it is independent of the page an
 
 - The component depends on the page, if it itself or the module it imports takes `page` or `paginate` from the `shugo` module: this is visible by imports, without starting the code. Such a component is calculated on each page anew.
 - The component depends on where it stands, if it is itself or what it imports and shows takes context Svelte — `getContext`, `setContext`, `hasContext`, `getAllContexts`, `createContext`is calling `$props.id()` or shows a snippet inside `<select>`. Such a component is also rendered where it stands: context gives the components around, number in `$props.id()` Considers components that were previously rendered on the page, and the value of `<select>` Marks `<option>` the Snippet[42](decisions.md#42-shared-components-do-not-use-context-or-propsid)). Component to which the transfer `bind:`And also, through him he writes to the one who showed it.
-- Simple parameters are strings, numbers, `true`, `false`, `null`.
-- Snippets without parameters, written inside the tag of the common component, do not prevent it from being common: their markup is rendered in the template that wrote them, and stored with it. Therefore, the layout is usually common: he receives a snippet `children`. A snippet with parameters even if everyone has default values the component shows up with its arguments, so such a component is rendered in place. A non-parameter snippet is rendered separately, along with everything it gives `<head>`, and shown where the component shows it; if it drops or calls `$props.id()`, the component is rendered on-site.
+- Simple parameters are strings, finite numbers, `true`, `false`, `null`.
+- Snippets without parameters, written inside the tag of the common component, do not prevent it from being common. Each such snippet is rendered separately, where written, along with everything it gives `<head>`, stored in the record of who wrote it and shown where the component shows it. If the snippet is not rendered separately falling or calling `$props.id()` the component is rendered in place. So the layout is stored separately from the pages: the page he receives snippet `children`, see. [Layouts](layouts.md#the-layout-is-kept-separate-from-the-pages).
+- Snippet with parameters - even if everyone has default values - the component shows with its arguments, so such a component is rendered in place. Snippet transmitted by attribute, `<List {row} />`, too.
 
 Hence the reception: it is better to give the card the number of goods, and she will find the goods herself. Then the card is considered once, and when changing the goods, one record changes, no matter how many pages it shows.
 
@@ -131,7 +132,7 @@ This happens with `<Price value={n} />`, when almost every page has its own numb
 
 ### Challenge yourself
 
-As in Svelte 5: the component imports itself.
+The component imports itself:
 
 ```svelte
 <!-- src/components/Tree.svelte -->
@@ -147,7 +148,9 @@ As in Svelte 5: the component imports itself.
 </li>
 ```
 
-`<svelte:self>` also works, with a warning: in Svelte 5 it is outdated. The component that shows itself with the same parameters without end is an assembly error.
+`<svelte:self>` works too, but Svelte warns that it is outdated.
+
+A common component that shows itself with the same parameters, directly or through other common components, is an assembly error with the names of these blocks. The component that renders in place falls with the error JavaScript `Maximum call stack size exceeded`, with no space in the file.
 
 ### Component of variable
 
@@ -162,11 +165,11 @@ As in Svelte 5: the component imports itself.
 <View {items} />
 ```
 
-`<svelte:component this={View}>` also works, with a warning like in Svelte 5.
+`<svelte:component this={View}>` works too, but Svelte warns that it is outdated.
 
 ### Component Styles
 
-`<style>` component acts only on its elements, as in Svelte. Details - in [Styles](styles.md).
+`<style>` component is valid only on its elements. Details — in [Styles](styles.md).
 
 ## Open questions
 

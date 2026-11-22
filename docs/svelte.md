@@ -1,51 +1,54 @@
 # Shugo and Svelte
 
-Ordinary `.svelte` compile and render itself Svelte 5.59.1: compiler with output for server as u SvelteKitand its server part. Both are sewn into Shugo, project package `svelte` Not necessary. Shugo does not repeat the rules Svelteand uses them; it has its own blocks, from which the pages are made, and what is around the pages. For `.island.svelte` Svelte It also compiles browser code, and Shugo prepares the program SSR with hydration marks. [Templates](../spec/templates.md) · [Svelte islands](islands.md) · [Blocks](blocks.md)
+Shugo templates — pages, layouts and components, `.svelte` files are components of Svelte 5. Compiles them Svelte 5.59.1 s output for the server, as in SvelteKit, and renders when assembling its server part on Bun or Node. The compiler and server part are sewn into Shugo: for the pages of the project, you do not need to put the `svelte` package. Shugo has its own blocks, which are the pages, and what is around the pages: the shell, head, storage, server. `.island.svelte` Island compiles the `svelte` project package, for server and browser; for the island, tied to the request data, Shugo prepares from the server output Svelte program SSR. [Templates](../spec/templates.md) · [Svelte islands](islands.md) · [Blocks](blocks.md)
 
 ## What Svelte and Shugo do
 
 | What | Who | Where |
 | --- | --- | --- |
-| Analysis, verification and warnings | Svelte, `svelte/compiler.compile` with `generate: "server"` | `internal/svelte/compile.mjs` |
+| Analysis, errors and warnings, including about availability (`a11y_…`) | Svelte, `svelte/compiler.compile` with `generate: "server"` and `runes: true` | `internal/svelte/compile.mjs` |
 | Spaces, shielding, attributes, `class` and `style`, `{#each}`, `{#if}`, snippets, `<svelte:element>`, `<select value>` | Svelte: compiled code and its server part | `internal/svelte/vendor/runtime` |
 | Component Styles: `svelte-…` class, rewritten selectors, unused selectors | Svelte, `css: "external"` | styles assemble in file Shugo, `internal/compile/styles.go` |
+| Types of TypeScript | `<script lang="ts">` erases Svelte, `enum` and other things that TypeScript turns into code — error Svelte; in modules `.ts` — esbuild | `internal/svelte/compile.mjs`, `internal/compile/build.go` |
 | Your checks: shell, islands, first syntax tags Shugo, slots Svelte 4 | Shugo, by tree, which gave the same compiler call | `internal/svelte/compile.mjs` |
-| What component is the common block and what renders on the spot | Shugo: `component()` wrap around each component | `internal/jsrt/runtime.js`, `internal/compile/build.go` |
+| What component is the common block and what renders on the spot | Shugo: when assembled - by template tree and imports, with each display - by parameters, in `component()` wrapper around each component | `internal/svelte/compile.mjs`, `internal/compile/build.go`, `internal/jsrt/runtime.js` |
 | Common block labels, snippets of common blocks in separate renders, cutting HTML into blocks, `<title>` separately from the head | Shugo | `internal/jsrt/runtime.js` |
 | Modules with runes, `.svelte.js` and `.svelte.ts` | Svelte, `compileModule`; types `.svelte.ts` removes esbuild, source cards add up | `internal/compile/build.go` |
 | Comments on hydration `<!--[-->`, `<!--]-->`, `<!---->` and others | writes Svelte, cuts Shugo — except for the islands and `{@html}` | `internal/jsrt/runtime.js` |
-| Page head in order of blocks, one `<title>` is the last | Shugo, when assembling a page | `internal/render` |
+| Page head in order of blocks, one `<title>` is the last | Shugo: server when collecting page | `internal/render` |
 | Document around the page, `src/site.html` | Shugo | `internal/skeleton`, `internal/render` |
 
-The page code is performed by the real JS — Bun or Node — and HTML writes the real Svelte, so the match with Svelte is obtained by building: numbers, dates, `String()` arrays and objects, spaces and attributes — all of it.
+The pages code is performed by Bun or Node, and HTML writes Svelte: how numbers, dates, arrays and objects, spaces and attributes are displayed, he decides.
 
-Shugo has blocks. A component that shows the same thing everywhere it stands with the same parameters is rendered once, and pages are stored in its place a hole. A parameterless snippet written inside the tag of such a component is rendered separately, where it is written, with its head and `<title>`, and stored in the caller's record; a snippet that falls or calls `$props.id()` leaves the component in place. The component that takes the context of Svelte, calls `$props.id()`, shows a snippet inside `<select>` or has received `bind:`, is location-dependent and always renders in place. See also [Blocks](blocks.md#shared-components).
+Shugo has blocks. A component that shows the same thing everywhere it stands with the same parameters is rendered once, and pages are stored in its place a hole. Snippets without the parameters that the place gave such a component are rendered separately and stored in the place record. What component is common and how HTML is cut into blocks is in [Blocks](blocks.md#shared-components).
 
 The document around the Svelte page does not write: `render()` gives the head and body separately. Shugo, like SvelteKit with `src/app.html`, puts them in the shell of `src/site.html`: head in place of `%shugo.head%`, body in place of `%shugo.body%`. Therefore, the root layout starts immediately with the contents of `<body>`, like `+layout.svelte`, and the template that `<html>`, `<head>` or `<body>` writes is an error. The address and page parameters also give the object modeled on SvelteKit: `page` from the `shugo` module with `url`, `params`, `route.id` and `status` fields, as `page` from `$app/state`.
 
 ## Where Shugo and Svelte diverge
 
-- **Comments of hydration** Shugo cuts out: a static page does not need them, and this is a quarter of its byte. They remain at the islands - the island comes to life in the browser on them - and in HTML, which inserts `{@html}`.
-- **Layout Context** does not reach the page: the layout is rendered separately, and `setContext` sees its components in it, but not the page inside.
-- **Runes and TypeScript** the " How to Svelte S `runes: true`: syntax Svelte 4 (`export let`, `$:`) - compiler error, `<slot>` and `slot="…"` error Shugo with a hint of snippets. TypeScript the City of London `<script lang="ts">` Svelte adopts without assembler: types are erased, and `enum` and other structures that TypeScript Turns into code, is a mistake.
-- **Warnings** about what changes in the browser — `state_referenced_locally` and neighboring — Shugo does not show: a static page is rendered once. The island warns about them, as always: its Svelte compiles for the browser.
+- **Comments of hydration** Shugo cuts: static page they are not needed, and this is a quarter of its byte. They remain at the islands — on them the island comes to life in the browser — and in HTML, which inserts `{@html}`. As well as what — in [Blocks](blocks.md#how-html-is-split-into-blocks).
+- **The layout is rendered separately** from the page and from the layouts inside it. The context he sets through `setContext` sees its components, but not the page and not the nested layouts. Names from `$props.id()` in the layout begin with his file number: `b3-s1`.
+- **Only runes.** Templates compile with `runes: true`: Svelte syntax 4 is `export let`, `$:` is a Svelte error. `<slot>`, `slot="…"`, `let:` and `<svelte:fragment>` Svelte still accepts with a warning in this mode, and Shugo considers a mistake with a hint about snippets: the slot that the place gave the common block could not show the common block.
+- **Warnings** about what changes in the browser — `state_referenced_locally` and neighboring — Shugo does not show: a static page is rendered once. They are printed about the island: its Svelte compiles for the browser as well.
 
 ## How it is checked
 
-- **Tasks of testing.** The `test/svelte/` contains the test reference components of the 30 (below) and what the Svelte 5.59.1 gives on each dataset. `TestSvelteTasks` collects each task as a site and compares pages. The Svelte: `cd test/svelte && bun install && bun render.mjs` itself makes the reference. Previously, the test was checked by the Shugo compiler with Svelte; now it is what Shugo does around Svelte: blocks, cut-out comments, page head.
+HTML writes Svelte. Tests check that after cutting into blocks, cutting out comments and assembling the head, the page remains the one given by Svelte, without hydration marks.
+
+- **Tasks of testing.** The `test/svelte/` contains the reference components of the 30 test tasks (below) and what the Svelte 5.59.1 gives on each data set. `TestSvelteTasks` collects each task as a site and compares pages with a reference. The Svelte: `cd test/svelte && bun install && bun render.mjs` itself makes the reference. Before the 22 of November, 2026 year this test was verified with the Svelte compiler Shugo.
 - **Comments.** `TestNoCommentsOfSvelte` collects a page with all kinds of Svelte blocks, common components in the head and `$props.id()` and checks that Svelte comments are not left in it, and comments from `{@html}` remain.
 - **Tests of patterns.** The expected HTML in `test/template_test.go` is taken from the output of Svelte on the same templates.
 - **Svelte across the blocks.** `TestSvelteSemanticsAcrossBlocks` collects templates where shared blocks could change the meaning: `bind:`Snippets on condition, `<select>` With a snippet, `$props.id()` In the snippet, which is shown twice, `<title>` From the snippet, the names of the snippets are not Latin, the extra arguments are snippets, `slot` at the custom element. Expected HTML Everyone is what gives Svelte on the same files.
 - **Random pages.** `TestRandomPages` writes pages at random and considers them HTML as its model on Go, independent of the Shugo code. The model is checked with Svelte 5.59.1 on 400 random pages: all matched.
 - Before comparing, Svelte output removes the hydration labels, and both removes the style class: the reference is compiled with the other file path, and the hash class is the other.
 
-When updating Svelte synchronously change the sewn compiler and server part, the version of the package in `examples/search` and `test/svelte` and benchmark tests. [How a copy is made](../internal/svelte/vendor/README.md)
+When updating Svelte synchronously change the sewn compiler and server part, the version of the package in `examples/search` and `test/svelte` and benchmark tests, and programs SSR The islands are re-aligned with HTML Svelte ([Svelte islands](islands.md#what-does-the-ssr-program-of-the-island)). [How a copy is made](../internal/svelte/vendor/README.md)
 
 ## How much does the compilation cost
 
-In the example of `examples/basic` seven templates cold assembly took 0.21 s, of which the compilation is 0.18 s. While Svelte was only parsing the templates, and then they compiled Shugo, there were 0.15 and 0.13 s. The Svelte compiler runs behind the 64 ms; the first template compiles the 40 ms while the Bun warms up the compiler code, following the 1–12 ms. A large project compiles several processes at once, one on a 32 template, no more than four.
+In the example of `examples/basic` seven templates cold assembly took 0.21 s, of which the compilation is 0.18 s. 22 November 2026 years, while Svelte only parsed the templates, and compiled them Shugo, was 0.15 and 0.13 s. The Svelte compiler runs behind the 64 ms; the first template compiles 40 ms while Bun warms up the compiler code, following 1–12 ms. A large project is compiled several processes at once, one on the 32 template, no more than four.
 
-On the store in 100,000, the first assembly of goods is 14.6 s against 14.5 s, an update after a change in one price is 31 ms against 29 ms. Almost all of the difference is the time Bun loads the bundle: it now has the server part of Svelte, 123 KB code instead of 73 KB. Export of the entire site has become twice as fast, 3.5 s instead of 5.0 s: Go sews ready pieces of HTML, and does not collect them on the frame. Storage on 44% is larger, 202 MB is instead of 140: the records are HTML, not values. See also [README booth](../examples/catalog/README.md#results).
+On the store in 100,000, the first assembly is 14.6 s, an update after a change in one price is 31 ms. 21 November 2026 year, when the templates compiled their compiler Shugo, was 14.5 s and 29 ms. Almost all of the difference is the time Bun loads the bundle: it now has the server part of Svelte, 123 KB code instead of 73 KB. Exporting the entire site has become twice as fast, 3.5 s instead of 5.0 s: Go stitches finished pieces of HTML rather than assembles a page from values on the frame of templates. Storage on 44% is larger, 202 MB instead of 140: the records contain HTML, not values. See also [README booth](../examples/catalog/README.md#results).
 
 How much does it cost to update a site with a search - changing the column outside the index and inside it - in [Svelte](islands.md#search).
 
@@ -69,7 +72,7 @@ The logic of model templates is known on all three syntaxes. Errors are several 
 - **Svelte, 7 responses from 14 infidels:** space at the edge of the `{#if}` block Svelte removes, and the reader sees "$2,800$2,400". Another 2 response did not import the component, 1 wrote `</script>` in comments inside `<script>`.
 - **React:** is the only error in logic, the same attempt of the same model was also mistaken on Svelte.
 
-We write the Shugo compiler, so the behavior can be made as models expect. In Astro syntax: slot under false condition is not passed; component can call itself by name; `return` in code between `---` means "show nothing". When Svelte syntax: the space at the edge of the block is saved. In this run, such rules would remove 12 from the 13 errors on Astro and 7 from the 14 on the Svelte. *With 22 November 2026 year templates compiles itself Svelte, and its behavior Shugo does not change.*
+The compiler Shugo then wrote we, so the behavior could be made as expected models. In Astro syntax: slot under false condition is not passed; component can call itself by name; `return` in code between `---` means "show nothing". When Svelte syntax: the space at the edge of the block is saved. In this run, such rules would remove 12 from the 13 errors on Astro and 7 from the 14 on the Svelte. *With 22 November 2026 year templates compiles itself Svelte, and its behavior Shugo does not change.*
 
 ### Paragraph about traps in the pump
 
@@ -96,7 +99,7 @@ The number of incorrect answers was half as high: 14 instead of 28. Each incorre
 - React lost two answers not because of syntax: GLM twice did not give working code and once made a mistake in logic. Of the 8 errors of the 7 models themselves, GLM has.
 - The run cost $2.98 instead of $2.76: DeepSeek with a paragraph argues a quarter longer.
 
-Conclusion: the paragraph is cheap and works, but it only cures what is named in it, and it itself shifts mistakes. The most reliable behavior that models expect without a clue: a rule that does not exist, can not be forgotten. For Shugo, this means first removing the traps in the compiler that are left to describe for agents in short text and catching clear messages from the compiler.
+Conclusion: the paragraph is cheap and works, but it only cures what is named in it, and it itself shifts mistakes. The most reliable behavior that models expect without a clue: a rule that does not exist, can not be forgotten. For Shugo, this meant first removing the traps in the compiler that remained to describe for agents in short text and catching clear messages from the compiler. *With 22 November 2026 year templates compiles itself Svelte: traps of its syntax remain, they can only be described and caught by messages.*
 
 The stand, tasks, standards and all answers are in the repository of the trust: `research/template-syntax` (`README.md`, `report/index.html`, `report/pitfalls.html`).
 
@@ -139,6 +142,8 @@ What follows:
 - Byte byte - only with one fixed version of Svelte. Update version is a comparison run and correction of discrepancies, judging by the history - several times a year.
 - It is not necessary to repeat the hydration labels: this is the internal format of Svelte, it changes most often, and it is not needed for a static page. The island of the label is given by Svelte itself, which renders it.
 - The one-to-one match also includes Svelte traps: the gap at the edge of `{#if}` will disappear in the same way as in Svelte. The compiler warning about such a gap HTML does not change.
-- Where to deviate from Svelte consciously is decided separately: for example, whether to block addresses of `javascript:`. The author of the project first decided to block, and 22 November 2026 year canceled: addresses are displayed as in Svelte.
+- Where to deviate from Svelte consciously is decided separately: for example, whether to block the addresses of `javascript:`. The author of the project first decided to block, and 22 November 2026 canceled: the addresses are displayed as is.
+
+*22 November 2026 year author of the project decided not to repeat Svelte, and take it himself ("okay, take the swelt"): templates compiles and renders Svelte 5.59.1, sewn into Shugo. It is no longer necessary to repeat its rules; the fixed version, cut hydration marks and Svelte traps remain.*
 
 Checking is in the trust store: `research/svelte-exact` (`README.md`).

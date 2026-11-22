@@ -1,6 +1,6 @@
 # Shugo
 
-Shugo - framework for static sites with interactive islands. Pages, layouts and components are `.svelte` files, and each is a component of Svelte 5: `<script>`, markup, `<style>`. Compiles and renders them Svelte 5.59.1 itself, sewn into Shugo, so HTML is the same as the Svelte server, only without hydration comments. The `*.island.svelte` component is an island: Svelte hydrates it in the browser, and HTML collects Go for the search filter address, without JavaScript on the server. The document around the pages — `<html>`, `<head>`, `<body>` — is written once, in the `src/site.html` shell; files not in HTML, such as `sitemap.xml`, give modules on TypeScript among the pages. The data of the site is in the database of the SQLite project, and the pages read them only through `query` from the `shugo` module. Project code is executed when pages are calculated; the visitor page is given a server on Go, which collects it from ready-made pieces of HTML and does not calculate anything.
+Shugo - framework for static sites with interactive islands. Pages, layouts and components are `.svelte` files, and each is a component of Svelte 5: `<script>`, markup, `<style>`. Compiles and renders their Svelte 5.59.1 sewn into Shugo; comments hydration Shugo of HTML cuts: they are only needed by the islands. The `*.island.svelte` component is an island: Svelte hydrates it in the browser, and HTML collects Go for the search filter address, without JavaScript on the server. The document around the pages — `<html>`, `<head>`, `<body>` — is written once, in the `src/site.html` shell; files not in HTML, such as `sitemap.xml`, give modules on TypeScript among the pages. The data of the site is in the database of the SQLite project, and the pages read them only through `query` from the `shugo` module. Project code is executed when pages are calculated; the visitor page is given a server on Go, which collects it from ready-made pieces of HTML and does not calculate anything.
 
 How to collect and run projects that are finally decided, and what awaits approval, in [specifications](spec/README.md). As Shugo arranged inside - in [docs](docs/README.md), offers - in [docs/proposals](docs/proposals/README.md).
 
@@ -8,7 +8,7 @@ How to collect and run projects that are finally decided, and what awaits approv
 
 ```
 source files ── compilation (Svelte + Go) ─┬─ eval.mjs: pages and components compiled by Svelte
-                                      └─ site.json: routes and page shell
+                                      └─ site.json: routes, page wrappers, island programs
 
 project Database ──► calculation (Bun or Node): eval.mjs reads strings via query
   (Triggers are          │  HTML pages and shared blocks, and what everyone has read
@@ -17,8 +17,8 @@ project Database ──► calculation (Bun or Node): eval.mjs reads strings via
                                          └──► export: pages files that have changed
 ```
 
-1. **Compilation.** Compiler Svelte compiles templates for the server; it is sewn into Shugo along with the server part of Svelte and runs on Bun or Node without the `svelte` package in the project. Shugo wraps each component with its own function, which decides whether to render it on-site or as a shared block. Svelte compiles the islands for the browser and server, and from the server version of Shugo makes the program SSR, which then performs Go.
-2. **Calculation.** Svelte renders pages without waiting: the database request responds immediately. Each line that the request returned remembers which columns it read — in the page code, in the template, in functions, in components. A component called with simple parameters is rendered once and stored separately: the page stores a hole in its place. JS cuts HTML pages into such blocks and removes hydration comments; Go compares the result to storage and records only differences.
+1. **Compilation.** Compiler Svelte compiles templates for the server; it is sewn into Shugo along with the server part of Svelte and runs on Bun or Node without the `svelte` package in the project. Shugo wraps each component with its own function, which decides whether to render it on-site or as a shared block. The island compiles the `svelte` project package, for browser and server; from the island's server version, which is linked to the query, Shugo makes the SSR program, which is then executed by Go.
+2. **Calculation.** Svelte renders pages without waiting: the database request responds immediately. Each line that the request returned remembers which columns it read — in the page code, in the template, in functions, in components. A component that is independent of the page, or the place where it stands, and called with simple parameters, is rendered once per set and stored separately; layouts are also stored separately. The page stores holes in their place. JS cuts HTML pages into such blocks and removes hydration comments; Go compares the result to storage and records only differences.
 3. **Update.** Triggers in the database write each changed line to the journal. `shugo update` reads the journal, finds who has read the changed columns of these lines, and calculates only them.
 4. **Server.** For each query, Go reads the page record and records its shared blocks from a single storage state and sews them together with HTML. For an island that is tied to a search through `request:`, it takes a version of the search index from the same state and substitutes the issue at the request address into the pre-assembled SSR program.
 5. **Exports.** `shugo export` writes the site to files. After the first time, only pages whose HTML has changed are deleted.
@@ -54,7 +54,7 @@ bin/shugo export examples/basic       # site to files: examples/basic/_build/dis
 | `cmd/shugo` | `shugo` |
 | `cmd/inside` | booth program «Shugo inside» |
 | `internal/` | framework, by package per stage: `svelte` (Sweet) Svelte), `compile`, `jsrt`, `data`, `evaluate`, `store`, `record`, `render`, `server` |
-| `test/` | tests that run entire sites through all stages; `test/svelte` are standards from the real Svelte |
+| `test/` | tests that run entire sites through all stages; `test/svelte` is the test task and HTML gives them Svelte |
 
 ## Tests
 
@@ -67,7 +67,7 @@ node examples/catalog/stand.mjs --size 10000    # stand: 21 data change, update 
 
 ## Results
 
-Store on 100,000 products, 104,202 pages and 100,009 common blocks, Bun, 8 cores:
+Store on 100,000 products, 104,202 pages and 100,009 common blocks, Bun, 8 cores, 22 November 2026 year:
 
 | What | Time |
 | --- | ---: |

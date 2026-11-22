@@ -30,7 +30,7 @@ import (
 // The files a compiled project consists of, under the output folder.
 const (
 	Bundle  = "eval.mjs"     // the code of the project: renders the pages it is asked for
-	Site    = "site.json"    // the skeleton of the site: templates and routes
+	Site    = "site.json"    // the skeleton of the site: files, routes, the shell
 	Assets  = "assets"       // style sheets, published under AssetsURL
 	Sources = "sources.json" // what the project was compiled from
 )
@@ -825,8 +825,9 @@ func (b *builder) graph(metafile string, out *bundled) error {
 	names := make([]string, 0, len(meta.Inputs))
 	for name := range meta.Inputs {
 		names = append(names, name)
-		// The library of the framework and the entry are not files.
-		if !strings.Contains(name, ":") {
+		// The library of the framework and the entry are not files, and
+		// the component Svelte compiled from a template is the template.
+		if !strings.Contains(name, ":") && !strings.HasSuffix(name, compiledSuffix) {
 			out.files = append(out.files, name)
 		}
 	}

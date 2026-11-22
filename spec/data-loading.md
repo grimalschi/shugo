@@ -21,7 +21,7 @@ Pages, layouts, components, `getStaticPaths` and `GET` modules functions among p
 
 Each answer line remembers which columns are read in the page code, in the template, in the functions to which it was passed, in the components. It depends on what is calculated after changing the line: [Change tracking](../docs/change-tracking.md).
 
-The data code and template expressions are executed in one process. Therefore, everything that is in the code is available in the template: functions, dates, `Map`, classes. In Go, only the finished HTML, which was rendered by Svelte, is left.
+The page renders Svelte in the same process JS, where its code and queries are executed. In Go, only the finished HTML, sliced into blocks, leaves only: [Blocks](../docs/blocks.md).
 
 ### Where to ask
 
@@ -32,7 +32,7 @@ The data code and template expressions are executed in one process. Therefore, e
 | Data shared across all pages: menus, settings | in a component without parameters: it is calculated once |
 | Route pages list | in `getStaticPaths`; it is better to return only `params`, and the page will take the data itself |
 
-The module from `src/lib/` cannot ask the base: the request belongs to the page or component that asked it. The function from the module receives a string or the request itself by argument.
+The function from the module in `src/lib/` can also ask the base: `query` is imported from the module `shugo` in any file. The query belongs to what is being calculated, a page or common component that called the function. At the top level of the module, the request is an error: nothing is calculated there yet.
 
 ### Data from other locations
 
@@ -42,20 +42,20 @@ The file can be imported: `import posts from "../../data/posts.json"`. Then it b
 
 ### Without waiting
 
-The compiler writes normal functions, without `async`. Pages and common blocks are calculated one at a time. `await` in the page code or component and asynchronous `getStaticPaths` is a build error with a hint. What is expected and done once, for example, creating a code highlight, wait at the top level of the module from `src/lib/`, and the page calls ready in synchronous.
+Svelte compiles templates without `experimental.async`: page render is synchronous. Pages and common blocks are calculated one at a time. `await` in a `<script>` page or component is an assembly error: instead of reporting Svelte about `experimental.async`, Shugo explains that the page is computed without waiting. Asynchronous `getStaticPaths` or `GET` is also a hint error. What is expected and done once, for example, creating a code highlight, is expected at the top level of the module from `src/lib/`, and the page calls ready in synchronously.
 
 What it gave:
 
 - reading past the base via `await fetch(…)` — build error, not a page that silently becomes obsolete;
 - the line left in the module can always be caught: pages do not interleave;
-- first assembly of the store on 100,000 products: calculation on Bun 7.41–7.44 s instead of 7.50–7.75 s, on Node 9.66–9.82 s instead of 10.88–11.46 s; there is no difference on updates from several pages;
-- the framework code and the generated code are simpler: there is no pool of 32 pages and `AsyncLocalStorage`.
+- first store assembly on 100,000 products, measured 21 November 2026 year: calculation on Bun 7.41–7.44 s instead of 7.50–7.75 s, on Node 9.66–9.82 s instead of 10.88–11.46 s; on updates from several pages of difference is not visible
+- the framework code is simpler: there is no pool of 32 pages and `AsyncLocalStorage`.
 
 What is lost: a library without a synchronous option cannot be called for each page. Its place is an adapter that prepares data, or the top of the module.
 
 ### What is worth knowing
 
-- Page code is executed for each page, component code is executed for each display. Exception - common blocks: they are executed once.
+- Page code is executed for each page, component code is executed for each display. Exceptions are common blocks and layouts: a common block is executed once for each set of parameters, a layout is executed once per site or, if reading the address, for each page.
 - Modules from `src/lib/` and `<script module>` are performed once per calculation.
 - Creating `Intl.NumberFormat` and similar objects is expensive. You need to create them once in the module, not every call: at the stand, this accelerated the calculation threefold.
 

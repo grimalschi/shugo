@@ -161,7 +161,7 @@ Why it is necessary, measured on the example of a store without indexes, except 
 This is done and works without an adapter:
 
 - JS base only reads, so asks for the index from Go and waits for an answer. Go builds an index if there is no suitable one: a key, a unique column, an index made by hands, its former.
-- On the example of the store, eight indices are built. On 100,000 products, this is 0.8 s once per base; the first assembly with them is 14.1 s on Bun ([README booth](../../examples/catalog/README.md)).
+- On the example of the store eight indexes are built. On 100,000 products this is 0.8 s - once per base; the first assembly with them is 14.6 s on Bun, 22 November 2026 year ([README booth](../../examples/catalog/README.md#results)).
 - An index for a query with an order ending in a table key, and strings with the same order value going along the key. Otherwise, the new index would change the order of the rows on a page that is already computed.
 - To see the new index, JS starts reading the database again. If at this time the database is written, the page can show two data states; the next update corrects this because the journal space is remembered before reading.
 - Indices that are no longer needed by any query are not removed.
