@@ -169,7 +169,7 @@ func islandText(value any) (string, error) {
 }
 
 func (r *renderer) islandAttribute(name string, value any, boolean bool) error {
-	if !attributeName([]byte(name)) {
+	if !attributeName(name) {
 		return fmt.Errorf("invalid island attribute %q", name)
 	}
 	if value == nil {
@@ -180,7 +180,8 @@ func (r *renderer) islandAttribute(name string, value any, boolean bool) error {
 		case false:
 			return nil
 		case true, "":
-			return r.attribute(name, []byte("+"))
+			r.out = append(append(append(r.out, ' '), name...), `=""`...)
+			return nil
 		default:
 			return fmt.Errorf("island attribute %q needs a boolean or an empty string", name)
 		}
@@ -189,5 +190,21 @@ func (r *renderer) islandAttribute(name string, value any, boolean bool) error {
 	if err != nil {
 		return err
 	}
-	return r.attribute(name, append([]byte{'='}, text...))
+	r.out = append(append(append(r.out, ' '), name...), '=', '"')
+	r.out = append(appendEscaped(r.out, []byte(text), true), '"')
+	return nil
+}
+
+// attributeName tells whether a name can be written as the name of an
+// attribute.
+func attributeName(name string) bool {
+	if len(name) == 0 {
+		return false
+	}
+	for _, c := range []byte(name) {
+		if c <= ' ' || c == '"' || c == '\'' || c == '<' || c == '>' || c == '/' || c == '=' || c == 0x7f {
+			return false
+		}
+	}
+	return true
 }

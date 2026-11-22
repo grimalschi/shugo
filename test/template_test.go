@@ -71,10 +71,49 @@ const odd = "a\u0000b\u0001c\u0002d\u0003e\u0004f\u0005g\u0004@"
 	odd := "a\x00b\x01c\x02d\x03e\x04f\x05g\x04@"
 	expect(t, got, `<p title="`+odd+`">`+odd+`</p>`+odd)
 
-	s := newSite(t, "-- src/pages/index.svelte --\n<script>\nconst rest = { \"a\\u0001b\": 1 }\n</script>\n<p {...rest}>x</p>")
-	if _, err := s.tryBuild(); err == nil || !strings.Contains(err.Error(), `"a\x01b" cannot be the name of an attribute`) {
-		t.Errorf("an attribute named with a control character: %v", err)
-	}
+	// What may be the name of an attribute is decided by Svelte.
+	expect(t, one(t, "<script>\nconst rest = { \"a\\u0001b\": 1, \"c d\": 2 }\n</script>\n<p {...rest}>x</p>"), "<p a\x01b=\"1\">x</p>")
+}
+
+// Svelte writes comments for the browser to hydrate a page with; a static
+// page has none of them. A comment the page writes itself, with {@html},
+// stays.
+func TestNoCommentsOfSvelte(t *testing.T) {
+	got := one(t, `<script>
+import Card from "../components/Card.svelte"
+import Field from "../components/Field.svelte"
+const items = [1, 2]
+const none = []
+const tag = "h2"
+const promise = Promise.resolve(1)
+let { children } = $props()
+</script>
+<svelte:head><title>T {items.length}</title><meta name="a" content="b"><Card n={9} /></svelte:head>
+{#if items.length > 1}<p>many</p>{:else if items.length}<p>one</p>{:else}<p>none</p>{/if}
+{#each items as item, i (item)}<i>{i}:{item}</i>{/each}
+{#each none as item}<i>{item}</i>{:else}<i>empty</i>{/each}
+{#key items}<b>key</b>{/key}
+{#await promise}<i>waiting</i>{:then value}<i>{value}</i>{/await}
+<svelte:element this={tag}>dynamic {tag}</svelte:element>
+{@html "<!--more--><!----><b>raw</b><!--[-->"}
+{#snippet line(x)}<u>{x}</u>{/snippet}
+{@render line("a")}{@render children?.()}
+text {items[0]} and {items[1]}
+<Card n={1}><s>given</s></Card><Card n={2} />
+<Field />
+<select value="b"><option>a</option><option>b</option></select>
+<svelte:boundary><b>bounded</b></svelte:boundary>`,
+		`-- src/components/Card.svelte --
+<script>let { n, children } = $props()</script>
+<section>{#if n > 1}{n}{/if}{@render children?.()}</section>`,
+		`-- src/components/Field.svelte --
+<script>const id = $props.id()</script>
+<label for={id}>x</label><input {id}>`)
+	// The title goes after the rest of the head, as in Svelte.
+	expect(t, got, `<meta name="a" content="b"/><section>9</section><title>T 2</title>`+
+		`<p>many</p> <i>0:1</i><i>1:2</i> <i>empty</i> <b>key</b> <i>waiting</i> <h2>dynamic h2</h2> <!--more--><!----><b>raw</b><!--[--> `+
+		`<u>a</u> text 1 and 2 <section><s>given</s></section><section>2</section> <label for="s1">x</label><input id="s1"/> `+
+		`<select><option>a</option><option selected="">b</option></select> <b>bounded</b>`)
 }
 
 // An address is written as it is given, as Svelte writes it: what a link
@@ -148,7 +187,7 @@ const note = "a < b"
 <svelte:element this={"h" + level} class="t">title</svelte:element><svelte:element this={none}>never</svelte:element><svelte:element this="br" />
 <select value={size}><option value="s">S</option><option>m</option></select>
 <textarea value={note}></textarea>`)
-	expect(t, got, `<h3 class="t">title</h3><br/> <select><option value="s">S</option><option selected="">m</option></select> <textarea>a &lt; b</textarea>`)
+	expect(t, got, `<h3 class="t">title</h3><br> <select><option value="s">S</option><option selected="">m</option></select> <textarea>a &lt; b</textarea>`)
 }
 
 const card = `-- src/components/Card.svelte --
@@ -252,18 +291,26 @@ let { node } = $props()
 	expect(t, got, tree+tree+`<b>B</b><a>A</a>`)
 }
 
+// A template takes TypeScript as Svelte does: the types are taken away, and
+// what TypeScript would turn into code of its own, as an enum, is a mistake.
 func TestTypeScript(t *testing.T) {
 	got := one(t, `<script lang="ts">
 import { price, type Product } from "@/lib/shop"
 interface Props { product?: Product }
 const { product = { title: "Jug", cents: 1250 } as Product } = $props() as Props
-enum Size { Small = "S", Large = "L" }
+const Size = { Small: "S", Large: "L" } as const
+type Size = (typeof Size)[keyof typeof Size]
 const sizes: Size[] = [Size.Small, Size.Large]
 </script>
 <p>{(product as Product).title}: {price(product!.cents)} {sizes.map((size: Size): string => size.toLowerCase()).join("/")}</p>`, `-- src/lib/shop.ts --
 export interface Product { title: string; cents: number }
 export const price = (cents: number): string => (cents / 100).toFixed(2)`)
 	expect(t, got, `<p>Jug: 12.50 s/l</p>`)
+
+	s := newSite(t, "-- src/pages/index.svelte --\n<script lang=\"ts\">\nenum Size { Small }\n</script>\n<p>{Size.Small}</p>")
+	if _, err := s.tryBuild(); err == nil || !strings.Contains(err.Error(), "src/pages/index.svelte:2:1: TypeScript language features like enums are not natively supported") {
+		t.Errorf("an enum: %v", err)
+	}
 }
 
 func TestNamespaceOfComponentsAndShorthand(t *testing.T) {
@@ -324,8 +371,9 @@ html { font-family: sans-serif }
 		t.Errorf("page: %s", page)
 	}
 	card := scopeClass(t, page, "card")
-	// A class without a value is "true" next to the scoping class, as in Svelte.
-	cardHTML := `<b class="card ` + card + `">card</b><i class="true ` + card + `"></i><i class="` + card + `"></i>`
+	// The scoping class goes to the elements the styles of the component
+	// select, as in Svelte.
+	cardHTML := `<b class="card ` + card + `">card</b><i class=""></i><i></i>`
 	if !strings.Contains(page, cardHTML+cardHTML) {
 		t.Errorf("the cards are not scoped: %s", page)
 	}

@@ -4,11 +4,23 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/grimalschi/shugo/internal/syntax"
+	"github.com/grimalschi/shugo/internal/svelte"
 )
 
+// Error is a mistake at a place in a file of the project.
+type Error struct {
+	Path    string
+	Line    int // from 1
+	Column  int // from 1, in characters
+	Message string
+}
+
+func (e *Error) Error() string {
+	return fmt.Sprintf("%s:%d:%d: %s", e.Path, e.Line, e.Column, e.Message)
+}
+
 // Errors are the mistakes found in a project, each with its place.
-type Errors []*syntax.Error
+type Errors []*Error
 
 func (e Errors) Error() string {
 	lines := make([]string, len(e))
@@ -18,8 +30,11 @@ func (e Errors) Error() string {
 	return strings.Join(lines, "\n")
 }
 
-// internalError reports something the compiler did not expect of its own
-// tools. The project's author can do nothing about it but tell us.
-func internalError(f *syntax.File, format string, arguments ...any) error {
-	return f.Errorf(f.Script.Start, "internal error, please report it: %s", fmt.Sprintf(format, arguments...))
+// mistakes places the mistakes Svelte found in a file.
+func mistakes(path string, found svelte.Mistakes) Errors {
+	out := make(Errors, len(found))
+	for i, m := range found {
+		out[i] = &Error{Path: path, Line: m.Line, Column: m.Column, Message: m.Text}
+	}
+	return out
 }

@@ -1,7 +1,7 @@
 // Package store keeps what the runtime shows pages from: the skeleton of the
-// site and the record of every page and of every shared block, with the
-// values of its blocks inside. All of it is one SQLite file, so that a
-// server reads one consistent state while an update writes the next one.
+// site and the record of every page and of every shared block, with the HTML
+// of its blocks inside. All of it is one SQLite file, so that a server reads
+// one consistent state while an update writes the next one.
 //
 // The store also knows who shows what: which pages and shared blocks show a
 // shared block. An update that computed a part of the site can therefore say
@@ -31,11 +31,16 @@ import (
 
 // layout names the set of tables below. A store laid out in another way is
 // emptied: it holds nothing that a build cannot make again.
-const layout = "7"
+//
+// A record of a page is HTML, a kilobyte or a few. The table of pages has
+// rowids so that a record stays on the page of the file with its row: a
+// table without them keeps a quarter of a page of the file there, and the
+// rest of a row on pages of its own, mostly empty.
+const layout = "8"
 
 const schema = `
 CREATE TABLE meta   (name TEXT PRIMARY KEY, value BLOB NOT NULL) WITHOUT ROWID;
-CREATE TABLE page   (path TEXT PRIMARY KEY, hash BLOB NOT NULL, record BLOB NOT NULL, route INTEGER NOT NULL, reads BLOB NOT NULL, version INTEGER NOT NULL) WITHOUT ROWID;
+CREATE TABLE page   (path TEXT PRIMARY KEY, hash BLOB NOT NULL, record BLOB NOT NULL, route INTEGER NOT NULL, reads BLOB NOT NULL, version INTEGER NOT NULL);
 CREATE TABLE shared (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, hash BLOB NOT NULL, record BLOB NOT NULL, reads BLOB NOT NULL, version INTEGER NOT NULL);
 CREATE TABLE gone   (path TEXT PRIMARY KEY, route INTEGER NOT NULL, version INTEGER NOT NULL) WITHOUT ROWID;
 CREATE TABLE shows  (shared INTEGER NOT NULL, user TEXT NOT NULL, PRIMARY KEY (shared, user)) WITHOUT ROWID;

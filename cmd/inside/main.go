@@ -238,9 +238,6 @@ func sources(project string, c *compiled) ([]sourceFile, error) {
 		for i, file := range c.Site.Files {
 			if file.Path == rel {
 				f.Number, f.Shared = i, file.Shared
-				for p, ops := range file.Parts {
-					f.Parts = append(f.Parts, partView{Number: p, Ops: listOps(ops, 0)})
-				}
 			}
 		}
 		out = append(out, f)

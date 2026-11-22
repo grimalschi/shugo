@@ -628,19 +628,28 @@ func lookAtCompiled(project string) (*compiled, error) {
 	}
 	out.Bundle = len(bundle)
 	// The bundler marks the code of every file with a comment of its path.
-	// A file's own code is its last piece: the one that calls component().
+	// A template is two modules: the component Svelte compiled, under the
+	// suffix ?svelte, and the line that hands it to the framework, which
+	// calls component(). Both are shown as the module of the template.
 	var path string
 	var lines []string
 	flush := func() {
 		code := strings.TrimSpace(strings.Join(lines, "\n"))
-		if path != "" && strings.Contains(code, "component(") {
-			out.Modules[path] = code
-		} else if path != "" && !strings.HasSuffix(path, ".svelte") && !strings.Contains(path, ":") && code != "" {
+		lines = nil
+		switch {
+		case path == "" || code == "" || strings.Contains(path, ":"):
+		case strings.HasSuffix(path, "?svelte"):
+			template := strings.TrimSuffix(path, "?svelte")
+			out.Modules[template] = code + out.Modules[template]
+		case strings.HasSuffix(path, ".svelte"):
+			if strings.Contains(code, "component(") {
+				out.Modules[path] += "\n\n" + code
+			}
+		default:
 			if _, kept := out.Modules[path]; !kept {
 				out.Modules[path] = code
 			}
 		}
-		lines = nil
 	}
 	for _, line := range strings.Split(string(bundle), "\n") {
 		if strings.HasPrefix(line, "// ") && !strings.HasPrefix(line, "//#") && !strings.Contains(line[3:], " ") {

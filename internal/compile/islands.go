@@ -18,7 +18,7 @@ import (
 	"github.com/grimalschi/shugo/internal/project"
 	"github.com/grimalschi/shugo/internal/skeleton"
 	"github.com/grimalschi/shugo/internal/sourcemap"
-	"github.com/grimalschi/shugo/internal/syntax"
+	"github.com/grimalschi/shugo/internal/svelte"
 )
 
 //go:embed svelte-compiler.mjs
@@ -58,7 +58,7 @@ func startSvelte(p *project.Project) (*svelteProcess, error) {
 	if p.Runtime() != "bun" {
 		args = append(args, "--input-type=module")
 	}
-	code := fmt.Sprintf("const wanted = %q;\n", syntax.SvelteVersion) + islandCompiler + "\n" + svelteCompiler
+	code := fmt.Sprintf("const wanted = %q;\n", svelte.Version) + islandCompiler + "\n" + svelteCompiler
 	args = append(args, "--eval", code)
 	s := &svelteProcess{cmd: exec.Command(p.Runtime(), args...), modules: map[string]svelteModule{}}
 	s.cmd.Dir = p.Root
@@ -142,25 +142,28 @@ type islandOutput struct {
 func (b *builder) buildIslands() (*islandOutput, error) {
 	roots := map[string]bool{}
 	for _, u := range b.units {
-		for _, binding := range u.islands {
-			name := binding.path
+		for _, island := range u.Facts.Islands {
+			name := island.Source
+			errorf := func(format string, arguments ...any) error {
+				return Errors{{Path: u.path, Line: 1, Column: 1, Message: fmt.Sprintf(format, arguments...)}}
+			}
 			var path string
 			switch {
 			case strings.HasPrefix(name, "@/"):
 				path = b.project.Path(project.Source, filepath.FromSlash(name[2:]))
 			case strings.HasPrefix(name, "./"), strings.HasPrefix(name, "../"):
-				path = b.project.Path(filepath.Dir(u.file.Path), filepath.FromSlash(name))
+				path = b.project.Path(filepath.Dir(u.path), filepath.FromSlash(name))
 			default:
-				return nil, u.file.Errorf(0, "import the island %q using a relative path or @/ from src/", name)
+				return nil, errorf("import the island %q using a relative path or @/ from src/", name)
 			}
 			rel := b.relative(path)
 			if !strings.HasPrefix(rel, project.Source+"/") {
-				return nil, u.file.Errorf(0, "the island %q must be inside src/", name)
+				return nil, errorf("the island %q must be inside src/", name)
 			}
 			if _, err := os.Stat(path); err != nil {
-				return nil, u.file.Errorf(0, "the island %q could not be read: %v", name, err)
+				return nil, errorf("the island %q could not be read: %v", name, err)
 			}
-			roots[rel] = roots[rel] || binding.request
+			roots[rel] = roots[rel] || island.Request
 		}
 	}
 	if len(roots) == 0 {
@@ -376,7 +379,7 @@ func islandWarnings(messages []api.Message) []string {
 			warnings = append(warnings, m.Text)
 		} else {
 			at := m.Location
-			warnings = append(warnings, (&syntax.Error{Path: at.File, Line: at.Line, Column: at.Column + 1, Message: m.Text}).Error())
+			warnings = append(warnings, (&Error{Path: at.File, Line: at.Line, Column: at.Column + 1, Message: m.Text}).Error())
 		}
 	}
 	return warnings
@@ -438,7 +441,7 @@ func (b *builder) islandPrograms(compiler *svelteProcess, paths []string, reques
 				if origin, err := sourcemap.Parse(lowered.SourceMap); err == nil {
 					_, line, column, found := origin.Find(diagnostic.Line-1, diagnostic.Column)
 					if found {
-						return Errors{&syntax.Error{
+						return Errors{&Error{
 							Path: path, Line: line + 1, Column: column + 1,
 							Message: "request-time island: " + diagnostic.Message,
 						}}

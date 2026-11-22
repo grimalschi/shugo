@@ -467,8 +467,9 @@ func TestSharedBlockThatFails(t *testing.T) {
 -- src/components/Card.svelte --
 <script>
 import { query } from "shugo"
-const item = query("products").select("title").get($props().id)
-if (!item) throw new Error("there is no product " + $props().id)
+let { id } = $props()
+const item = query("products").select("title").get(id)
+if (!item) throw new Error("there is no product " + id)
 </script>
 <b>{item.title}</b>
 -- src/pages/index.svelte --
@@ -616,8 +617,9 @@ func TestDataPageChangesRoutes(t *testing.T) {
 -- src/components/Card.svelte --
 <script>
 import { query } from "shugo"
-const item = query("products").select("title").get($props().id)
-console.log("card " + $props().id)
+let { id } = $props()
+const item = query("products").select("title").get(id)
+console.log("card " + id)
 </script>
 <b>{item.title}</b>
 -- src/pages/x/[slug].svelte --

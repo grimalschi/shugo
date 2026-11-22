@@ -65,7 +65,7 @@ func TestBuildExample(t *testing.T) {
 	}
 }
 
-func TestBuildParserUsesProjectRuntimeDirectory(t *testing.T) {
+func TestBuildCompilerUsesProjectRuntimeDirectory(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("runtime fixture uses a POSIX shell")
 	}
@@ -78,8 +78,8 @@ func TestBuildParserUsesProjectRuntimeDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("SHUGO_TEST_PARSER_RUNTIME", bin)
-	if err := os.WriteFile(p.Path("runtime"), []byte("#!/bin/sh\nexec \"$SHUGO_TEST_PARSER_RUNTIME\" \"$@\"\n"), 0o755); err != nil {
+	t.Setenv("SHUGO_TEST_COMPILER_RUNTIME", bin)
+	if err := os.WriteFile(p.Path("runtime"), []byte("#!/bin/sh\nexec \"$SHUGO_TEST_COMPILER_RUNTIME\" \"$@\"\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	p.Config.Runtime = "./runtime"
@@ -94,12 +94,12 @@ func TestBuildParserUsesProjectRuntimeDirectory(t *testing.T) {
 	if err := os.WriteFile(p.Path("runtime"), []byte("#!/bin/sh\nprintf '%s\\n' '{\"ready\":false}'\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Build(p); err == nil || !strings.Contains(err.Error(), "missing startup acknowledgement") {
-		t.Fatalf("expected a parser startup error, got %v", err)
+	if _, err := Build(p); err == nil || !strings.Contains(err.Error(), "it did not say it is ready") {
+		t.Fatalf("expected a compiler startup error, got %v", err)
 	}
 	files, err := os.ReadDir("relative-temp")
 	if err != nil || len(files) != 0 {
-		t.Fatalf("parser leaked its extracted compiler: %v, %v", files, err)
+		t.Fatalf("the compiler leaked its extracted copy: %v, %v", files, err)
 	}
 }
 
@@ -235,7 +235,7 @@ func TestManifestDetectsCompilerChanges(t *testing.T) {
 		name string
 		edit func(*sources)
 	}{
-		{"no parser stamp", func(s *sources) { s.Parser = "" }},
+		{"another Svelte", func(s *sources) { s.Svelte = "5.0.0" }},
 		{"old input schema", func(s *sources) { s.Revision = 0 }},
 	} {
 		t.Run(test.name, func(t *testing.T) {

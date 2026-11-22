@@ -8,22 +8,8 @@ import (
 
 func TestSiteRoundTrip(t *testing.T) {
 	site := &Site{
-		Files: []File{{Path: "src/pages/index.svelte", Shared: true, Parts: [][]Op{
-			{
-				{Kind: Markup, Text: `<a class="x"`},
-				{Kind: Attr, Text: "href"},
-				{Kind: Spread},
-				{Kind: Markup, Text: ">"},
-				{Kind: Text},
-				{Kind: If, Bodies: [][]Op{{{Kind: HTML}}, {}}},
-				{Kind: For, Bodies: [][]Op{{{Kind: Call}, {Kind: Attr, Text: "id"}}}},
-				{Kind: Render},
-				{Kind: For, Bodies: [][]Op{{{Kind: Text}}, {{Kind: Markup, Text: "none"}}}},
-				{Kind: Element, Bodies: [][]Op{{{Kind: Attr, Text: "id"}}, {{Kind: Text}}}},
-				{Kind: Island},
-			},
-			{},
-		}}},
+		Files:  []File{{Path: "src/pages/index.svelte", Shared: true}},
+		Shell:  Shell{Before: `<html><head><meta charset="utf-8">`, Middle: "</head><body>", After: "</body></html>"},
 		Routes: []Route{{File: 0, Pattern: "/[slug]", Segments: []Segment{{Param: "slug"}}, Layouts: []int{0}}},
 		Mounts: map[string]string{"head": "<link>"},
 	}
@@ -40,10 +26,10 @@ func TestSiteRoundTrip(t *testing.T) {
 	if string(again) != string(data) {
 		t.Errorf("not the same after a round trip:\n%s\n%s", data, again)
 	}
-	if !reflect.DeepEqual(back.Files[0].Parts[0][5].Bodies[0], site.Files[0].Parts[0][5].Bodies[0]) {
-		t.Errorf("branches differ: %v", back.Files[0].Parts[0][5])
+	if !reflect.DeepEqual(back.Shell, site.Shell) || !reflect.DeepEqual(back.Files, site.Files) {
+		t.Errorf("not the same after a round trip: %+v", back)
 	}
-	if want := `["r","<a class=\"x\""]`; !strings.Contains(string(data), want) {
+	if want := `"before":"<html><head><meta charset=\"utf-8\">"`; !strings.Contains(string(data), want) {
 		t.Errorf("markup is escaped: %s", data)
 	}
 }

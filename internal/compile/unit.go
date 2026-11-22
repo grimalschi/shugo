@@ -1,138 +1,48 @@
 // Package compile turns the sources of a project into what the next stages
-// run: one JavaScript bundle that computes the values of every template,
-// reading the data database of the project through query from the module
-// shugo, and the skeleton the runtime puts those values into.
+// run: one JavaScript bundle in which the code Svelte compiled from the
+// templates renders the pages, reading the data database of the project
+// through query from the module shugo, and the skeleton of the site.
 package compile
 
 import (
-	"strings"
-
-	"github.com/grimalschi/shugo/internal/skeleton"
-	"github.com/grimalschi/shugo/internal/sourcemap"
-	"github.com/grimalschi/shugo/internal/syntax"
+	"github.com/grimalschi/shugo/internal/svelte"
 )
 
-type islandBinding struct {
-	path    string
-	request bool // at least one call binds props to request data
-}
+// role is what a template is to the site.
+type role int
 
-// unit is one regular .svelte file compiled by Shugo.
+const (
+	component role = iota
+	page
+	layout
+)
+
+// unit is one regular .svelte file, compiled by Svelte for a server.
 type unit struct {
-	file   *syntax.File
-	role   role
-	module *module
-	// parts are the operations of the template and of every snippet in it.
-	parts  [][]skeleton.Op
-	styles []string // the <style> of the file, scoped to its elements
-	// paths tells that the file exports getStaticPaths.
-	paths bool
-	// warnings are what is written in a way Svelte allows but warns about.
-	warnings []string
-	islands  map[string]islandBinding
-	// own tells that the file itself cannot be computed once for all pages:
-	// it reads the page it is shown on.
-	own bool
+	path, source string
+	role         role
+	*svelte.Template
 }
 
-// compileFile compiles one file. id is the number its blocks carry.
-func compileFile(f *syntax.File, id int, r role) (*unit, error) {
-	path, source := f.Path, f.Source
-	var scripts []*script
-	for _, at := range []*syntax.Script{f.Module, f.Script} {
-		if at == nil || strings.TrimSpace(source[at.Code.Start:at.Code.End]) == "" {
-			scripts = append(scripts, &script{smap: &sourcemap.Map{}, at: at})
-			continue
-		}
-		s, err := compileScript(f, at, at == f.Module)
-		if err != nil {
-			return nil, err
-		}
-		scripts = append(scripts, s)
+// warnings are what Svelte warns about in the file, each with its place.
+func (u *unit) warnings() []string {
+	out := make([]string, len(u.Warnings))
+	for i, w := range u.Warnings {
+		out[i] = (&Error{Path: u.path, Line: w.Line, Column: w.Column, Message: w.Text}).Error()
 	}
-	moduleScript, instance := scripts[0], scripts[1]
-
-	var islands map[string]islandBinding
-	if len(moduleScript.islands)+len(instance.islands) > 0 {
-		islands = map[string]islandBinding{}
-		for _, s := range scripts {
-			for name, path := range s.islands {
-				islands[name] = islandBinding{path: path}
-			}
-		}
-	}
-	l := &lowerer{file: f, role: r, islands: islands}
-	var styles []string
-	if f.Style != nil {
-		css := source[f.Style.Code.Start:f.Style.Code.End]
-		if strings.TrimSpace(css) != "" {
-			l.hash = scopeClass(path)
-			styles = append(styles, scopeCSS(css, l.hash))
-		}
-	}
-	nodes := l.fragment(f.Body, context{top: true})
-	if r == layout && !renders(nodes) {
-		l.errorf(0, "a layout shows the page inside itself: put {@render children()} where the page goes, with let { children } = $props()")
-	}
-	if len(l.errs) > 0 {
-		return nil, l.errs
-	}
-
-	// The module: what must stay at the top of it, then one function that
-	// runs the rest of the script and computes the template.
-	m := &module{file: f}
-	for _, s := range scripts {
-		for _, lines := range s.top {
-			m.script(s, lines)
-		}
-	}
-	m.add(`import { component as $$component, $state, $derived, $effect, $bindable, $inspect, $host } from "shugo:runtime";`)
-	m.add("const $$self = $$component(%d, function ($$) {", id)
-	m.add("const $props = () => $$.props();")
-	for _, lines := range instance.body() {
-		m.script(instance, lines)
-	}
-	e := &emitter{m: m}
-	e.part(nodes)
-	m.add("});\nexport default $$self;")
-
-	return &unit{
-		file: f, role: r, module: m, parts: e.parts, styles: styles,
-		islands:  islands,
-		paths:    moduleScript.paths || instance.paths,
-		warnings: l.warnings,
-		own:      importsPage(strings.Join(instance.lines, "\n")) || importsPage(strings.Join(moduleScript.lines, "\n")),
-	}, nil
+	return out
 }
 
-// renders tells whether a template shows a snippet anywhere: a layout must
-// show the page.
-func renders(nodes []node) bool {
-	for _, n := range nodes {
-		switch n := n.(type) {
-		case render:
-			return true
-		case choice:
-			for _, b := range n.branches {
-				if renders(b.body) {
-					return true
-				}
-			}
-		case loop:
-			if renders(n.body) || renders(n.empty) {
-				return true
-			}
-		case dynamic:
-			if renders(n.children) {
-				return true
-			}
-		case call:
-			for _, g := range n.given {
-				if renders(g.body) {
-					return true
-				}
-			}
-		}
-	}
-	return false
+// own tells that the file itself cannot be computed once for all pages: it
+// shows what differs from page to page.
+func (u *unit) own() bool {
+	return u.Facts.Page
+}
+
+// placed tells that what the file shows depends on the place it stands at:
+// it uses the context of Svelte, which the components around it give, or
+// calls $props.id(), whose ids count the components rendered before it.
+// Such a component is rendered where it stands, and so is any that shows it.
+func (u *unit) placed() bool {
+	return u.Facts.Context || u.Facts.ID
 }

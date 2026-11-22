@@ -1,8 +1,7 @@
 // Package record is what the runtime keeps for one page or for one shared
-// block: its blocks, each with its template, the values of its expressions
-// and the blocks shown inside it. A record holds everything a page needs but
-// the shared blocks it shows, so a page is read with one lookup and one more
-// for every shared block on it.
+// block: its HTML, as Svelte rendered it, cut into blocks. A record holds
+// everything a page needs but the shared blocks it shows, so a page is read
+// with one lookup and one more for every shared block on it.
 package record
 
 import (
@@ -28,69 +27,67 @@ type Record struct {
 	Blocks []Block
 }
 
-// Block is one template being shown: a page, a layout, a component, or a
-// snippet a template gave to a component.
+// Block is a part of a page: what one component rendered, or a snippet a
+// template gave to a shared block; or a use, which stands for a shared block.
 type Block struct {
 	// Use tells that the block stands for a shared block. Shared names it,
-	// and only Snippets says more: the snippets this place gave it.
-	Use    bool
-	Shared int64
+	// and Snippets are what this place gave it: snippets without
+	// parameters, rendered where they were written, blocks of this record.
+	Use      bool
+	Shared   int64
+	Snippets []Snippet
 
-	File, Part int   // the template: a file and a part of it
-	Values     Tape  // the values of its expressions, in the order of the template
-	Children   []int // the components and snippets it shows, in the order it reaches them
-	Snippets   []Snippet
-	// Head are the blocks of what the template gives the <head> of the page
-	// in its <svelte:head>, and Title the blocks of the <title> elements in
-	// it, in the order of the template.
-	Head, Title []int
+	// Body is the HTML of the block. Head is what it gives the <head> of the
+	// page in <svelte:head>, and Title the <title> among it that it rendered
+	// last, as HTML; a snippet has neither.
+	Body, Head Fragment
+	Title      []byte
 }
 
-// Tape is the values of a block one after another: each is its length in
-// bytes, written as a varint, and then the bytes. A value may hold any byte.
-type Tape []byte
-
-// Append adds a value to the end of the tape.
-func (t Tape) Append(value []byte) Tape {
-	t = binary.AppendUvarint(t, uint64(len(value)))
-	return append(t, value...)
+// Fragment is HTML with holes in it: Texts[0], Holes[0], Texts[1], … The
+// texts are one more than the holes.
+type Fragment struct {
+	Texts [][]byte
+	Holes []Hole
 }
 
-// Next returns the first value of the tape and the tape after it; ok is
-// false when the tape is empty or damaged.
-func (t Tape) Next() (value []byte, rest Tape, ok bool) {
-	size, n := binary.Uvarint(t)
-	if n <= 0 || uint64(len(t)-n) < size {
-		return nil, t, false
-	}
-	return t[n : n+int(size)], t[n+int(size):], true
+// Hole is a place in HTML that something else fills when the page is shown.
+type Hole struct {
+	Kind  HoleKind
+	Block int    // Child: the block of the record that stands here
+	Text  []byte // Given: the name of the snippet; Island: what the island is, in JSON
 }
 
-// Strings returns the values of the tape as texts.
-func (t Tape) Strings() []string {
-	var out []string
-	for len(t) > 0 {
-		value, rest, ok := t.Next()
-		if !ok {
-			break
-		}
-		out = append(out, string(value))
-		t = rest
-	}
-	return out
+// HoleKind says what fills a hole.
+type HoleKind byte
+
+const (
+	Child  HoleKind = 'c' // a block of the same record: a use of a shared block
+	Given  HoleKind = 'g' // the snippet of that name that the place a shared block is shown at gave it
+	Island HoleKind = 'i' // a Svelte island
+)
+
+// Empty tells whether a fragment has nothing to show.
+func (f *Fragment) Empty() bool {
+	return len(f.Holes) == 0 && (len(f.Texts) == 0 || len(f.Texts[0]) == 0)
 }
 
-// Snippet is a snippet without parameters that the caller of a component
-// gave it, computed where it was written: blocks of the same record.
+// Text returns a fragment without holes.
+func Text(html []byte) Fragment {
+	return Fragment{Texts: [][]byte{html}}
+}
+
+// Snippet is a snippet without parameters that a template gave a shared
+// block, rendered where it was written: blocks of the same record.
 type Snippet struct {
 	Name   string
 	Blocks []int
 }
 
 // Snippet returns the blocks of the snippet of the given name.
-func (b *Block) Snippet(name string) []int {
+func (b *Block) Snippet(name []byte) []int {
 	for i := range b.Snippets {
-		if b.Snippets[i].Name == name {
+		if b.Snippets[i].Name == string(name) {
 			return b.Snippets[i].Blocks
 		}
 	}
@@ -99,46 +96,58 @@ func (b *Block) Snippet(name string) []int {
 
 // Encode writes a record compactly. Numbers are written as varints.
 func (r *Record) Encode() []byte {
-	out := make([]byte, 0, 8+len(r.Blocks)*24)
+	out := make([]byte, 0, 64)
 	out = binary.AppendUvarint(out, uint64(r.Top))
 	out = binary.AppendUvarint(out, uint64(len(r.Blocks)))
 	for i := range r.Blocks {
 		b := &r.Blocks[i]
 		if b.Use {
-			// A block of a template writes its file plus one, so zero is free.
-			out = binary.AppendUvarint(out, 0)
+			out = append(out, 'u')
 			out = binary.AppendUvarint(out, uint64(b.Shared))
-		} else {
-			out = binary.AppendUvarint(out, uint64(b.File)+1)
-			out = binary.AppendUvarint(out, uint64(b.Part))
-			out = binary.AppendUvarint(out, uint64(len(b.Values)))
-			out = append(out, b.Values...)
-			out = appendList(out, b.Children)
-			out = appendList(out, b.Head)
-			out = appendList(out, b.Title)
+			out = binary.AppendUvarint(out, uint64(len(b.Snippets)))
+			for _, snippet := range b.Snippets {
+				out = appendBytes(out, []byte(snippet.Name))
+				out = binary.AppendUvarint(out, uint64(len(snippet.Blocks)))
+				for _, n := range snippet.Blocks {
+					out = binary.AppendUvarint(out, uint64(n))
+				}
+			}
+			continue
 		}
-		out = binary.AppendUvarint(out, uint64(len(b.Snippets)))
-		for _, snippet := range b.Snippets {
-			out = binary.AppendUvarint(out, uint64(len(snippet.Name)))
-			out = append(out, snippet.Name...)
-			out = appendList(out, snippet.Blocks)
-		}
+		out = append(out, 'b')
+		out = b.Body.append(out)
+		out = b.Head.append(out)
+		out = appendBytes(out, b.Title)
 	}
 	return out
 }
 
-func appendList(out []byte, list []int) []byte {
-	out = binary.AppendUvarint(out, uint64(len(list)))
-	for _, n := range list {
-		out = binary.AppendUvarint(out, uint64(n))
+func (f *Fragment) append(out []byte) []byte {
+	out = binary.AppendUvarint(out, uint64(len(f.Holes)))
+	for i, hole := range f.Holes {
+		out = appendBytes(out, f.Texts[i])
+		out = append(out, byte(hole.Kind))
+		if hole.Kind == Child {
+			out = binary.AppendUvarint(out, uint64(hole.Block))
+		} else {
+			out = appendBytes(out, hole.Text)
+		}
 	}
-	return out
+	if len(f.Texts) > len(f.Holes) {
+		return appendBytes(out, f.Texts[len(f.Holes)])
+	}
+	return appendBytes(out, nil)
+}
+
+func appendBytes(out, data []byte) []byte {
+	out = binary.AppendUvarint(out, uint64(len(data)))
+	return append(out, data...)
 }
 
 var errDamaged = errors.New("record: damaged data")
 
 // Decode reads what Encode wrote. It never trusts a length it reads. The
-// values of the blocks stay in data: data must not change while the record
+// texts of the blocks stay in data: data must not change while the record
 // is in use.
 func Decode(data []byte) (*Record, error) {
 	d := decoder{data: data}
@@ -150,24 +159,23 @@ func Decode(data []byte) (*Record, error) {
 	r.Blocks = make([]Block, count)
 	for i := range r.Blocks {
 		b := &r.Blocks[i]
-		if file := d.number(); file == 0 {
+		switch d.byte() {
+		case 'u':
 			b.Use, b.Shared = true, int64(d.number())
-		} else {
-			b.File, b.Part = file-1, d.number()
-			if values := d.bytes(d.number()); len(values) > 0 {
-				b.Values = values
+			if n := d.number(); n > 0 && n <= len(d.data) {
+				b.Snippets = make([]Snippet, n)
+				for j := range b.Snippets {
+					b.Snippets[j].Name = string(d.bytes())
+					b.Snippets[j].Blocks = d.list(count)
+				}
+			} else if n != 0 {
+				d.failed = true
 			}
-			b.Children = d.list(count)
-			b.Head = d.list(count)
-			b.Title = d.list(count)
-		}
-		if snippets := d.number(); snippets > 0 && snippets <= len(d.data) {
-			b.Snippets = make([]Snippet, snippets)
-			for j := range b.Snippets {
-				b.Snippets[j].Name = string(d.bytes(d.number()))
-				b.Snippets[j].Blocks = d.list(count)
-			}
-		} else if snippets != 0 {
+		case 'b':
+			b.Body = d.fragment(count)
+			b.Head = d.fragment(count)
+			b.Title = d.bytes()
+		default:
 			d.failed = true
 		}
 		if d.failed {
@@ -195,12 +203,27 @@ func (d *decoder) number() int {
 	return int(n)
 }
 
-func (d *decoder) bytes(n int) []byte {
+func (d *decoder) byte() byte {
+	if d.failed || len(d.data) == 0 {
+		d.failed = true
+		return 0
+	}
+	c := d.data[0]
+	d.data = d.data[1:]
+	return c
+}
+
+// bytes reads a length and that many bytes; nil for none.
+func (d *decoder) bytes() []byte {
+	n := d.number()
 	if d.failed || n > len(d.data) {
 		d.failed = true
 		return nil
 	}
-	out := d.data[:n]
+	if n == 0 {
+		return nil
+	}
+	out := d.data[:n:n]
 	d.data = d.data[n:]
 	return out
 }
@@ -224,6 +247,35 @@ func (d *decoder) list(limit int) []int {
 	return out
 }
 
+// fragment reads a fragment whose holes name blocks below limit.
+func (d *decoder) fragment(limit int) Fragment {
+	holes := d.number()
+	if d.failed || holes > len(d.data) {
+		d.failed = true
+		return Fragment{}
+	}
+	f := Fragment{Texts: make([][]byte, holes+1)}
+	if holes > 0 {
+		f.Holes = make([]Hole, holes)
+	}
+	for i := range f.Holes {
+		f.Texts[i] = d.bytes()
+		h := &f.Holes[i]
+		switch h.Kind = HoleKind(d.byte()); h.Kind {
+		case Child:
+			if h.Block = d.number(); h.Block >= limit {
+				d.failed = true
+			}
+		case Given, Island:
+			h.Text = d.bytes()
+		default:
+			d.failed = true
+		}
+	}
+	f.Texts[holes] = d.bytes()
+	return f
+}
+
 // Check tells whether the blocks of a record make one tree under Top: every
 // block is shown at exactly one place. A record that came from outside is
 // checked before it is kept, so that showing it can never go in circles.
@@ -244,17 +296,22 @@ func (r *Record) Check() error {
 		seen[at] = true
 		left--
 		b := &r.Blocks[at]
-		for _, list := range [][]int{b.Head, b.Title, b.Children} {
-			for _, child := range list {
-				if err := visit(child); err != nil {
-					return err
-				}
-			}
-		}
 		for _, snippet := range b.Snippets {
 			for _, given := range snippet.Blocks {
 				if err := visit(given); err != nil {
 					return err
+				}
+			}
+		}
+		for _, f := range []*Fragment{&b.Body, &b.Head} {
+			if len(f.Texts) != len(f.Holes)+1 && !(len(f.Texts) == 0 && len(f.Holes) == 0) {
+				return fmt.Errorf("record: block %d has %d texts around %d holes", at, len(f.Texts), len(f.Holes))
+			}
+			for _, hole := range f.Holes {
+				if hole.Kind == Child {
+					if err := visit(hole.Block); err != nil {
+						return err
+					}
 				}
 			}
 		}

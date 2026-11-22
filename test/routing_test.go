@@ -154,15 +154,15 @@ func TestProjectMistakes(t *testing.T) {
 		{"a parameter without getStaticPaths", "-- src/pages/[id].svelte --\n<p>x</p>", "src/pages/[id].svelte:1:1: the name of this page has a parameter"},
 		{"two pages of one address", "-- src/pages/a.svelte --\n<p>1</p>\n-- src/pages/a/index.svelte --\n<p>2</p>", "give the same addresses"},
 		{"an unknown + file", "-- src/pages/+page.svelte --\n<p>x</p>", "names that start with + are kept for the framework"},
-		{"a snippet nobody gave", "-- src/pages/index.svelte --\n<script>\nlet { children } = $props()\n</script>\n{@render children()}", "{@render …} shows a snippet, and this is undefined"},
+		{"a snippet nobody gave", "-- src/pages/index.svelte --\n<script>\nlet { children } = $props()\n</script>\n{@render children()}", "children is not a function"},
 		{"a missing parameter", "-- src/pages/[id].svelte --\n<script module>\nexport const getStaticPaths = () => [{ params: {} }]\n</script>\n<p>x</p>", `returned params without "id"`},
 		{"props of a route", "-- src/pages/[id].svelte --\n<script module>\nexport const getStaticPaths = () => [{ params: { id: \"a\" }, props: { title: \"A\" } }]\n</script>\n<p>x</p>", "gives its pages addresses alone: return { params: { … } }, and let every page ask for its data with query(), by page.params"},
 		{"a list to paginate", "-- src/pages/[...page].svelte --\n<script module>\nimport { paginate } from \"shugo\"\nexport const getStaticPaths = () => paginate([1, 2, 3], { pageSize: 2 })\n</script>\n<p>x</p>", "paginate() in getStaticPaths takes how many items there are"},
 		{"getStaticPaths of Astro", "-- src/pages/[...page].svelte --\n<script module>\nexport const getStaticPaths = ({ paginate }) => paginate(3, { pageSize: 2 })\n</script>\n<p>x</p>", `getStaticPaths gets no paginate: import { query, paginate } from "shugo"`},
 		{"the global Shugo", "-- src/pages/index.svelte --\n<p>{Shugo.url.pathname}</p>", `There is no Shugo.url in Shugo: write page.url, with import { page } from "shugo"`},
 		{"not a list", "-- src/pages/[id].svelte --\n<script module>\nexport const getStaticPaths = () => ({ id: 1 })\n</script>\n<p>x</p>", "must return a list of { params }"},
-		{"a tag that is not a component", "-- src/pages/index.svelte --\n<script>\nconst Card = \"div\"\n</script>\n<Card />", "this tag is not a component"},
-		{"a component that shows itself forever", "-- src/pages/index.svelte --\n<script>\nimport Loop from \"../loop.svelte\"\n</script>\n<Loop />\n-- src/loop.svelte --\n<svelte:self />", "shows itself again with the same parameters"},
+		{"a tag that is not a component", "-- src/pages/index.svelte --\n<script>\nconst Card = \"div\"\n</script>\n<Card />", "is not a function"},
+		{"a component that shows itself forever", "-- src/pages/index.svelte --\n<script>\nimport Loop from \"../loop.svelte\"\n</script>\n<Loop />\n-- src/loop.svelte --\n<script>\nimport Loop from \"./loop.svelte\"\n</script>\n<Loop />", "shows itself again with the same parameters"},
 		{"a script that waits", "-- src/pages/index.svelte --\n<script>\nconst items = await Promise.resolve([1])\n</script>\n<p>{items.length}</p>", "src/pages/index.svelte:2:15: a page is computed without waiting"},
 		{"getStaticPaths that waits", "-- src/pages/[id].svelte --\n<script module>\nexport async function getStaticPaths() { return [{ params: { id: \"a\" } }] }\n</script>\n<p>x</p>", "getStaticPaths of /[id] waits"},
 		{"a script between --- lines", "-- src/pages/index.svelte --\n---\nconst a = 1\n---\n<p>{a}</p>", "the code of a component goes into <script>"},
@@ -190,12 +190,11 @@ func TestMistakesPointAtTheTemplate(t *testing.T) {
 	cases := []struct{ name, page, want string }{
 		{"a module that is not there", "<script>\nimport { helper } from \"../lib/missing\"\n</script>\n<h1>{helper()}</h1>", `src/pages/index.svelte:2:24: Could not resolve "../lib/missing"`},
 		{"an expression cut short", "<p>ok</p>\n<h1 class={a +}>x</h1>", `src/pages/index.svelte:2:15: Unexpected token`},
-		{"a statement in braces", "<p>\n  {const a = 1}\n</p>", "src/pages/index.svelte:2:3: use {@const …} for template declarations in Shugo"},
 		{"a name that is not a name", `{#each [1] as 1x}{x}{/each}`, "src/pages/index.svelte:1:15: Expected identifier or destructure pattern"},
 		{"a mistake in the script", "<script>\nconst a = 1\nconst b = (a +\n</script>\n<p>{a}</p>", "src/pages/index.svelte:4:1: Unexpected token"},
 		{"markup inside braces", "<ul>\n  {[1].map(n => <li>{n}</li>)}\n</ul>", "src/pages/index.svelte:2:17: Unexpected token"},
 		{"a failure while computing", "<script>\nconst product = { title: \"x\" }\n</script>\n<p>\n  {product.missing.field}\n</p>", "at src/pages/index.svelte:5:"},
-		{"a failure in a component", "<script>\nimport Card from \"../card.svelte\"\n</script>\n<Card />\n-- src/card.svelte --\n<p>ok</p>\n<b>{$props().item.title}</b>", "at src/card.svelte:2:"},
+		{"a failure in a component", "<script>\nimport Card from \"../card.svelte\"\n</script>\n<Card />\n-- src/card.svelte --\n<script>let { item } = $props()</script>\n<b>{item.title}</b>", "at src/card.svelte:2:"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -229,9 +228,9 @@ const Shown = Countdown
 	}
 	warnings := strings.Join(compiled.Warnings, "\n")
 	for _, want := range []string{
-		`src/components/Countdown.svelte:2:22: <svelte:self> is deprecated in Svelte 5: a component imports itself, import Countdown from "./Countdown.svelte"`,
-		"src/pages/index.svelte:5:1: <svelte:component> is deprecated in Svelte 5",
-		"src/pages/index.svelte:6:14: <div> cannot be a child of <p>",
+		"src/components/Countdown.svelte:2:22: `<svelte:self>` is deprecated — use self-imports",
+		"src/pages/index.svelte:5:1: `<svelte:component>` is deprecated in runes mode",
+		"src/pages/index.svelte:6:14: `<div>` cannot be a child of `<p>`",
 	} {
 		if !strings.Contains(warnings, want) {
 			t.Errorf("no warning %q in\n%s", want, warnings)
