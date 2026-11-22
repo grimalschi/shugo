@@ -155,13 +155,13 @@ Details are in [proposal for internationalization](../docs/proposals/i18n.md). I
 ## New questions after switching to Svelte
 
 16. **Types for the editor.** Extensions `.svelte` and `.island.svelte` are selected. How to describe `Shugo`, `shugo:catalog` and `request:` for review in editor.
-17. **`lang="ts"`.** Svelte understands TypeScript only in `<script lang="ts">`, Shugo — any. **The Council:** require `lang="ts"`, like Svelte, with a clear error: then the file is transferred to Svelte without editing.
+17. **`lang="ts"`.** After switching to the official parser for TypeScript, `lang="ts"` is used.
 18. **Accessibility alerts.** U Svelte There are dozens of them (`alt` in pictures, roles, signatures). **The Council:** The agent is useful, and Svelte He's waiting for them.
 19. **Rune places.** Svelte forbids `$props()` in markup, second call `$props()` and the like; Shugo does not check yet. **The Council:** check as well as Svelte.
 20. **Style class.** Put the component class only on items that selectors select, and throw out extra selectors like Svelte ([32](decisions.md#32-style-class-on-all-component-elements)). **The Council:** yes, but after the rest: the page view does not change from this.
 21. **`<svelte:head>` in a conventional component.** In Svelte it works everywhere, in Shugo it works only in page and layout. **The Council:** allow in components that are not common; in general - an error with explanation.
 22. **`$lib`.** In SvelteKit `$lib` is `src/lib`, and the code from SvelteKit writes `import X from "$lib/…"`. **The Council:** understand `$lib` along with `@/`.
-23. **Data from the islands.** Do I need a general binding mechanism for `request:` besides the published catalog?
+23. **Data from the islands.** Named sources would allow binding through `request:` and other prepared data, such as the issuance of a separate article index. Now the binding serves the directory.
 
 ## From the proposals
 

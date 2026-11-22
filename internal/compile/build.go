@@ -10,7 +10,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"slices"
 	"sort"
@@ -178,11 +177,12 @@ type sources struct {
 	Templates []string          `json:"templates"`
 	Files     map[string]string `json:"files"`
 	Format    int               `json:"format"`
+	Parser    string            `json:"parser"`
 }
 
 // sources hashes the files of the project that the compiled result depends on.
 func (b *builder) sources(bundled []string) sources {
-	out := sources{Templates: b.paths, Files: map[string]string{}, Format: program.Version}
+	out := sources{Templates: b.paths, Files: map[string]string{}, Format: program.Version, Parser: syntax.SvelteVersion}
 	for _, name := range append(bundled, project.Settings) {
 		out.Files[name] = hashFile(b.project.Path(filepath.FromSlash(name)))
 	}
@@ -211,7 +211,7 @@ func Changed(p *project.Project) (bool, error) {
 		return false, err
 	}
 	var compiled sources
-	if err := json.Unmarshal(data, &compiled); err != nil || compiled.Format != program.Version {
+	if err := json.Unmarshal(data, &compiled); err != nil || compiled.Format != program.Version || compiled.Parser != syntax.SvelteVersion {
 		return true, nil
 	}
 	templates, err := p.Templates()
@@ -262,6 +262,15 @@ func roleOf(path string) role {
 // compile compiles every file, several at a time.
 func (b *builder) compile() error {
 	b.units = make([]*unit, len(b.paths))
+	if len(b.paths) == 0 {
+		return nil
+	}
+	parser, err := syntax.Start(b.project.Runtime())
+	if err != nil {
+		return err
+	}
+	defer parser.Close()
+
 	failures := make([]error, len(b.paths))
 	next := make(chan int)
 	var group sync.WaitGroup
@@ -269,11 +278,7 @@ func (b *builder) compile() error {
 		group.Go(func() {
 			for id := range next {
 				path := b.paths[id]
-				source, err := os.ReadFile(b.project.Path(filepath.FromSlash(path)))
-				if err == nil {
-					b.units[id], err = compileFile(path, string(source), id, roleOf(path))
-				}
-				failures[id] = err
+				b.units[id], failures[id] = b.compileTemplate(parser, path, id)
 			}
 		})
 	}
@@ -297,6 +302,22 @@ func (b *builder) compile() error {
 		return errs
 	}
 	return nil
+}
+
+func (b *builder) compileTemplate(parser *syntax.Parser, path string, id int) (*unit, error) {
+	source, err := os.ReadFile(b.project.Path(filepath.FromSlash(path)))
+	if err != nil {
+		return nil, err
+	}
+	file, err := parser.Parse(path, string(source))
+	if err != nil {
+		var diagnostic *syntax.Error
+		if errors.As(err, &diagnostic) {
+			return nil, Errors{diagnostic}
+		}
+		return nil, err
+	}
+	return compileFile(file, id, roleOf(path))
 }
 
 // routes makes a route of every page and finds the layouts around it.
@@ -543,8 +564,6 @@ func (b *builder) relative(path string) string {
 	return filepath.ToSlash(rel)
 }
 
-var markupInCode = regexp.MustCompile(`<[A-Za-z/][^<>]*>`)
-
 // diagnoseAll turns the messages of the bundler into errors in the files
 // of the project.
 func (b *builder) diagnoseAll(messages []api.Message) error {
@@ -569,9 +588,6 @@ func (b *builder) diagnose(message api.Message) *syntax.Error {
 	}
 	u := b.units[id]
 	text := message.Text
-	if line := at.Line - 1; line < len(u.module.from) && u.module.from[line].kind == 't' && markupInCode.MatchString(u.module.lines[line]) {
-		text += "; markup cannot stand inside {…}: write {#if …}…{/if} or {#each …}…{/each} around it instead"
-	}
 	if strings.Contains(text, `"await" can only be used inside an "async" function`) {
 		text = "a page is computed without waiting: its data comes from Shugo.query, which answers at once, so there is nothing to wait for. " +
 			"What takes time and needs doing once, such as making a highlighter, can be awaited at the top of a module in lib/ and used here"

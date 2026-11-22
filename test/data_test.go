@@ -23,7 +23,7 @@ const dataShop = `
 -- shugo.json --
 {"data": "data/shop.db"}
 -- src/components/Card.svelte --
-<script>
+<script lang="ts">
 const { id } = $props() as { id: string }
 const item = Shugo.query("products").select("slug", "title", "price").get(id)
 if (!item) throw new Error("there is no product " + id)

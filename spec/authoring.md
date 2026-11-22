@@ -374,7 +374,7 @@ Create `Intl.NumberFormat`, `Intl.DateTimeFormat` and the like once in a module,
 | `+error.svelte` | `src/pages/404.svelte` |
 | `+server.ts` | not there yet |
 | `<svelte:head>` in any component | in pages and layouts |
-| TypeScript only with `lang="ts"` | also without it, but write `lang="ts"` so the file moves to Svelte as it is |
+| TypeScript with `lang="ts"` | the same parser and syntax |
 | hydration, `$state` that changes, events | none: pages are static |
 | `<svelte:self>`, `<svelte:component>` | work, with the warnings of Svelte 5 |
 | `javascript:` addresses kept | replaced |

@@ -240,6 +240,7 @@ class Writer {
       values.push("-");
       return;
     }
+    if (optional) args = args();
     const info = snippet?.[SNIPPET];
     if (info === undefined) throw new TypeError(`{@render …} shows a snippet, and this is ${describe(snippet)}`);
     if (info.kind === "given") {

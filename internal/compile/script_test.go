@@ -11,18 +11,13 @@ import (
 // module>.
 func parseScript(t *testing.T, code string, module bool) (*syntax.File, *script, error) {
 	t.Helper()
-	open := "<script>"
+	open := "<script lang=\"ts\">"
 	if module {
-		open = "<script module>"
+		open = "<script module lang=\"ts\">"
 	}
-	f, err := syntax.Parse("src/pages/a.svelte", open+"\n"+code+"\n</script>\n<p/>")
-	if err != nil {
-		t.Fatal(err)
-	}
-	at := f.Script
-	if module {
-		at = f.Module
-	}
+	scriptSource := "\n" + code + "\n"
+	f := &syntax.File{Path: "src/pages/a.svelte", Source: open + scriptSource + "</script>\n<p/>"}
+	at := &syntax.Script{Code: syntax.Span{Start: len(open), End: len(open) + len(scriptSource)}}
 	s, err := compileScript(f, at, module)
 	return f, s, err
 }

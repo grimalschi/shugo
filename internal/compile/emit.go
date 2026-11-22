@@ -87,11 +87,17 @@ func (e *emitter) nodes(list []node) []program.Op {
 		case snipp:
 			e.snippet(n)
 		case render:
-			e.m.add("$$.render(")
+			e.m.add("$$.render((")
 			e.m.code(n.expr)
-			e.m.add(", [")
-			if strings.TrimSpace(n.args.text) != "" {
-				e.m.code(n.args)
+			if n.optional {
+				e.m.add("), () => [")
+			} else {
+				e.m.add("), [")
+			}
+			for _, arg := range n.args {
+				e.m.add("(")
+				e.m.code(arg)
+				e.m.add("),")
 			}
 			e.m.add("], %t);", n.optional)
 			ops = append(ops, program.Op{Kind: program.Render})

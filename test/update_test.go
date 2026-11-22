@@ -21,7 +21,7 @@ console.log("header computed")
 </script>
 <header>{motto} · {count} products</header>
 -- src/components/Card.svelte --
-<script>
+<script lang="ts">
 const { slug } = $props() as { slug: string }
 const { title, price } = Shugo.query("products").where({ slug }).first()
 </script>

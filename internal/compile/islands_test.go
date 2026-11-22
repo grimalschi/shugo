@@ -5,10 +5,19 @@ import (
 	"testing"
 
 	"github.com/grimalschi/shugo/internal/program"
+	"github.com/grimalschi/shugo/internal/syntax"
 )
 
+func compileSource(path, source string, id int, r role) (*unit, error) {
+	file, err := syntax.Parse(path, source)
+	if err != nil {
+		return nil, err
+	}
+	return compileFile(file, id, r)
+}
+
 func TestLowerIsland(t *testing.T) {
-	u, err := compileFile("src/pages/catalog.svelte", `<script module>
+	u, err := compileSource("src/pages/catalog.svelte", `<script module>
   import Counter from '@/components/Counter.island.svelte';
 </script>
 <script>
@@ -49,7 +58,7 @@ func TestRequestBindingSelectsIslandProgram(t *testing.T) {
 		{`<Island request:results={source} {...props} />`, true},
 		{`<Island request:initial={source} /><Island initial={data} />`, true},
 	} {
-		u, err := compileFile("src/pages/catalog.svelte", `<script>import Island from './Island.island.svelte'</script>`+test.markup, 0, page)
+		u, err := compileSource("src/pages/catalog.svelte", `<script>import Island from './Island.island.svelte'</script>`+test.markup, 0, page)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -69,11 +78,11 @@ func TestIslandBoundaryDiagnostics(t *testing.T) {
 		{`<script>import Counter from './Counter.island.svelte';</script><Counter shugoSearch />`, "use request:initial"},
 		{`<script>import Counter from './Counter.island.svelte';</script><Counter request:initial />`, "needs one source expression"},
 		{`<script>import Counter from './Counter.island.svelte';</script><Counter request:initial={source} initial={value} />`, "already gets its value"},
-		{`<script>import Counter from './Counter.island.svelte';</script><Counter request:initial={source} request:initial={other} />`, "already bound"},
+		{`<script>import Counter from './Counter.island.svelte';</script><Counter request:initial={source} request:initial={other} />`, "Attributes need to be unique"},
 		{`<div request:initial={source}></div>`, "binds a prop on an .island.svelte component"},
 		{`<script>import Counter from './Counter.island.svelte';</script><svg><Counter /></svg>`, "its wrapper in the HTML body"},
 	} {
-		if _, err := compileFile("src/pages/index.svelte", test.source, 0, page); err == nil || !strings.Contains(err.Error(), test.message) {
+		if _, err := compileSource("src/pages/index.svelte", test.source, 0, page); err == nil || !strings.Contains(err.Error(), test.message) {
 			t.Errorf("compile %s: got %v, want %q", test.source, err, test.message)
 		}
 	}

@@ -211,6 +211,18 @@ const label = "№"
 	expect(t, got, `<table><tbody><tr><td>№1</td><td>№2</td></tr></tbody></table> <ul><li>0: a №</li><li>1: b №</li></ul>`)
 }
 
+func TestRenderCallWithParenthesizedExpressions(t *testing.T) {
+	got := one(t, `<script>
+const first = true
+const missing = null
+function fail() { throw new Error("an optional call must skip its arguments") }
+</script>
+{#snippet card(value, label)}<p>{value} {label}</p>{/snippet}
+{#snippet other(value, label)}<b>{label} {value}</b>{/snippet}
+{@render (first ? card : other)((1, 2), /[(]/.source)}{@render missing?.(fail())}`)
+	expect(t, got, "<p>2 [(]</p>")
+}
+
 func TestRecursionAndDynamicComponents(t *testing.T) {
 	got := one(t, `<script>
 import Tree from "../components/Tree.svelte"
@@ -240,7 +252,7 @@ let { node } = $props()
 }
 
 func TestTypeScript(t *testing.T) {
-	got := one(t, `<script>
+	got := one(t, `<script lang="ts">
 import { price, type Product } from "@/lib/shop"
 interface Props { product?: Product }
 const { product = { title: "Jug", cents: 1250 } as Product } = $props() as Props

@@ -107,13 +107,24 @@ func showAttr(a Attr) string {
 	return name + "=" + value.String()
 }
 
+func testParser(t *testing.T) *Parser {
+	t.Helper()
+	parser, err := Start("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(parser.Close)
+	return parser
+}
+
 func TestParse(t *testing.T) {
+	parser := testParser(t)
 	cases := []struct{ source, want string }{
 		{"<p>{a}</p>", "<p>{a}</p>"},
 		{"{#if a}x{:else if b}y{:else}z{/if}", "{#if a}x{:else if b}y{:else}z{/if}"},
 		{"{#each items as item, i (item.id)}<li>{item}</li>{:else}none{/each}", "{#each items as item, i (item.id)}<li>{item}</li>{:else}none{/each}"},
 		{"{#each list as { a, b }, index}{a}{/each}", "{#each list as { a, b }, index}{a}{/each}"},
-		{"{#each (items as Item[]) as item}{item}{/each}", "{#each (items as Item[]) as item}{item}{/each}"},
+		{`<script lang="ts"></script>{#each (items as Item[]) as item}{item}{/each}`, "{#each items as Item[] as item}{item}{/each}"},
 		{"{#each { length: 3 }}x{/each}", "{#each { length: 3 }}x{/each}"},
 		{"{#await p}wait{:then v}{v}{/await}", "{#await p}wait{:then v}{v}{/await}"},
 		{"{#key k}<i>{k}</i>{/key}", "{#key k}<i>{k}</i>{/key}"},
@@ -129,7 +140,7 @@ func TestParse(t *testing.T) {
 		{"<svelte:element this={tag}>x</svelte:element><Card.Body />", "<svelte:element this={tag}>x</svelte:element><Card.Body/>"},
 	}
 	for _, c := range cases {
-		f, err := Parse("a.svelte", c.source)
+		f, err := parser.Parse("a.svelte", c.source)
 		if err != nil {
 			t.Errorf("%s: %v", c.source, err)
 			continue
@@ -141,6 +152,7 @@ func TestParse(t *testing.T) {
 }
 
 func TestScriptsAndStyle(t *testing.T) {
+	parser := testParser(t)
 	source := `<script module>
   export function getStaticPaths() { return [] }
 </script>
@@ -153,7 +165,7 @@ func TestScriptsAndStyle(t *testing.T) {
 <style>
   h1 { color: red; }
 </style>`
-	f, err := Parse("a.svelte", source)
+	f, err := parser.Parse("a.svelte", source)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,38 +185,79 @@ func TestScriptsAndStyle(t *testing.T) {
 }
 
 func TestParseErrors(t *testing.T) {
+	parser := testParser(t)
 	cases := []struct{ source, want string }{
 		{"---\nconst a = 1\n---\n<p/>", `a.svelte:1:1: the code of a component goes into <script>`},
-		{"<div>", "a.svelte:1:1: <div> is never closed"},
-		{"<div></span>", "a.svelte:1:6: </span> does not close <div> opened at 1:1"},
-		{"</p>", "a.svelte:1:1: </p> closes nothing"},
-		{"{#if a}x", "{#if} is never closed with {/if}"},
-		{"{#if a}<p>x{/if}", "stands inside <p>"},
-		{"{#each a as}x{/each}", `{#each} needs a name for one item after "as"`},
-		{"{:else}", "{:else} stands outside of any block"},
-		{"{#for a}x{/for}", "there is no {#for}"},
-		{"{@foo a}", "there is no {@foo}"},
-		{"<script>a</script><script>b</script>", "a component has one <script>"},
-		{`<p a="1" a="2"></p>`, "the attribute a is written twice"},
-		{"<br></br>", "</br>: <br> never has a closing tag"},
+		{"<div>", "a.svelte:1:1: `<div>` was left open"},
+		{"<div></span>", "a.svelte:1:6: `</span>` attempted to close an element that was not open"},
+		{"</p>", "a.svelte:1:1: `</p>` attempted to close an element that was not open"},
+		{"{#if a}x", "Block was left open"},
+		{"{#if a}<p>x{/if}", "Unexpected block closing tag"},
+		{"{#each a as}x{/each}", "Expected whitespace"},
+		{"{:else}", "{:...} block is invalid at this position"},
+		{"{#for a}x{/for}", "Expected 'if', 'each', 'await', 'key' or 'snippet'"},
+		{"{@foo a}", "Expected 'html', 'render', 'attach', 'const', or 'debug'"},
+		{"<script>a</script><script>b</script>", "A component can have a single top-level `<script>` element"},
+		{`<p a="1" a="2"></p>`, "Attributes need to be unique"},
+		{"<br></br>", "Void elements cannot have children or closing tags"},
+		{"<script>const item: number = 42</script>", "a.svelte:1:19: Unexpected token"},
 	}
 	for _, c := range cases {
-		_, err := Parse("a.svelte", c.source)
+		_, err := parser.Parse("a.svelte", c.source)
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s:\n got %v\nwant …%s…", c.source, err, c.want)
 		}
 	}
+	if _, err := parser.Parse("valid.svelte", "<p>valid</p>"); err != nil {
+		t.Fatalf("parse error stopped the compiler: %v", err)
+	}
 }
 
 func TestImplicitClose(t *testing.T) {
-	f, err := Parse("a.svelte", "<div><p>text</div>")
+	f, err := testParser(t).Parse("a.svelte", "<div><p>text</div>")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := show(f.Body); got != "<div><p>text</p></div>" {
 		t.Errorf("got %s", got)
 	}
-	if len(f.Warnings) != 1 || !strings.Contains(f.Warnings[0].Message, "<p> is closed by </div>") {
-		t.Errorf("warnings: %v", f.Warnings)
+}
+
+func TestSourceOffsets(t *testing.T) {
+	parser := testParser(t)
+	const source = "\ufeff<script lang=\"ts\">let café: string = \"yes\"</script>\n<p>🍋 {café}</p>"
+	f, err := parser.Parse("café.svelte", source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := f.Source[f.Script.Code.Start:f.Script.Code.End]; got != "let café: string = \"yes\"" {
+		t.Errorf("script range: %q", got)
+	}
+	element := f.Body[len(f.Body)-1].(*Element)
+	tag := element.Children[1].(*Tag)
+	if tag.Code.Start != strings.Index(source, "{café}")+1 || tag.Code.Text != "café" {
+		t.Errorf("expression: %+v", tag.Code)
+	}
+	_, err = parser.Parse("café.svelte", "\ufeff<main>\n  🍋 café</div>")
+	if err == nil || !strings.Contains(err.Error(), "café.svelte:2:9: `</div>`") {
+		t.Fatalf("diagnostic at wrong offset: %v", err)
+	}
+}
+
+func TestConcurrentParse(t *testing.T) {
+	parser := testParser(t)
+	for i := range 8 {
+		name := fmt.Sprintf("template-%d", i)
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			source := "<p>" + name + "</p>"
+			f, err := parser.Parse(name+".svelte", source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if parsed := show(f.Body); parsed != source {
+				t.Errorf("parsed %q, want %q", parsed, source)
+			}
+		})
 	}
 }

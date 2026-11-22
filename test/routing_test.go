@@ -72,13 +72,13 @@ export const products: Product[] = JSON.parse(readFileSync("data.json", "utf8"))
 -- src/pages/index.svelte --
 <h1>shop</h1>
 -- src/pages/products/[slug].svelte --
-<script module>
+<script module lang="ts">
 import { products, type Product } from "../../lib/data"
 export function getStaticPaths() {
   return products.map((product) => ({ params: { slug: product.slug }, props: { product } }))
 }
 </script>
-<script>
+<script lang="ts">
 const { product } = $props() as { product: Product }
 </script>
 <h1>{product.title}</h1><p>{Shugo.params.slug} {Shugo.url.pathname} {Shugo.url.href}</p>
@@ -170,11 +170,11 @@ func TestProjectMistakes(t *testing.T) {
 func TestMistakesPointAtTheTemplate(t *testing.T) {
 	cases := []struct{ name, page, want string }{
 		{"a module that is not there", "<script>\nimport { helper } from \"../lib/missing\"\n</script>\n<h1>{helper()}</h1>", `src/pages/index.svelte:2:24: Could not resolve "../lib/missing"`},
-		{"an expression cut short", "<p>ok</p>\n<h1 class={a +}>x</h1>", `src/pages/index.svelte:2:15: Unexpected ")"`},
-		{"a statement in braces", "<p>\n  {const a = 1}\n</p>", `src/pages/index.svelte:2:4: Unexpected "const"`},
-		{"a name that is not a name", `{#each [1] as 1x}{x}{/each}`, `src/pages/index.svelte:1:16: Syntax error "x"`},
-		{"a mistake in the script", "<script>\nconst a = 1\nconst b = (a +\n</script>\n<p>{a}</p>", "src/pages/index.svelte:3:15: the script ends in the middle of a statement"},
-		{"markup inside braces", "<ul>\n  {[1].map(n => <li>{n}</li>)}\n</ul>", "src/pages/index.svelte:2:3: markup cannot stand inside {…}"},
+		{"an expression cut short", "<p>ok</p>\n<h1 class={a +}>x</h1>", `src/pages/index.svelte:2:15: Unexpected token`},
+		{"a statement in braces", "<p>\n  {const a = 1}\n</p>", "src/pages/index.svelte:2:3: use {@const …} for template declarations in Shugo"},
+		{"a name that is not a name", `{#each [1] as 1x}{x}{/each}`, "src/pages/index.svelte:1:15: Expected identifier or destructure pattern"},
+		{"a mistake in the script", "<script>\nconst a = 1\nconst b = (a +\n</script>\n<p>{a}</p>", "src/pages/index.svelte:4:1: Unexpected token"},
+		{"markup inside braces", "<ul>\n  {[1].map(n => <li>{n}</li>)}\n</ul>", "src/pages/index.svelte:2:17: Unexpected token"},
 		{"a failure while computing", "<script>\nconst product = { title: \"x\" }\n</script>\n<p>\n  {product.missing.field}\n</p>", "at src/pages/index.svelte:5:"},
 		{"a failure in a component", "<script>\nimport Card from \"../card.svelte\"\n</script>\n<Card />\n-- src/card.svelte --\n<p>ok</p>\n<b>{$props().item.title}</b>", "at src/card.svelte:2:"},
 	}

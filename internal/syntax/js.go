@@ -7,10 +7,8 @@ import (
 	"unicode/utf8"
 )
 
-// The framework never parses JavaScript: esbuild does. It only has to tell
-// code from strings, templates, comments and regular expressions, so that it
-// can find where an expression ends in a template and where a statement ends
-// in a script. Scanner does exactly that and nothing else.
+// The scanner walks JavaScript from esbuild so Shugo can separate statements
+// and identify references in the scripts and generated code.
 
 // TokenKind says what a stretch of JavaScript source is.
 type TokenKind int

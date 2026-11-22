@@ -1,6 +1,6 @@
 # Templates
 
-Normal file `.svelte` written in syntax Svelte 5. Shugo uses its compiler for static templates, calculation of expressions and tracking of data readings. The clean component can also enter the island graph, where it is analyzed by the compiler Svelte. The entry point component for hydration has a suffix `.island.svelte`. [Svelte islands](scripts.md#svelte-islands)
+Normal file `.svelte` the Official Parser Svelte 5. From his tree Shugo builds a markup program and a calculation code that registers data readings. The clean component can also enter the island graph, where Svelte compiles it for the browser. The entry point component for hydration has a suffix `.island.svelte`. [Svelte islands](scripts.md#svelte-islands)
 
 ## Decisions
 
@@ -54,7 +54,7 @@ Normal file `.svelte` written in syntax Svelte 5. Shugo uses its compiler for st
 - The component parameters are `let { … } = $props()`, as in Svelte 5.
 - The `Shugo` object is visible in `<script>` and in markup: `Shugo.query(…)` asks the project database ([Data loading](data-loading.md)), `Shugo.params` is the address parameters, `Shugo.url` is the page address, `Shugo.paginate(…)` is part of the list for the page with the number ([Dynamic pages](dynamic-pages.md)). `<script module>` does not have it: `getStaticPaths` gets `query` and `paginate` by argument.
 - `await` no: the page is calculated without waiting, because `Shugo.query` responds immediately. What is expected and done once - for example, code highlighting - is expected at the top level of the module from `src/lib/`.
-- TypeScript is accepted in any `<script>`. Svelte requires `lang="ts"`; for the file to be transferred to Svelte, write `<script lang="ts">`.
+- For TypeScript, use `<script lang="ts">` or `<script module lang="ts">`. The parser Svelte recognizes TypeScript by this attribute.
 - `@/` in import path means folder `src/`.
 - Runes Svelte work as on the server Svelte: `$state(x)` - just the value of `x`, `$derived(…)` is considered once, `$effect` is not executed. Page is static, in the browser its code does not work.
 - `return` at the top level `<script>` and `export default` are build errors.
@@ -78,7 +78,7 @@ The value is displayed as it is displayed by Svelte:
 | array | comma elements: `{[1, 2]}`  `1,2` |
 | object | `[object Object]` |
 
-The expression is a regular TypeScript, and only it: you can not write the markup inside the braces. On `{items.map(item => <li>{item}</li>)}`, the compiler answers that you need `{#each}`.
+In the curly brackets are written expressions JavaScript or TypeScript. To repeat markup use `{#each}`.
 
 ### Attributes
 
@@ -166,7 +166,6 @@ Svelte Rules:
 | hydration tags `<!--[-->`, `<!--]-->` | sd | it does not say: static page they are not needed |
 | Address `javascript:` | displays as is | replaces by `about:invalid#blocked` |
 | A class that limits styles to a component | only bet on items that selectors choose | is placed on all components; page view is the same |
-| TypeScript without `lang="ts"` | error | adopted |
 | `<svelte:head>` | in any component | only in page and layout |
 | Availability Warnings (`a11y_…`) | I have | none |
 | `$props()` in markup and other rune place errors | error | not checked |
@@ -184,8 +183,6 @@ Svelte Rules:
 
 ## Open questions
 
-- Whether to connect the official Svelte parser for regular templates while saving the Go program and registering dependencies.
-- Whether to require `lang="ts"` for TypeScript, like Svelte, then the file is transferred to Svelte without editing.
 - Svelte Availability Warnings: Do You Repeat Them?
 - Check if runes are as strict as Svelte: `$props()` only at the beginning of `<script>`, once.
 - Type check: it is decided to make a separate command `shugo check` together with verification of component parameters ([Command line](cli.md#decisions)). While the types are only erased.

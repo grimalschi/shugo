@@ -292,7 +292,7 @@ The **Waiting for approval.** Snippet without parameters, written inside the com
 
 **Approved 22 November 2026 year.** Common templates have the extension `.svelte`. The suffix `.island.svelte` marks components that are hydrated when called from Shugo. The filename shows this in the editor, project tree and imports. Linking data from URL is specified in the call. [Svelte islands](scripts.md#svelte-islands)
 
-The question of whether to require `lang="ts"` for TypeScript in normal templates remains [open](open-questions.md).
+The analysis of the usual templates has been translated to the official Svelte. The assembly of Shugo still generates a markup program and registers dependencies. TypeScript uses `lang="ts"`.
 
 ## 34. What is checked the same as in Svelte
 

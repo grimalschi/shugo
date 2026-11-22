@@ -58,7 +58,8 @@ func startSvelte(p *project.Project) (*svelteProcess, error) {
 	if p.Runtime() != "bun" {
 		args = append(args, "--input-type=module")
 	}
-	args = append(args, "--eval", islandCompiler+"\n"+svelteCompiler)
+	code := fmt.Sprintf("const wanted = %q;\n", syntax.SvelteVersion) + islandCompiler + "\n" + svelteCompiler
+	args = append(args, "--eval", code)
 	s := &svelteProcess{cmd: exec.Command(p.Runtime(), args...), modules: map[string]svelteModule{}}
 	s.cmd.Dir = p.Root
 	s.cmd.Stderr = &s.stderr

@@ -1,6 +1,7 @@
 package compile
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -77,9 +78,8 @@ const path = Shugo.url.pathname
 		"src/components/label.css":             `.label { font-style: italic; }`,
 		"src/pages/Unreferenced.island.svelte": `<script>INVALID JS(`,
 	})
-	// No Svelte compiler process is needed for a project with ordinary
-	// templates, even if it keeps an unused island file beside its pages.
-	p.Config.Runtime = p.Path("missing-runtime")
+	// The embedded parser works without npm packages. An unused island
+	// beside a page does not enter either compilation graph.
 	built, err := Build(p)
 	if err != nil {
 		t.Fatal(err)
@@ -120,6 +120,33 @@ func TestStaleTemplateImport(t *testing.T) {
 	})
 	if _, err := Build(p); err == nil || !strings.Contains(err.Error(), `update the import "../components/Card.shugo" to "../components/Card.svelte"`) {
 		t.Fatalf("expected a migration diagnostic, got %v", err)
+	}
+}
+
+func TestManifestDetectsParserChange(t *testing.T) {
+	p := templateProject(t, map[string]string{"src/pages/index.svelte": "<p>hello</p>"})
+	if _, err := Build(p); err != nil {
+		t.Fatal(err)
+	}
+	manifest := p.Path(project.Output, Sources)
+	data, err := os.ReadFile(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var previous sources
+	if err := json.Unmarshal(data, &previous); err != nil {
+		t.Fatal(err)
+	}
+	previous.Parser = ""
+	data, err = json.Marshal(previous)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(manifest, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := Changed(p); err != nil || !changed {
+		t.Fatalf("manifest before the parser migration: changed = %v, error = %v", changed, err)
 	}
 }
 

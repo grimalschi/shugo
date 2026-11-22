@@ -117,9 +117,9 @@ type (
 	}
 	// render is {@render snippet(…)}.
 	render struct {
-		expr     code // the snippet
-		args     code // what stands between the parentheses
-		optional bool // snippet?.(): nothing for a missing snippet
+		expr     code   // the snippet
+		args     []code // arguments from the Svelte AST
+		optional bool   // snippet?.(): nothing for a missing snippet
 	}
 	// dynamic is <svelte:element this={tag}>.
 	dynamic struct {
@@ -501,17 +501,15 @@ func (c context) inner() context {
 }
 
 func (l *lowerer) render(n *syntax.Tag) []node {
-	expr := strings.TrimSpace(n.Code.Text)
-	open := strings.IndexByte(expr, '(')
-	if open < 0 || !strings.HasSuffix(expr, ")") {
+	if n.Call == nil {
 		l.errorf(n.Start, "{@render} calls a snippet: {@render children()}, {@render row(item)}")
 		return nil
 	}
-	callee := strings.TrimSpace(expr[:open])
-	optional := strings.HasSuffix(callee, "?.")
-	callee = strings.TrimSuffix(callee, "?.")
-	start := n.Code.Start + strings.Index(n.Code.Text, expr)
-	return []node{render{expr: code{callee, start}, args: code{expr[open+1 : len(expr)-1], start + open + 1}, optional: optional}}
+	out := render{expr: code{n.Call.Callee.Text, n.Call.Callee.Start}, optional: n.Call.Optional}
+	for _, arg := range n.Call.Arguments {
+		out.args = append(out.args, code{arg.Text, arg.Start})
+	}
+	return []node{out}
 }
 
 // element lowers a tag: an element of HTML, a component or one of svelte:.

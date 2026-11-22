@@ -57,7 +57,7 @@ All fields are optional. Unknown field is an error.
 | --- | --- |
 | `eval.mjs`, `eval.mjs.map` | the entire JS project for the calculation stage and source map |
 | `site.json` | project program: templates and routes |
-| `sources.json` | from which files the project is collected, with each hash: `shugo update` understands that the project has changed |
+| `sources.json` | list of sources, their hashes and parser version to check before `shugo update` |
 | `assets/` | collected island styles and browser modules |
 | `catalog-*.sqlite` | published search images, if the site uses a directory |
 | `store.db` | storage |
@@ -68,6 +68,8 @@ Packages from npm to `eval.mjs` are not sewn: they are taken from the `node_modu
 ### Switching from `.shugo`
 
 Rename `.shugo` to `.svelte` and the former `.svelte` Islands files to `.island.svelte`. Update the import paths and run `shugo build` with the same database. The assembly will create new keys for records where the key includes a path to the template. Published records remain available until a new build is successfully published.
+
+When you switch from a previous parser, add `lang="ts"` in components with TypeScript. The first `shugo update` will reassemble the source code when you change the parser version in the manifest. The server can open previously published storage.
 
 ## Open questions
 

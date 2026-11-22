@@ -1,7 +1,6 @@
 import { createInterface } from 'node:readline';
 import { createRequire } from 'node:module';
 
-const wanted = '5.59.1';
 const { compile, VERSION } = await import('svelte/compiler').catch((error) => {
   throw new Error(`install svelte@${wanted} in this Shugo project to compile .island.svelte files`, { cause: error });
 });

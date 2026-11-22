@@ -42,11 +42,8 @@ type unit struct {
 }
 
 // compileFile compiles one file. id is the number its blocks carry.
-func compileFile(path, source string, id int, r role) (*unit, error) {
-	f, err := syntax.Parse(path, source)
-	if err != nil {
-		return nil, Errors{err.(*syntax.Error)}
-	}
+func compileFile(f *syntax.File, id int, r role) (*unit, error) {
+	path, source := f.Path, f.Source
 	var scripts []*script
 	for _, at := range []*syntax.Script{f.Module, f.Script} {
 		if at == nil || strings.TrimSpace(source[at.Code.Start:at.Code.End]) == "" {
@@ -109,18 +106,9 @@ func compileFile(path, source string, id int, r role) (*unit, error) {
 		file: f, role: r, module: m, parts: e.parts, styles: styles,
 		islands: islands,
 		outlets: l.outlets, provided: l.provided, paths: moduleScript.paths || instance.paths,
-		warnings: append(warningsOf(f), l.warnings...),
+		warnings: l.warnings,
 		own:      m.page || e.provides || readsPage(strings.Join(instance.lines, "\n")) || readsPage(strings.Join(moduleScript.lines, "\n")),
 	}, nil
-}
-
-// warningsOf returns the warnings the parser had about a file.
-func warningsOf(f *syntax.File) []string {
-	var out []string
-	for _, w := range f.Warnings {
-		out = append(out, w.Error())
-	}
-	return out
 }
 
 // renders tells whether a template shows a snippet anywhere: a layout must
