@@ -573,6 +573,25 @@ func (u *Update) KeptPages() (map[string]Kept, error) {
 	return u.each("SELECT path, route, hash, reads FROM page")
 }
 
+// SharedUsers calls visit with the name of every shared block and how many
+// users show it.
+func (u *Update) SharedUsers(visit func(name string, users int)) error {
+	rows, err := u.write.Query("SELECT shared.name, COUNT(shows.user) FROM shared LEFT JOIN shows ON shows.shared = shared.id GROUP BY shared.id")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		var users int
+		if err := rows.Scan(&name, &users); err != nil {
+			return err
+		}
+		visit(name, users)
+	}
+	return rows.Err()
+}
+
 // KeptShared returns what the store has of every shared block by its name.
 // It reads the whole table: see SharedNamed.
 func (u *Update) KeptShared() (map[string]Kept, error) {

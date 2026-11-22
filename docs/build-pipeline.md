@@ -46,7 +46,7 @@ The compiler does not parse JavaScript itself: it does esbuild, which is connect
 4. Go asks you to calculate pages and common blocks. JS computes them one by one, without waiting: code from `<script>`, template, components in it, layouts around the page; for a file not in HTML, the function of `GET` is its module. Each line from the database records which columns are read. JS asks about the new type of request Go, and he builds an index in the project database.
 5. JS sends Go along with readings via a separate channel. What prints the project code does not get into this channel.
 6. Go checks each record and compares it to the saved one. Differs — writes along with the storage version, no — skips. Common blocks that records are called for the first time, Go asks to calculate in the next round.
-7. At the end, Go removes shared blocks that no one else shows, finds pages where HTML has changed, and completes the transaction.
+7. At the end, Go removes shared blocks that no one else shows, finds pages where HTML has changed, and completes the transaction. If the entire site is calculated, it still weighs the general components: which 100 has common blocks or more, and each is shown on average in less than one and a half places, the assembly warns about this ([3](../spec/decisions.md#3-which-blocks-are-shared)).
 
 The first build goes the same way: everything is calculated.
 

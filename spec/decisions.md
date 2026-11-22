@@ -34,7 +34,7 @@ Decisions 1–27 taken during the assembly of the first version, 28–35 when sw
 
 ## 3. Which blocks are shared
 
-**Waiting for approval.** The author asked if the component is stored without dependencies once: yes — the answer is in [questions](open-questions.md).
+**Approved by the author of the project 22 November 2026 year** along with a warning when the common component shares almost nothing is [Components](components.md#decisions). Warning thresholds are selected without the author and wait for the statement: they are below, in the "Warning".
 
 **What's done.** The component is calculated and stored once if both conditions are met:
 - neither he nor the modules he imports take `page` or `paginate` from the `shugo` module (before 22 November 2026 years — did not read `Shugo.url` and `Shugo.params`);
@@ -45,6 +45,10 @@ The name of the shared block is composed of the file path and parameters: `compo
 **Why not.** The agent does not need to mark anything. The header without parameters is general by itself. The card to which the product number was transferred is common for all pages with this product; the card to which the object of the goods was transferred is considered on each page anew.
 
 **Price.** Components like `<Price value={n} />` It works, but storage is growing.
+
+**Warning.** When the entire site is computed, the build counts for each component of its shared blocks and the places where they are shown. If 100 blocks or more, and on average each is shown in less than one and a half places, a warning is printed with the advice to transfer an object to the component then it is calculated as part of the page. Layouts are not weighted: A layout that reads a page is stored for each page on purpose. With a regular data update, nothing counts: counting goes on all common blocks, about 14 ms on 10,000.
+
+**Why such thresholds?** Less 100 blocks are almost worthless, and on the developer's small data, the warning would be noise. One and a half places on average means that almost every set of parameters is different. In the store from the example, the product card is shown on average in 5 places, the icon is in 1375, so there is no warning there.
 
 ## 4. The key in `<g-for>` is not entered
 

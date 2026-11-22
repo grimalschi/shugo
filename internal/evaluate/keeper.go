@@ -4,12 +4,16 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"maps"
+	"path"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/grimalschi/shugo/internal/record"
 	"github.com/grimalschi/shugo/internal/render"
+	"github.com/grimalschi/shugo/internal/route"
 	"github.com/grimalschi/shugo/internal/skeleton"
 	"github.com/grimalschi/shugo/internal/store"
 )
@@ -557,6 +561,11 @@ func (k *keeper) finish() error {
 	if err := k.update.SetTotals(k.totals); err != nil {
 		return err
 	}
+	if k.all {
+		if err := k.weighSharing(); err != nil {
+			return err
+		}
+	}
 	if err := k.rendered(); err != nil {
 		return err
 	}
@@ -566,6 +575,53 @@ func (k *keeper) finish() error {
 		&r.Shared.AddedNames, &r.Shared.ChangedNames, &r.Shared.RemovedNames,
 	} {
 		sort.Strings(*names)
+	}
+	return nil
+}
+
+// A template is told that keeping it apart gains it nothing when it has at
+// least sharedMany shared blocks and they are shown, on average, in fewer
+// than sharedApart places: almost every set of its props is its own.
+const (
+	sharedMany  = 100
+	sharedApart = 1.5
+)
+
+// weighSharing warns of the templates whose shared blocks are hardly
+// shared. A component is kept apart, once for every set of its props, when
+// it reads nothing of the page and gets plain values; when the sets hardly
+// repeat, that gains nothing and costs every page a lookup. It is weighed
+// when the whole site is computed. Layouts are left out: one that reads the
+// page is kept for every page by design.
+func (k *keeper) weighSharing() error {
+	type use struct{ blocks, users int }
+	uses := map[string]*use{}
+	err := k.update.SharedUsers(func(name string, users int) {
+		// The name of a shared block is the path of its template, then
+		// its props in braces.
+		template, _, _ := strings.Cut(name, "{")
+		if path.Base(template) == route.Layout {
+			return
+		}
+		u := uses[template]
+		if u == nil {
+			u = &use{}
+			uses[template] = u
+		}
+		u.blocks++
+		u.users += users
+	})
+	if err != nil {
+		return err
+	}
+	for _, template := range slices.Sorted(maps.Keys(uses)) {
+		u := uses[template]
+		if average := float64(u.users) / float64(u.blocks); u.blocks >= sharedMany && average < sharedApart {
+			k.report.Warnings = append(k.report.Warnings, fmt.Sprintf("%s is kept apart as %d shared blocks, each shown in %.1f places on average. "+
+				"A component is kept apart once for every set of its props when it reads nothing of the page and gets plain values; "+
+				"here the sets hardly repeat, so that gains nothing and costs every page that shows it a lookup. "+
+				"Give it an object instead, such as the row it shows, and it is computed as a part of the page", template, u.blocks, average))
+		}
 	}
 	return nil
 }

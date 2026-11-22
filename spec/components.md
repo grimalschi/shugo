@@ -12,6 +12,7 @@ Component is the reusable part of the template: the cap, the product card, the f
 - Component call is the block boundary: the block is stored and updated separately. As it is arranged in [Blocks and point update](../docs/blocks.md).
 - Functions and components are connected by explicit imports.
 - The component to which the object was transferred for example, a base line is calculated on each page where it is shown. Remember it by the content of the parameter is not necessary: so the page would depend on all columns of the line. Who needs a common unit, he transmits the key (solution 22 November 2026 year).
+- **What a common component.** A component that does not take `page` and `paginate` from `shugo` neither itself nor through its imports and receives only simple values strings, numbers, `true`, `false`, `null` or nothing all of these are stored once per page. Snippets passed inside are not considered parameters. No markings needed. The build warns when the common component shares almost nothing: it has many entries, and each shows one place on average (22 solution of November 2026 year).
 
 ## Implemented, pending approval
 
@@ -119,6 +120,14 @@ The component is calculated and stored once, if it is independent of the page an
 
 Hence the reception: it is better to give the card the number of goods, and she will find the goods herself. Then the card is considered once, and when changing the goods, one record changes, no matter how many pages it shows.
 
+When the entire site is calculated after `shugo build` or code edits the build weighs the common components. If the component 100 has shared blocks or more and each is shown on average in less than one and a half places, it warns:
+
+```
+warning: src/components/Price.shugo is kept apart as 9000 shared blocks, each shown in 1.0 places on average. …
+```
+
+This happens with `<Price value={n} />`, when almost every page has its own number: there is no need to store such a block separately, and it is worth the extra search in the storage. The component to which the object was transferred, such as the string it shows, is calculated as part of the page. Layouts are not weighted: A layout that reads a page is stored for each page on purpose.
+
 ### Challenge yourself
 
 As in Svelte 5: the component imports itself.
@@ -161,4 +170,4 @@ As in Svelte 5: the component imports itself.
 ## Open questions
 
 - Checking the types of parameters during assembly: it is decided to do together with the `shugo check` command.
-- Warning when common blocks of one component become too many (`<Price value={n} />`).
+
