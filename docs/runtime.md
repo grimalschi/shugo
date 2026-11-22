@@ -32,7 +32,8 @@ There are no copies of the site in the server memory. For each request, it:
 4. It follows the framework of the template of the first block. The markup is copied, the next value is taken from the block tape and screens it on the place of expression.
 5. At the call point, the component moves to the next sub-block. The shared block reads from its own record, also by a single search; the block shown on the page twice is read once.
 6. In place, `{@render}` shows a snippet. The snippet with the parameters is the next nested block. The snippet without the parameters that the caller gave is blocks from the caller's record: the component block has written what blocks they are ([Storage](storage.md#tape)).
-7. Closes the transaction and returns the connection to the pool.
+7. Remembers where `<head>` ends, and blocks `<svelte:head>` of each template that showed. When the page is shown, shows them in order, from `<title>` is only the last, and puts `<head>` ([Blocks](blocks.md#page-head)) at the end.
+8. Closes the transaction and returns the connection to the pool.
 
 The entire page is assembled from one state: the update that ended in the middle does not affect it. The next request already sees it - without a storage survey and without re-reading.
 

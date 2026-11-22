@@ -25,7 +25,7 @@ The reasons are in [20](../spec/decisions.md#20-storage).
 | `shared` | number, name | recording the shared block, her hash that he read, version |
 | `shows` | the block and who shows it | who shows what common block: pages and other common blocks |
 | `gone` | address | missing pages and the version in which they disappeared: export deletes their files |
-| `route` | route number | that read the list of route pages and whether it distributes `props` |
+| `route` | route number | I read the list of the route pages. |
 | `shape`, `reads` | type of reading; view, search values and reader | reads Expanded for Search: Those who read the changed line are found ([Change tracking](change-tracking.md)) |
 | `plan` | question to the database | questions for which the project database already has an index |
 | `meta` | name | project framework, build name, storage version, its random name, the beginning of the history of changes, the results, to which line of the log data are taken into account |
@@ -41,6 +41,7 @@ Record - a list of blocks and the block number from which the display begins. Th
 - template: file number and part number (0 is the template itself, then its snippets and its `<svelte:head>`);
 - tape values;
 - blocks inside it in order of display: components and snippets with the parameters that he showed;
+- blocks that its template gave `<head>` pages in `<svelte:head>`, and separately - `<title>` blocks from there; the head of the page is collected by the server ([Blocks](blocks.md#page-head));
 - snippets without the parameters that the caller gave him: name and blocks. The blocks themselves lie in the same record as the caller's block.
 
 The block that stands in place of the shared block stores instead the common block number and the snippets that gave it that place. How the snippets get into the records is in [Blocks](blocks.md#snippets).
@@ -61,7 +62,6 @@ Tape - values of block expressions in a row. Before each value, its length is wr
 | `{#await}` | `1` — branch to `{:then}`, `2` — branch to `{:then}` |
 | `{#each}` | number of elements, then the value of each element; if there are no elements, the value of the branch `{:else}` |
 | `{@render snippet()}` | `-` is a snippet (`snippet?.()`); `c` and number are calculated here, this is the next nested block; `f`, a number and name, for example `f0:children`, is a snippet without parameters that gave the caller |
-| `<head>` end in layout | same as `{@render}`: `f0:head` or `-` |
 | `<svelte:element this={tag}>` | tag name; empty - no element. Then the values of its attributes and contents |
 | `<svelte:component this={…}>` | `1` — component shown, `0` — value not available |
 | component Call | nothing: Attached blocks are recorded in the record, not in the tape |

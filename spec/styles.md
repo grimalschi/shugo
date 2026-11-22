@@ -70,4 +70,4 @@ Classes are in both markup and code lines: `` class={`rounded-lg ${look}`} ``. A
 
 ## Open questions
 
-- Whether to put the component class only on the selected elements and throw out extra selectors, like Svelte. Then HTML will coincide with Svelte in this, and Shugo will warn about the selector that does not choose anything.
+- Whether to put the component class only on selected elements and throw out extra selectors, like Svelte. Delayed 22 November 2026 years; how to do it - in [the Compatibility Proposal](../docs/proposals/svelte-compatibility.md).

@@ -6,6 +6,7 @@ The document describes the code that is executed in the visitor's browser.
 
 - `<script>` inside the markup gets into the page as written; the curly brackets inside it are plain text (21 decision of November 2026 year).
 - The basis for the code in the browser is Svelte (21 solution November 2026 year). Later on it will appear islands Svelte.
+- Svelte Islands - after the data adapter (22 solution of November 2026 year).
 
 ## Implemented, pending approval
 
@@ -44,5 +45,5 @@ The value from the data is transferred to the script via the attribute:
 
 ## Open questions
 
-- Svelte Islands: a component that works in the browser - with the same syntax as the rest of the project. As noted by the island, what gets into the browser and how it receives data.
+- Svelte Islands: a component that works in the browser - with the same syntax as the rest of the project. As noted island, what gets into the browser and how it receives data. Take for them - after the data adapter.
 - Assembly of scripts for the browser via esbuild: TypeScript and imports, files with hash in the name, one instance per page. If the islands appear, the issue may be solved by them.

@@ -126,7 +126,7 @@ Variant 2:
 - The query constructor is small: see the restrictions above.
 - The first build is one and a half times longer: 620 thousand queries and 610 thousand reads in storage.
 - The route is listed as a whole when the entry has been added or deleted: 0.25 s on 100,000 pages.
-- The route that distributes `props` pages calculates all its pages when it changes.
+- The route that gives pages `props`When you change, it calculates all your pages. *22 November 2026 year `props` removed: route gives only addresses.*
 - Changed 3,900 lines; compiler not touched, new dependencies in Go no.
 
 ### 4 variant: second with dependency tree from first
@@ -485,5 +485,4 @@ Order of works:
 ## Open questions
 
 - What the query builder knows and what to add to it is [Data loading](../spec/data-loading.md). How external sources get into the database is [data Adapter Offer](proposals/data-adapter.md).
-- Do `props` from `getStaticPaths`: because of them, changing the line read by the route calculates all its pages - [Dynamic pages](../spec/dynamic-pages.md#open-questions).
 - Comparisons and `limit` in readings: the reading remembers only equality values, so the query with the comparison or with the window `limit` touches any row of the table that has changed the column used by it. Delayed while pages are asked for equality: [proposal](proposals/range-queries.md).

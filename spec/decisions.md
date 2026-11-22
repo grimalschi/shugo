@@ -88,9 +88,9 @@ On `Shugo.props`, `Shugo.slots` and `Astro.props` — error with a hint. The aut
 **Changed to 21 on November 2026 of the year, pending approval.** Layout is a component of Svelte: the page it shows `{@render children()}`, the title and meta tags the page writes in `<svelte:head>`; this is the author's decision. The rest awaits approval:
 
 - `+layout.shugo` in the folder wraps all pages of this folder and nested; the nested layout turns out to be **inside** external, as in SvelteKit, Next.js and PocketPages. Replaces only Nuxt, where the page has one named layout.
-- The root layout itself is written by `<html>`, `<head>` and `<body>`; in SvelteKit, they are written by `src/app.html`.
+- The root layout itself writes `<html>`, `<head>` and `<body>`; in SvelteKit they write `src/app.html` - [proposal](../docs/proposals/app-html.md).
 
-The author asked how it was done in SvelteThe answer in [questions](open-questions.md). Chain reset (`+page@.svelte` the City of London SvelteKit) postponed. Data from layout to page, how `load` the City of London `+layout.ts` SvelteKitNo, no, and no, no. The solution 22 November 2026 year. Layout that reads the address, [request to keep a separate record](../docs/proposals/layout-records.md).
+Reset Chain`+page@.svelte` the City of London SvelteKit) postponed. Resolved 22 November 2026 Year: The official name remains `+layout.shugo`; data from layout to page, how `load` the City of London `+layout.ts` SvelteKit, no and will not; the layout is stored separately from the pages - one entry for the entire site or, if reading the address, with its entry for each page ([Blocks](../docs/blocks.md#layouts)).
 
 ## 10. Routes
 
@@ -118,11 +118,11 @@ The author asked how it was done in SvelteThe answer in [questions](open-questio
 
 ## 11. `getStaticPaths`
 
-**Waiting for approval.** Delete Missing Page Approved 21 November 2026 years. `props` the City of `getStaticPaths` Open question: examples of both ways [questions](open-questions.md). `getStaticPaths` Now stands in `<script module>` ([29](#29-script-module-and-export)), and `props` the Page takes from `$props()`.
+**Changed and approved.** Deleted page approved by 21 on November 2026 year. 22 November 2026 is decided: the route gives only addresses, `{ params }`, and `props` and `paginate(list)` are removed; the address that the list returned twice is one page, as in SvelteKit. `getStaticPaths` is in `<script module>` ([29](#29-script-module-and-export)).
 
-**What's done.** As in Astro: function returns list of `{ params, props }`. `props` page receives through `$props()`, so the data of all pages can be obtained with one request. `paginate` comes to the function, it cuts the list into pages in the same way as in Astro. There is no separate step “one page data”: it is the data code of the page itself.
+**It was.** As in Astro: the function returned a list of `{ params, props }`, and all pages data could be retrieved with one request. But then it was impossible to calculate one page: its data was only in the list, and changing any read route of the line calculated all its pages.
 
-The page that is missing from the list is removed from the storage, and the server responds to its 404 address.
+**Like now.** Page takes its data by itself, by `Shugo.params`: a line change calculates the page of this line. `paginate` in `getStaticPaths` gets the number of elements, and `Shugo.paginate` in the page cuts the query or array.
 
 ## 12. What outputs `{expression}` and `attribute={expression}`
 
@@ -275,16 +275,16 @@ Export follows the previous one: in the folder, it leaves a list of which storag
 
 **Waiting for approval.**
 
-- The contents of `<svelte:head>` are at the end of `<head>`, which writes the page or the nearest layout, in the order of the document: external layouts, internal, page. `<title>` remains one - the last, and stands after the rest. So does Svelte.
+- The contents of `<svelte:head>` fall at the end of `<head>`, which writes a page or one of its layouts, in the order of the document: external layouts, internal, page. `<title>` is the last one, and stands after the rest. This is what Svelte does. Since November 22 2026, the head assembles the server when it shows the page: `<svelte:head>` blocks lie in the record of the template that wrote them ([Blocks](../docs/blocks.md#page-head)).
 - `<svelte:head>` works only in the page and in the layout. In the usual component, this is an error: the common component, which is calculated once per entire site, does not have a page in which `<head>` to write. Allow it in components that are not common, in [the Compatibility Proposal](../docs/proposals/svelte-compatibility.md).
 
 ## 31. Snippets and common blocks
 
-The **Waiting for approval.** Snippet without parameters, written inside the component tag (`children` too), is calculated where written and stored in the caller's record. The component to which such snippets were transferred remains a common block. Therefore, a layout that does not read the address is calculated once per entire site, although each page passes its `children` to it. The snippet with parameters is calculated where it is shown by `{@render}`, - [Blocks](../docs/blocks.md).
+The **Waiting for approval.** Snippet without parameters, written inside the component tag (`children` too), is calculated where written and stored in the caller's record. The component to which such snippets were transferred remains a common block. Therefore, the layout is stored by its own record, although each page passes it its `children`. The snippet with parameters is calculated where it is shown by `{@render}`, - [Blocks](../docs/blocks.md).
 
 ## 32. Style class on all component elements
 
-**Waiting for approval**; do as in Svelte — in [the Compatibility Proposal](../docs/proposals/svelte-compatibility.md). Svelte puts the class `svelte-…` only on the elements that selects any selector, and throws selectors that do not choose anything. Shugo puts the class on all components of the component and leaves all selectors.
+**Deferred** is the author of the project 22 November 2026; how to do as Svelte — in [the Compatibility Proposal](../docs/proposals/svelte-compatibility.md). Svelte puts the `svelte-…` class only on items that some selector chooses, and throws selectors that do not choose anything. Shugo puts the class on all components and leaves all selectors.
 
 **Why not.** To select elements like Svelte, you need to parse selectors and match with a template, including blocks and dynamic classes, a noticeable part of the Svelte compiler. The page view does not change from this. The question is whether to do exactly in [Styles](styles.md#open-questions).
 
