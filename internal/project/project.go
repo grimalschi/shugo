@@ -47,6 +47,31 @@ func IsModule(path string) bool {
 	return strings.HasSuffix(path, ".ts") || strings.HasSuffix(path, ".js")
 }
 
+// PackageOf tells which package of npm a file belongs to, by its path
+// under the last node_modules in it: the name of the package, "date-fns" or
+// "@scope/name", and the folder of the package. Nothing for a file of the
+// project itself.
+func PackageOf(path string) (name, folder string) {
+	path = filepath.ToSlash(path)
+	at := strings.LastIndex(path, "node_modules/")
+	if at < 0 || (at > 0 && path[at-1] != '/') {
+		return "", ""
+	}
+	rest := path[at+len("node_modules/"):]
+	parts := strings.SplitN(rest, "/", 3)
+	name = parts[0]
+	if strings.HasPrefix(name, "@") {
+		if len(parts) < 2 {
+			return "", ""
+		}
+		name += "/" + parts[1]
+	}
+	if name == "" || name == "." || name == ".." {
+		return "", ""
+	}
+	return name, path[:at+len("node_modules/")+len(name)]
+}
+
 // Config is what shugo.json holds. Every field may be left out.
 type Config struct {
 	// Site is the address the site is published at: "https://example.com".

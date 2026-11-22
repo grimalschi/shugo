@@ -11,12 +11,36 @@
 // Runs on Bun and on Node.
 
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { getAllContexts } from "svelte";
 import { render } from "svelte/server";
 
 import { during, open, Query, Reads } from "shugo:query";
 import { buildChannel } from "shugo:wire";
+
+// The packages of npm are bundled with the code of the site, and a package
+// written for CommonJS reaches for require, __filename and __dirname, which
+// an ES module of Node does not have. It gets those of the bundle. This
+// module is imported first, so they are there before any package runs.
+globalThis.require ??= createRequire(import.meta.url);
+globalThis.__filename ??= fileURLToPath(import.meta.url);
+globalThis.__dirname ??= dirname(globalThis.__filename);
+
+// A failure while the code of the site loads, before run is called: a
+// module or a package that throws at its top. The Go side hears of it as of
+// any failure, with its place in the files of the project.
+process.on("uncaughtException", (error) => {
+  const wire = buildChannel();
+  if (wire === null) {
+    console.error(error);
+  } else {
+    wire.send("E", failure(error));
+  }
+  process.exit(1);
+});
 
 // The data database of the project, once it is open; null if it has none.
 let data = null;

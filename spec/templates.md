@@ -23,6 +23,7 @@ The template — page, model or component — is a component Svelte 5 in file `.
 - Data and page address are taken by import from the module `shugo`: `import { query, paginate, page } from "shugo"`; `page` How to `page` the City of `$app/state` the City of London SvelteKitGlobal facility `Shugo` No, and the transition time with two records is also (decision 22 November 2026 years).
 - `search` for islands is also from the `shugo` module; recording `shugo:search` is a hint error (22 solution November 2026 year).
 - `<svelte:options runes={false} />` — error with a hint: templates are written on runes (the decision of the author of the project 22 November 2026 year).
+- `await` at the top level of `<script module>` is a bug: it is forbidden to intentionally see where the wait is needed and track data that goes past the base (22 project author's decision of November 2026 year).
 
 ## Implemented, pending approval
 
@@ -74,7 +75,7 @@ The template — page, model or component — is a component Svelte 5 in file `.
   | `search(table, { … })` | search by table for islands, see [Page scripts](scripts.md#search-by-table) |
 
   The query belongs to what is being calculated: a page or a common component. Outside of computing for example, at the top level of a module it is an error with an explanation. The component that takes `page` or `paginate`, either by itself or through imported modules, is calculated for each page separately, see. [Components](components.md#shared-components). `Shugo.query` entry is an error with a hint of what to import.
-- `await` no: the page is calculated without waiting, because `query` responds immediately. `await` in `<script>` or in markup is an error with this explanation. What is expected and done once for example, the preparation of the code highlighting is expected at the top level of `<script module>` or the module from `src/lib/`.
+- `await` no: the page is calculated without waiting, because `query` responds immediately. `await` in `<script>`, in markup, on the top level of `<script module>` and the site module is an error with this explanation. While you can not wait anywhere in the code that calculates the pages: so you can see where the wait will be needed, most often it is data past the database. Island - code for the browser: in the functions and at the top of the modules that only he imports, you can wait.
 - For TypeScript, write `<script lang="ts">` or `<script module lang="ts">`: Svelte recognizes TypeScript by this attribute and erases the types without checking them. `enum` and other designs that TypeScript turns into code are the error Svelte: instead of `enum`, it is the object `as const`. In `.ts` modules, the types are removed by esbuild, and there `enum` works. Type of module imported via `type`: `import type { Product } from "@/lib/shop"` or `import { price, type Product } from "@/lib/shop"`. Svelte does not know that `Product` is the type, and leaves the usual import in the code, and the assembly stops: `No matching export`.
 - `@/` in import path means folder `src/`.
 - Rune modules — `counter.svelte.ts`, `state.svelte.js` — compile Svelte, as in SvelteKit: imported as regular modules, `import { counter } from "@/lib/counter.svelte"`. On the server `$state` in them — just a value; on the island they work in the browser.
@@ -198,7 +199,7 @@ Errors and warnings Svelte are displayed in its text, with reference to the expl
 | `export let title`, `$:`, `$$props` (Svelte 4) | error Svelte: need `let { title } = $props()`, instead of `$:` `$derived` or `$effect` |
 | `<svelte:options runes={false} />` | error Shugo: templates are written on runes |
 | `getStaticPaths` in `<script>` | error Shugo: its place is `<script module>` |
-| `await` in `<script>` and in markup | error with explanation Shugo: page is calculated without waiting |
+| `await` in `<script>`, in markup, at the top level of `<script module>` and site module | error with explanation Shugo: page is calculated without waiting |
 | `<html>`, `<head>`, `<body>`, `<!doctype>` | error Shugo: this is written in the shell of `src/site.html`, see [Layouts](layouts.md#site-shell) |
 | import `+layout.svelte` | error Shugo: the layout wraps the pages of its folder, no one imports it; general markup is in the component |
 | `{cond && <b>…</b>}`, `{list.map(x => <li>…</li>)}` | error Shugo: markup is not worth inside `{…}`, need `{#if}` and `{#each}` |
@@ -208,6 +209,10 @@ Errors and warnings Svelte are displayed in its text, with reference to the expl
 | import File `.shugo` | error with prompt to replace `.shugo` with `.svelte` |
 | `svelte/legacy` and other Svelte modules not listed in the list of [above](#file-structure) | error with the list of modules that are available |
 | component `.svelte` from the package npm or a package of such components | Shugo error: package components are not compiled yet, the component is copied to `src/components/` |
+| package that is not in `node_modules` | error Shugo at the point of import with installation command: `date-fns is not installed: bun add date-fns` |
+| package that needs another version of Svelte | error Shugo with both versions |
+| package with native `.node` code or other file not on JavaScript | build error with prompt Shugo take package on one JavaScript |
+| a package that reads a file next to its code | error when calculating with the prompt Shugo: package code collected in `_build/eval.mjs` |
 | type of module without `type`: `import { Product } from "@/lib/shop"` | `No matching export` assembly error with Shugo prompt: type imported via `import type` |
 | A component in place that endlessly shows itself | error Shugo with component chain: `src/components/Tree.svelte shows itself without end: … → …` |
 | island with content or directives, inside `<svelte:head>` or `<select>`; `request:` at tag that is not island | errors Shugo, see [Tag island](scripts.md#tag-island) |

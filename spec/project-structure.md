@@ -11,7 +11,9 @@ The document describes what folders and files are in the project on Shugo and wh
 - The document around the pages — `<html>`, `<head>`, `<body>` — is written in `src/site.html` (22 decision of November 2026 year), see [Layouts](layouts.md#site-shell).
 - `sitemap.xml`, `robots.txt` and other files not in HTML write `.ts` modules among pages (22 solution November 2026 years), see [Routing](routing.md#files-not-in-html).
 - Svelte is sewn into Shugo by one version - the compiler, server and browser parts: the project does not need to put the `svelte` package, neither for pages nor for islands (the decision of the author of the project 22 November 2026 year).
-- `.svelte` components from npm packages are not compiled yet: their import is an assembly error with a prompt to copy the component to `src/components/`. Compile them with Svelte sewn when component libraries are needed (22 project author’s decision of November 2026 year).
+- `.svelte` components from npm packages are not compiled yet: their import is an assembly error with a prompt to copy the component to `src/components/`. Compile them with Svelte sewn when component libraries are needed (22 project author’s decision of November 2026 year). *This is about the pages: the island is compiled entirely by the sewn Svelte, and the package component works in it now (checked 22 November 2026 year).*
+- npm packages are put by the project package manager, `bun add` or `npm install`, in `node_modules`, as in any project on JavaScript; Shugo only reads them. The `svelte` package from `node_modules` is never taken. The package that does not exist, and the package that needs another version of Svelte, are build errors with a hint (the decision of the author of the project 22 November 2026 year).
+- Packages that import the page code are collected with it in `_build/eval.mjs`As in the islands: Svelte in them - sewn, each file in the assembly - source with hash, missing package - build error at the place of import, package with native code - error with a hint (project author's decision) 22 November 2026 years).
 
 ## Implemented, pending approval
 
@@ -31,7 +33,8 @@ _build/ result of the framework; git is not included
 ```
 
 - Only the `src/pages/` folder is required. Without `src/site.html`, the framework shell is taken.
-- Svelte is not required: Svelte 5.59.1, a compiler, server and browser parts — Shugo brings with it, for pages and islands. Imports of `svelte` and `svelte/…` in the project code always take it even if `node_modules` contains another Svelte.
+- Svelte is not required: Svelte 5.59.1, a compiler, server and browser parts — Shugo brings with it, for the pages and islands. Imports of `svelte` and `svelte/…` and in the project code, and always take it in packages, even if `node_modules` contains another Svelte.
+- The npm package is placed by `bun add date-fns` or `npm install date-fns` and imported by name. What the assembly can't take, she says at the import site: the package is not – `date-fns is not installed: bun add date-fns`; the command is on the project blocking file; the package needs another version of Svelte on its `peerDependencies` or `dependencies` – an error with both versions; the package does not bring JavaScript, such as the `.node` home code – an error with a clue to take the package into one JavaScript. The package that reads the file next to its code doesn't find it -- the package code now in `_build/` -- and falls when you compute with a clue.
 - `src/components/`, `src/lib/` and `src/styles/` are agreements: framework finds files by import, not by folder names.
 - `.svelte` files are only searched in `src/`, except for `node_modules` and hidden folders. Importing a `.svelte` file on the way out of `src/` is an assembly error with a hint of where it belongs. The `.svelte` component of the npm package and the package of such components are a build error with a hint: the components of the Shugo packages do not compile yet, the component is copied to `src/components/`.
 - Islands can lie next to pages in `src/pages/`. The address is set by the page using the island. For ordinary components, the `_components/` folder will be suitable next to the page.
@@ -70,7 +73,7 @@ All fields are optional. Unknown field is an error.
 | `store.db` | storage |
 | `dist/` | site in files after `shugo export` |
 
-Packages from npm to `eval.mjs` are not sewn: they are taken from the `node_modules` project at launch. Therefore, `package.json` and packet manager lock files — `bun.lock`, `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock` — are considered the sources of the project: after their change, `shugo update` collects the project again. The server part of Svelte is not a project package: its Shugo brings and sews into `eval.mjs`.
+Packages from npm that import page code are collected in `eval.mjs` with it: when calculating `node_modules` is not readable. Each package file included in the build is a source with a hash, like a project file: after updating the package, `shugo update` collects the project again. `package.json` and packet manager lock files — `bun.lock`, `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock` — are also sources: they can be seen updating what is taken from `node_modules` past the build, for example Tailwind. The server part of Svelte is not a project package: its Shugo brings and sews into `eval.mjs`.
 
 ### Switching from `.shugo`
 
@@ -80,4 +83,6 @@ Rename `.shugo` templates to `.svelte` and fix the import paths: the build finds
 
 - `shugo init` is a new project with an example, `src/site.html`, `tsconfig.json`, `shugo` module types for the editor and a memo for the agent: it is decided to do (21 solution November 2026 years), has not yet been done.
 - `$lib` from SvelteKit is on par with `@/`.
+- Tailwind is a project package. Whether to embed it in Shugo, like Svelte, or leave it as a package.
+- Whether the `shugo add` team needs a shortcut to the project package manager or the agent has enough memo.
 - Settings in `shugo.json` that are not available yet: languages, pictures, build folder, site address in the subfolder (`base`, it is decided to do).

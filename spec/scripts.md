@@ -48,7 +48,7 @@ The value from the data is transferred to the script via the attribute:
 
 ## Svelte islands
 
-The page imports the island by name and passes it data as parameters. The file can contain standard runes, actions and Svelte handlers. The island compiles the same Svelte as the pages sewn into Shugo along with its browser part: you don’t need to put anything. The island, like any template, is written on runes.
+The page imports the island by name and passes it data as parameters. The file can contain standard runes, actions and Svelte handlers. The island compiles the same Svelte as the pages sewn into Shugo along with its browser part: you don’t need to put anything. The island, like any template, is written on runes. The island is a browser code: it can wait (`await`) in the functions and at the top of the modules that only it imports, and it runs the components of Svelte from the npm packages, which are an error on the pages.
 
 ```svelte
 <script>

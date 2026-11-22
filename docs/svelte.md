@@ -11,7 +11,8 @@ Shugo templates — pages, layouts and components, `.svelte` files are component
 | Component Styles: `svelte-…` class, rewritten selectors, unused selectors | Svelte, `css: "external"` | styles assemble in file Shugo, `internal/compile/styles.go` |
 | Types of TypeScript | `<script lang="ts">` erases Svelte, `enum` and other things that TypeScript turns into code — error Svelte; in modules `.ts` — esbuild | `internal/svelte/compile.mjs`, `internal/compile/build.go` |
 | Your checks: shell, islands, tags of the first syntax Shugo, slots Svelte 4, `runes={false}`; hint when `{…}` is worth marking | Shugo, by tree, which gave the same call to the compiler, and by its error | `internal/svelte/compile.mjs` |
-| Import layout, components from npm packages, tip about type without `type` | Shugo, in assembler | `internal/compile/build.go` |
+| Import layout, tip about type without `type` | Shugo, in assembler | `internal/compile/build.go` |
+| Packages npm: `svelte` in them - sewn, package not installed, need another version of Svelte, components in the page code, not JavaScript | Shugo, in assembler, at the point of import | `internal/compile/packages.go` |
 | A component that endlessly shows itself | Shugo, when calculating: error with file chain | `internal/jsrt/runtime.js` |
 | What component is the common block and what renders on the spot | Shugo: when assembled - by template tree and imports, with each display - by parameters, in `component()` wrapper around each component | `internal/svelte/compile.mjs`, `internal/compile/build.go`, `internal/jsrt/runtime.js` |
 | Common block labels, snippets of common blocks in separate renders, cutting HTML into blocks, `<title>` separately from the head | Shugo | `internal/jsrt/runtime.js` |

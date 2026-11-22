@@ -84,3 +84,21 @@ func templateProject(t *testing.T, names ...string) *Project {
 	}
 	return p
 }
+
+func TestPackageOf(t *testing.T) {
+	for _, test := range []struct{ path, name, folder string }{
+		{"node_modules/date-fns/format.js", "date-fns", "node_modules/date-fns"},
+		{"node_modules/@scope/ui/dist/index.js", "@scope/ui", "node_modules/@scope/ui"},
+		{"node_modules/a/node_modules/b/lib/b.js", "b", "node_modules/a/node_modules/b"},
+		{"../node_modules/shared/index.js", "shared", "../node_modules/shared"},
+		{"/home/site/node_modules/x/x.js", "x", "/home/site/node_modules/x"},
+		{"src/lib/shop.ts", "", ""},
+		{"src/my_node_modules/x/x.js", "", ""},
+		{"node_modules/@scope", "", ""},
+	} {
+		name, folder := PackageOf(test.path)
+		if name != test.name || folder != test.folder {
+			t.Errorf("PackageOf(%q) = %q, %q; want %q, %q", test.path, name, folder, test.name, test.folder)
+		}
+	}
+}
