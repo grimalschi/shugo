@@ -33,7 +33,7 @@ const { title, price } = query("products").where({ slug }).first()
 let { children } = $props()
 import Header from "../components/Header.shugo"
 </script>
-<html><body><Header /><main>{@render children()}</main></body></html>
+<Header /><main>{@render children()}</main>
 -- src/pages/index.shugo --
 <script>
 import { query } from "shugo"
@@ -108,7 +108,7 @@ func TestUpdates(t *testing.T) {
 	if n := strings.Count(s.printed.String(), "header computed"); n != 1 {
 		t.Errorf("the script of the header ran %d times for 5 pages", n)
 	}
-	expect(t, s.page("/products/jug"), `<html><body><header>Clay and wood · 3 products</header><main><h1>Jug</h1><p>10</p><a href="/products/cup">Cup — 5</a><a href="/products/tray">Tray — 7</a></main></body></html>`)
+	expect(t, s.page("/products/jug"), `<header>Clay and wood · 3 products</header><main><h1>Jug</h1><p>10</p><a href="/products/cup">Cup — 5</a><a href="/products/tray">Tray — 7</a></main>`)
 
 	t.Run("nothing changed", func(t *testing.T) {
 		r := s.update()
@@ -181,7 +181,7 @@ func TestUpdates(t *testing.T) {
 		expectChanges(t, s.update(),
 			evaluate.Changes{Added: 1, Changed: 1, AddedNames: []string{"/products/pot"}, ChangedNames: []string{"/"}},
 			evaluate.Changes{Added: 1, Changed: 1, AddedNames: []string{cardPot}, ChangedNames: []string{header}})
-		expect(t, s.page("/products/pot"), `<html><body><header>Handmade · 3 products</header><main><h1>Pot</h1><p>12</p></main></body></html>`)
+		expect(t, s.page("/products/pot"), `<header>Handmade · 3 products</header><main><h1>Pot</h1><p>12</p></main>`)
 	})
 
 	// After a template changes every record is written anew.

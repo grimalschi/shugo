@@ -9,6 +9,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/grimalschi/shugo/internal/project"
 	"github.com/grimalschi/shugo/internal/skeleton"
 	"github.com/grimalschi/shugo/internal/syntax"
 )
@@ -125,8 +126,6 @@ type (
 	// what stands in <svelte:head> under "head", and its <title> under
 	// "title".
 	provide struct{ piece }
-	// mount is a place where the framework adds markup of its own.
-	mount struct{ name string }
 	// selected says whether an <option> is the chosen one of its <select>.
 	selected struct {
 		value  value
@@ -223,12 +222,11 @@ type lowerer struct {
 	// hash is the class that scopes the <style> of the component to its own
 	// elements; empty when it has none.
 	hash string
-	// head is where the first <svelte:head> of the template stands, -1 for
-	// none; writesHead tells that the template writes the <head> of a page.
-	head       int
-	writesHead bool
 	// selects counts the <select> elements met, to name their variables.
 	selects int
+	// toldShell tells that the template was told it writes the document
+	// around the pages: once is enough.
+	toldShell bool
 }
 
 func (l *lowerer) errorf(offset int, format string, arguments ...any) {
@@ -403,9 +401,6 @@ func (l *lowerer) hoisted(n syntax.Node, ctx context) []node {
 			l.errorf(n.Start, "<svelte:head> works in pages and in +layout files for now")
 			return nil
 		}
-		if l.head < 0 {
-			l.head = n.Start
-		}
 		return []node{provide{piece{"head", l.fragment(n.Children, context{head: true})}}}
 	}
 	return nil
@@ -419,7 +414,8 @@ func (l *lowerer) node(n syntax.Node, ctx context) []node {
 		}
 		return []node{markup{escapeText(n.Raw)}}
 	case *syntax.Doctype:
-		return []node{markup{n.Raw}}
+		l.writesShell(n.Start, n.Raw)
+		return nil
 	case *syntax.Tag:
 		switch n.Kind {
 		case syntax.Expression:
@@ -582,6 +578,16 @@ func (l *lowerer) value(a syntax.Attr) value {
 }
 
 // html5 lowers an element of HTML.
+// writesShell tells, once for a template, that it writes the document
+// around the pages, which src/site.html writes.
+func (l *lowerer) writesShell(at int, what string) {
+	if l.toldShell {
+		return
+	}
+	l.toldShell = true
+	l.errorf(at, "%s is written in %s, the shell of every page: a layout starts with what goes into the <body>, and a page gives the <head> what it needs with <svelte:head>", what, project.Shell)
+}
+
 func (l *lowerer) html5(e *syntax.Element, ctx context) []node {
 	name := e.Name
 	svg := ctx.svg || name == "svg"
@@ -594,8 +600,14 @@ func (l *lowerer) html5(e *syntax.Element, ctx context) []node {
 		ctx.head = false
 		return []node{provide{piece{"title", l.html5(e, ctx)}}}
 	}
-	if name == "head" && l.role != component {
-		l.writesHead = true
+	switch name {
+	case "html", "head", "body":
+		if !svg {
+			// What is inside is looked at still, so that one mistake is
+			// told once: the {@render children()} of a layout is in there.
+			l.writesShell(e.Start, "<"+name+">")
+			return l.fragment(e.Children, ctx)
+		}
 	}
 	if !svg {
 		l.placed(name, e.Start, ctx.ancestors)
@@ -640,11 +652,6 @@ func (l *lowerer) html5(e *syntax.Element, ctx context) []node {
 		out = append(out, l.fragment(e.Children, inner)...)
 	default:
 		out = append(out, l.fragment(e.Children, inner)...)
-	}
-	// The end of the head gets what the templates of the page give it, then
-	// the framework's own markup; the end of the body that markup alone.
-	if name == "head" || name == "body" {
-		out = append(out, mount{name})
 	}
 	out = append(out, markup{"</" + name + ">"})
 	return append(prelude, out...)

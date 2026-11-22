@@ -15,8 +15,9 @@ import (
 // or this one an older format: 2 is the skeleton of Svelte templates, with
 // snippets and <svelte:element>; 3 writes addresses as they are, as Svelte
 // does, and has no operation of its own for them; 4 puts the head of a page
-// together where the <head> ends, and layouts show no head of their own.
-const Version = 4
+// together where the <head> ends, and layouts show no head of their own; 5
+// puts every page into the shell of src/site.html.
+const Version = 5
 
 // Site is a whole compiled project.
 type Site struct {
@@ -24,8 +25,11 @@ type Site struct {
 	// Files are the templates. A block names its template by position here.
 	Files  []File  `json:"files"`
 	Routes []Route `json:"routes"`
-	// Mounts is markup the framework adds to pages by name, such as the
-	// links to style sheets under "head".
+	// Shell is the document every page stands in.
+	Shell Shell `json:"shell"`
+	// Mounts is markup the framework adds to pages by name: under "head" at
+	// the end of the head, as the links to style sheets, and under "body" at
+	// the end of the body.
 	Mounts map[string]string `json:"mounts,omitempty"`
 	// Origin is the address of the site: "https://example.com".
 	Origin string `json:"origin,omitempty"`
@@ -76,16 +80,57 @@ const (
 	Call    Kind = 'c' // show the next component the block calls
 	Render  Kind = 'n' // show a snippet: given by a caller, or a block of its own
 	Element Kind = 'e' // write an element whose tag is a value: <svelte:element>
-	Mount   Kind = 'm' // write markup the framework adds
 )
 
-// Op is one step of showing a template. Every step except Markup, Call and
-// Mount takes the next value the block has computed.
+// Shell is the document every page stands in, src/site.html: its markup
+// before the place of the head, %shugo.head%, between it and the place of
+// the body, %shugo.body%, and after that.
+type Shell struct {
+	Before string `json:"before"`
+	Middle string `json:"middle"`
+	After  string `json:"after"`
+}
+
+// The places of a shell.
+const (
+	HeadPlace = "%shugo.head%"
+	BodyPlace = "%shugo.body%"
+)
+
+// DefaultShell is the shell of a project without src/site.html.
+const DefaultShell = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    %shugo.head%
+  </head>
+  <body>
+    %shugo.body%
+  </body>
+</html>
+`
+
+// ParseShell cuts the text of a shell at its two places.
+func ParseShell(text string) (Shell, error) {
+	for _, p := range []struct{ place, what string }{{HeadPlace, "what the templates give the <head>"}, {BodyPlace, "the page"}} {
+		if n := strings.Count(text, p.place); n != 1 {
+			return Shell{}, fmt.Errorf("%s must stand once, where %s goes, and stands %d times", p.place, p.what, n)
+		}
+	}
+	before, rest, _ := strings.Cut(text, HeadPlace)
+	middle, after, found := strings.Cut(rest, BodyPlace)
+	if !found {
+		return Shell{}, fmt.Errorf("%s must stand before %s", HeadPlace, BodyPlace)
+	}
+	return Shell{Before: before, Middle: middle, After: after}, nil
+}
+
+// Op is one step of showing a template. Every step except Markup and Call
+// takes the next value the block has computed.
 type Op struct {
 	Kind Kind
-	// Text is the markup of Markup and the name of Attr and Mount. Mount
-	// "head" stands where the <head> ends: what the templates give the head
-	// of the page goes there, before the framework's own markup.
+	// Text is the markup of Markup and the name of Attr.
 	Text string
 	// Bodies are the branches of If; the body of For and what it shows for
 	// no items; the attributes and the content of Element.
@@ -147,7 +192,7 @@ func (o *Op) UnmarshalJSON(data []byte) error {
 // hasText tells whether the operation is written with its text.
 func (o Op) hasText() bool {
 	switch o.Kind {
-	case Markup, Attr, Mount:
+	case Markup, Attr:
 		return true
 	}
 	return false
@@ -157,7 +202,7 @@ func (o Op) hasText() bool {
 func (o Op) check() error {
 	want := 0
 	switch o.Kind {
-	case Markup, Text, HTML, Attr, Spread, Call, Render, Mount:
+	case Markup, Text, HTML, Attr, Spread, Call, Render:
 	case For:
 		want = min(max(1, len(o.Bodies)), 2)
 	case Element:

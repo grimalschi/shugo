@@ -21,12 +21,14 @@ import (
 const small = `
 -- shugo.json --
 {"redirects": {"/old": "/about"}}
+-- src/site.html --
+<html><head><title>T</title>%shugo.head%</head><body>%shugo.body%</body></html>
 -- src/pages/+layout.shugo --
 <script>
 let { children } = $props()
 import "../styles/main.css"
 </script>
-<html><head><title>T</title></head><body>{@render children()}</body></html>
+{@render children()}
 -- src/pages/index.shugo --
 <h1>home</h1>
 -- src/pages/about.shugo --

@@ -5,15 +5,18 @@ import (
 	"testing"
 
 	"github.com/grimalschi/shugo/internal/compile"
+	"github.com/grimalschi/shugo/internal/skeleton"
 )
 
 const layouts = `
+-- src/site.html --
+<html><head><meta charset="utf-8">%shugo.head%</head><body>%shugo.body%</body></html>
 -- src/pages/+layout.shugo --
 <script>
 let { children } = $props()
 </script>
 <svelte:head><title>Shop</title><meta name="generator" content="shugo"></svelte:head>
-<html><head><meta charset="utf-8"></head><body>{@render children()}</body></html>
+{@render children()}
 -- src/pages/index.shugo --
 <svelte:head><title>Home</title></svelte:head>
 <h1>home</h1>
@@ -44,14 +47,15 @@ let { children } = $props()
 func TestLayouts(t *testing.T) {
 	s := newSite(t, layouts)
 	report := s.build()
-	// What <svelte:head> gives goes to the end of the <head>, in the order
-	// of the document, the outer layouts first; of the titles the page keeps
-	// the last, its own, and it stands after the rest: so Svelte does.
-	expect(t, s.page("/"), `<html><head><meta charset="utf-8"/><meta name="generator" content="shugo"/><title>Home</title></head><body><h1>home</h1></body></html>`)
-	expect(t, s.page("/about"), `<html><head><meta charset="utf-8"/><meta name="generator" content="shugo"/><title>Shop</title></head><body><h1>about</h1></body></html>`)
-	expect(t, s.page("/docs"), `<html><head><meta charset="utf-8"/><meta name="generator" content="shugo"/><title>Shop</title></head><body><nav>docs</nav><main><p>docs home</p></main></body></html>`)
+	// What <svelte:head> gives goes to the place %shugo.head% of the shell,
+	// in the order of the document, the outer layouts first; of the titles
+	// the page keeps the last, its own, and it stands after the rest: so
+	// Svelte does.
+	expect(t, s.page("/"), `<html><head><meta charset="utf-8"><meta name="generator" content="shugo"/><title>Home</title></head><body><h1>home</h1></body></html>`)
+	expect(t, s.page("/about"), `<html><head><meta charset="utf-8"><meta name="generator" content="shugo"/><title>Shop</title></head><body><h1>about</h1></body></html>`)
+	expect(t, s.page("/docs"), `<html><head><meta charset="utf-8"><meta name="generator" content="shugo"/><title>Shop</title></head><body><nav>docs</nav><main><p>docs home</p></main></body></html>`)
 	// A folder in parentheses adds a layout and no part of the address.
-	expect(t, s.page("/docs/start"), `<html><head><meta charset="utf-8"/><meta name="generator" content="shugo"/><link rel="next" href="/docs"/><meta name="x" content="y"/><title>Shop</title></head><body><nav>docs</nav><main><aside>guides</aside><p>start</p></main></body></html>`)
+	expect(t, s.page("/docs/start"), `<html><head><meta charset="utf-8"><meta name="generator" content="shugo"/><link rel="next" href="/docs"/><meta name="x" content="y"/><title>Shop</title></head><body><nav>docs</nav><main><aside>guides</aside><p>start</p></main></body></html>`)
 	if s.has("/_drafts/secret") || s.has("/blog/_card") || s.has("/docs/(guides)/start") {
 		t.Error("a file that is not a page got an address")
 	}
@@ -237,13 +241,76 @@ const Shown = Countdown
 	expect(t, s.page("/"), "<b>1</b><b>0</b> <p><div>block</div></p>")
 }
 
-// A page without layouts that writes its own <head> takes its own
-// <svelte:head> there.
-func TestPageWithItsOwnHead(t *testing.T) {
+// Every page stands in the shell of src/site.html, copied as it is: the
+// page goes to the place %shugo.body%, what its templates give the head to
+// %shugo.head%. A project without the file gets the shell of the framework.
+func TestShell(t *testing.T) {
 	s := newSite(t, `
+-- src/site.html --
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8">%shugo.head%</head>
+<body class="site">%shugo.body%</body>
+</html>
 -- src/pages/index.shugo --
 <svelte:head><title>One</title><meta name="a" content="b"><title>Two</title></svelte:head>
-<html><head><meta charset="utf-8"></head><body><p>x</p></body></html>`)
+<p>x</p>`)
 	s.build()
-	expect(t, s.page("/"), `<html><head><meta charset="utf-8"/><meta name="a" content="b"/><title>Two</title></head><body><p>x</p></body></html>`)
+	expect(t, s.page("/"), "<!doctype html>\n<html lang=\"en\">\n<head><meta charset=\"utf-8\"><meta name=\"a\" content=\"b\"/><title>Two</title></head>\n<body class=\"site\"><p>x</p></body>\n</html>")
+
+	// The shell is a source of the project: a change of it is a change of
+	// the compiled project.
+	s.write(`
+-- src/site.html --
+<html><head>%shugo.head%</head><body><div id="app">%shugo.body%</div></body></html>`)
+	if changed, err := compile.Changed(s.project()); err != nil || !changed {
+		t.Errorf("a new shell is not seen: %v, %v", changed, err)
+	}
+	s.build()
+	expect(t, s.page("/"), `<html><head><meta name="a" content="b"/><title>Two</title></head><body><div id="app"><p>x</p></div></body></html>`)
+
+	s.remove("src/site.html")
+	s.build()
+	expect(t, s.page("/"), strings.NewReplacer(skeleton.HeadPlace, `<meta name="a" content="b"/><title>Two</title>`, skeleton.BodyPlace, "<p>x</p>").Replace(skeleton.DefaultShell))
+}
+
+// The document around the pages is written once, in src/site.html: a
+// template that writes it is told where it goes.
+func TestShellMistakes(t *testing.T) {
+	for _, c := range []struct{ name, files, want string }{
+		{"a layout that writes the document", `
+-- src/pages/+layout.shugo --
+<script>
+let { children } = $props()
+</script>
+<html><body>{@render children()}</body></html>
+-- src/pages/index.shugo --
+<p>x</p>`, "src/pages/+layout.shugo:4:1: <html> is written in src/site.html, the shell of every page"},
+		{"a page that writes a head", `
+-- src/pages/index.shugo --
+<head><title>x</title></head><p>x</p>`, "<head> is written in src/site.html"},
+		{"a doctype", `
+-- src/pages/index.shugo --
+<!doctype html><p>x</p>`, "<!doctype html> is written in src/site.html"},
+		{"a shell without the place of the page", `
+-- src/site.html --
+<html><head>%shugo.head%</head><body></body></html>
+-- src/pages/index.shugo --
+<p>x</p>`, "src/site.html: %shugo.body% must stand once, where the page goes, and stands 0 times"},
+		{"places the other way round", `
+-- src/site.html --
+%shugo.body%%shugo.head%
+-- src/pages/index.shugo --
+<p>x</p>`, "src/site.html: %shugo.head% must stand before %shugo.body%"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := newSite(t, c.files).tryBuild()
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Errorf("got %v, want %q", err, c.want)
+			}
+			if err != nil && strings.Contains(err.Error(), "\n") {
+				t.Errorf("one mistake is told more than once:\n%v", err)
+			}
+		})
+	}
 }

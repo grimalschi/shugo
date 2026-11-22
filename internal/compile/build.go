@@ -65,7 +65,11 @@ func Build(p *project.Project) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	site := &skeleton.Site{Origin: p.Config.Site, Redirects: p.Config.Redirects, Routes: routes}
+	shell, err := readShell(p)
+	if err != nil {
+		return nil, err
+	}
+	site := &skeleton.Site{Origin: p.Config.Site, Redirects: p.Config.Redirects, Routes: routes, Shell: shell}
 	if site.Origin == "" {
 		site.Origin = "http://localhost"
 	}
@@ -140,10 +144,28 @@ type sources struct {
 // sources hashes the files of the project that the compiled result depends on.
 func (b *builder) sources(bundled []string) sources {
 	out := sources{Templates: b.paths, Files: map[string]string{}}
-	for _, name := range append(bundled, project.Settings) {
+	for _, name := range append(bundled, project.Settings, project.Shell) {
 		out.Files[name] = hashFile(b.project.Path(filepath.FromSlash(name)))
 	}
 	return out
+}
+
+// readShell reads the shell every page stands in: src/site.html, or the
+// one of the framework.
+func readShell(p *project.Project) (skeleton.Shell, error) {
+	text := skeleton.DefaultShell
+	data, err := os.ReadFile(p.Path(filepath.FromSlash(project.Shell)))
+	switch {
+	case err == nil:
+		text = string(data)
+	case !errors.Is(err, fs.ErrNotExist):
+		return skeleton.Shell{}, err
+	}
+	shell, err := skeleton.ParseShell(text)
+	if err != nil {
+		return skeleton.Shell{}, fmt.Errorf("%s: %w", project.Shell, err)
+	}
+	return shell, nil
 }
 
 // hashFile returns a hash of the content of a file, or nothing if it cannot
@@ -307,7 +329,6 @@ func (b *builder) routes() ([]skeleton.Route, error) {
 			}
 			dir += "/" + name
 		}
-		errs = append(errs, b.provided(u, r.Layouts)...)
 		segments[id] = parsed
 		out = append(out, r)
 	}
@@ -316,28 +337,6 @@ func (b *builder) routes() ([]skeleton.Route, error) {
 	}
 	route.Sort(out, func(r skeleton.Route) []route.Segment { return segments[r.File] })
 	return out, nil
-}
-
-// provided checks that what a page and its layouts give the head of the
-// page in <svelte:head> has a <head> to go to: one that the page or one of
-// its layouts writes.
-func (b *builder) provided(page *unit, layouts []int) Errors {
-	units := []*unit{page}
-	for _, layout := range layouts {
-		units = append(units, b.units[layout])
-	}
-	for _, u := range units {
-		if u.writesHead {
-			return nil
-		}
-	}
-	var errs Errors
-	for _, u := range units {
-		if u.head >= 0 {
-			errs = append(errs, u.file.Errorf(u.head, `<svelte:head> gives markup to the <head> of the page, and neither the page nor a layout around it writes a <head>`))
-		}
-	}
-	return errs
 }
 
 // bundled is what the bundler made of the modules of all files.

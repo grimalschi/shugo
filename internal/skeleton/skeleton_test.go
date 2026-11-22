@@ -20,7 +20,6 @@ func TestSiteRoundTrip(t *testing.T) {
 				{Kind: Render},
 				{Kind: For, Bodies: [][]Op{{{Kind: Text}}, {{Kind: Markup, Text: "none"}}}},
 				{Kind: Element, Bodies: [][]Op{{{Kind: Attr, Text: "id"}}, {{Kind: Text}}}},
-				{Kind: Mount, Text: "head"},
 			},
 			{},
 		}}},
@@ -50,18 +49,36 @@ func TestSiteRoundTrip(t *testing.T) {
 
 func TestDecodeRejects(t *testing.T) {
 	cases := []string{
-		`{"version":3,"files":[]}`,
-		`{"version":4,"files":[{"path":"a","parts":[[["x"]]]}]}`,
-		`{"version":4,"files":[{"path":"a","parts":[[["u","href"]]]}]}`,
-		`{"version":4,"files":[{"path":"a","parts":[[["f"]]]}]}`,
-		`{"version":4,"files":[{"path":"a","parts":[[["r"]]]}]}`,
-		`{"version":4,"files":[{"path":"a","parts":[[["t",[]]]]}]}`,
-		`{"version":4,"files":[{"path":"a","parts":[[[]]]}]}`,
-		`{"version":4,"files":[{"path":"a","parts":[[["n","last"]]]}]}`,
+		`{"version":4,"files":[]}`,
+		`{"version":5,"files":[{"path":"a","parts":[[["x"]]]}]}`,
+		`{"version":5,"files":[{"path":"a","parts":[[["u","href"]]]}]}`,
+		`{"version":5,"files":[{"path":"a","parts":[[["f"]]]}]}`,
+		`{"version":5,"files":[{"path":"a","parts":[[["r"]]]}]}`,
+		`{"version":5,"files":[{"path":"a","parts":[[["t",[]]]]}]}`,
+		`{"version":5,"files":[{"path":"a","parts":[[[]]]}]}`,
+		`{"version":5,"files":[{"path":"a","parts":[[["n","last"]]]}]}`,
 	}
 	for _, data := range cases {
 		if _, err := Decode([]byte(data)); err == nil {
 			t.Errorf("%s: no error", data)
+		}
+	}
+}
+
+func TestShell(t *testing.T) {
+	shell, err := ParseShell("<html><head>" + HeadPlace + "</head><body>" + BodyPlace + "</body></html>")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (Shell{"<html><head>", "</head><body>", "</body></html>"}); shell != want {
+		t.Errorf("got %+v", shell)
+	}
+	if _, err := ParseShell(DefaultShell); err != nil {
+		t.Errorf("the default shell: %v", err)
+	}
+	for _, text := range []string{"", HeadPlace, BodyPlace + HeadPlace, HeadPlace + BodyPlace + BodyPlace} {
+		if _, err := ParseShell(text); err == nil {
+			t.Errorf("%q: no error", text)
 		}
 	}
 }

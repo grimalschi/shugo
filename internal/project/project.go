@@ -15,11 +15,12 @@ import (
 
 // The folders and files every project has by the same names.
 const (
-	Settings = "shugo.json" // the settings of the project
-	Source   = "src"        // the code of the site: pages, components, modules, styles
-	Pages    = "src/pages"  // the pages and their layouts
-	Public   = "public"     // files that go to the site as they are
-	Output   = "_build"     // everything the framework writes
+	Settings = "shugo.json"    // the settings of the project
+	Source   = "src"           // the code of the site: pages, components, modules, styles
+	Pages    = "src/pages"     // the pages and their layouts
+	Shell    = "src/site.html" // the document every page stands in
+	Public   = "public"        // files that go to the site as they are
+	Output   = "_build"        // everything the framework writes
 )
 
 // Config is what shugo.json holds. Every field may be left out.

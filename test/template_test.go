@@ -270,14 +270,17 @@ export { default as Title } from "./Title.shugo"
 
 func TestStyles(t *testing.T) {
 	s := newSite(t, `
+-- src/site.html --
+<html><head><title>T</title>%shugo.head%</head><body>%shugo.body%</body></html>
 -- src/pages/+layout.shugo --
 <script>
 import "../styles/main.css"
 let { children } = $props()
 </script>
-<html><head><title>T</title></head><body>{@render children()}</body></html>
+<main>{@render children()}</main>
 <style>
-  body { margin: 0 }
+  main { margin: 0 }
+  :global(body) { padding: 0 }
 </style>
 -- src/pages/index.shugo --
 <script>
@@ -312,7 +315,7 @@ html { font-family: sans-serif }
 	}
 	link := page[strings.Index(page, `href="/_assets/`)+len(`href="/_assets/`):]
 	sheet := s.read("_build/assets/" + link[:strings.Index(link, `"`)])
-	for _, want := range []string{"font-family:sans-serif", `.logo{background:url("/_assets/logo.`, ".card." + card + "{color:green}", "body.svelte-"} {
+	for _, want := range []string{"font-family:sans-serif", `.logo{background:url("/_assets/logo.`, ".card." + card + "{color:green}", "main.svelte-", "body{padding:0}"} {
 		if !strings.Contains(sheet, want) {
 			t.Errorf("the style sheet has no %q: %s", want, sheet)
 		}

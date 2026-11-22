@@ -84,8 +84,6 @@ func (e *emitter) nodes(list []node) []skeleton.Op {
 			e.m.add("$$.provide(%s, %d, ($$) => {", quote(n.name), len(e.parts))
 			e.part(n.body)
 			e.m.add("});")
-		case mount:
-			ops = append(ops, skeleton.Op{Kind: skeleton.Mount, Text: n.name})
 		}
 	}
 	return ops

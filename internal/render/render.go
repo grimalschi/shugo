@@ -28,12 +28,17 @@ const (
 	maxOutput = 64 << 20 // bytes of one page
 )
 
-// Page appends the HTML of a page to dst.
+// Page appends the HTML of a page to dst: the page in its layouts, inside
+// the shell of the site.
 func Page(dst []byte, site *skeleton.Site, rec *record.Record, src Source) ([]byte, error) {
-	r := renderer{site: site, src: src, out: dst, start: len(dst), headAt: -1}
+	r := renderer{site: site, src: src, out: append(dst, site.Shell.Before...), start: len(dst)}
+	r.headAt = len(r.out)
+	r.out = append(r.out, site.Shell.Middle...)
 	if err := r.show(rec, rec.Top, nil); err != nil {
 		return dst, err
 	}
+	r.out = append(r.out, site.Mounts["body"]...)
+	r.out = append(r.out, site.Shell.After...)
 	if err := r.putHead(); err != nil {
 		return dst, err
 	}
@@ -62,7 +67,7 @@ type renderer struct {
 	dry bool
 	// head is what the templates of the page give its <head>, in the order
 	// they are shown, and title the last <title> among it. headAt is where
-	// the <head> of the page ends in out; -1 until it is met.
+	// it goes in out: the place of the head in the shell.
 	head   []given
 	title  *given
 	headAt int
@@ -141,14 +146,11 @@ func (r *renderer) show(rec *record.Record, at int, from *frame) error {
 	return r.run(ops, &c)
 }
 
-// putHead puts what the templates of the page give its head at the end of
-// the <head>, as Svelte does: in the order the templates were shown, and of
-// the titles the last one, after the rest. A page without a <head> has
-// nowhere to put it.
+// putHead puts what the templates of the page give its head into the place
+// of the head in the shell, as Svelte does: in the order the templates were
+// shown, and of the titles the last one, after the rest. The framework's own
+// markup for the head follows.
 func (r *renderer) putHead() error {
-	if r.headAt < 0 {
-		return nil
-	}
 	body := len(r.out)
 	// A component inside <svelte:head> may give the head too: the list grows
 	// while it is shown.
@@ -164,6 +166,7 @@ func (r *renderer) putHead() error {
 			return err
 		}
 	}
+	r.out = append(r.out, r.site.Mounts["head"]...)
 	if len(r.out)-r.start > maxOutput {
 		return errors.New("the page is too large")
 	}
@@ -344,12 +347,6 @@ func (r *renderer) ops(ops []skeleton.Op, c *cursor) error {
 				return err
 			}
 			r.out = append(append(append(r.out, "</"...), tag...), '>')
-
-		case skeleton.Mount:
-			if op.Text == "head" && r.headAt < 0 {
-				r.headAt = len(r.out)
-			}
-			r.out = append(r.out, r.site.Mounts[op.Text]...)
 
 		default:
 			return fmt.Errorf("unknown operation %q", rune(op.Kind))

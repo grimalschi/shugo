@@ -20,10 +20,6 @@ type unit struct {
 	// parts are the operations of the template and of every snippet in it.
 	parts  [][]skeleton.Op
 	styles []string // the <style> of the file, scoped to its elements
-	// head is where the first <svelte:head> of the file stands, -1 for none;
-	// writesHead tells that the file writes the <head> of a page.
-	head       int
-	writesHead bool
 	// paths tells that the file exports getStaticPaths.
 	paths bool
 	// warnings are what is written in a way Svelte allows but warns about.
@@ -53,7 +49,7 @@ func compileFile(path, source string, id int, r role) (*unit, error) {
 	}
 	moduleScript, instance := scripts[0], scripts[1]
 
-	l := &lowerer{file: f, role: r, head: -1}
+	l := &lowerer{file: f, role: r}
 	var styles []string
 	if f.Style != nil {
 		css := source[f.Style.Code.Start:f.Style.Code.End]
@@ -90,7 +86,7 @@ func compileFile(path, source string, id int, r role) (*unit, error) {
 
 	return &unit{
 		file: f, role: r, module: m, parts: e.parts, styles: styles,
-		head: l.head, writesHead: l.writesHead, paths: moduleScript.paths || instance.paths,
+		paths:    moduleScript.paths || instance.paths,
 		warnings: append(warningsOf(f), l.warnings...),
 		own:      importsPage(strings.Join(instance.lines, "\n")) || importsPage(strings.Join(moduleScript.lines, "\n")),
 	}, nil

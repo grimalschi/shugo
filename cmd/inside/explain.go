@@ -275,12 +275,6 @@ func (w *walker) ops(ops []skeleton.Op, depth int) error {
 					return err
 				}
 			}
-		case skeleton.Mount:
-			what := fmt.Sprintf("framework insertion point «%s» on every page", op.Text)
-			if op.Text == "head" {
-				what = "end of <head>: the server inserts the page templates' <svelte:head> content in render order, keeps the last <title>, then appends its own markup"
-			}
-			w.add(depth, "m", what, w.site.Mounts[op.Text], 0)
 		}
 	}
 	return nil
@@ -317,7 +311,7 @@ func firstByte(s string) byte {
 var opNames = map[string]string{
 	"r": "markup", "t": "text", "h": "rendered HTML", "a": "attribute",
 	"s": "spread attributes", "i": "conditional", "f": "loop", "c": "component", "n": "{@render}",
-	"e": "<svelte:element>", "m": "insertion point",
+	"e": "<svelte:element>",
 }
 
 // opLine is one operation of a skeleton as the report lists it.

@@ -44,7 +44,7 @@ console.log("header")
 let { children } = $props()
 import Header from "../components/Header.shugo"
 </script>
-<html><body><Header /><main>{@render children()}</main></body></html>
+<Header /><main>{@render children()}</main>
 -- src/pages/index.shugo --
 <script>
 import { query } from "shugo"
@@ -202,8 +202,8 @@ func TestDataDatabase(t *testing.T) {
 		t.Fatalf("the first build: %+v, data %+v", first, first.Data)
 	}
 	s.computed()
-	expect(t, s.page("/products/jug"), `<html><body><header>Clay · 4 products</header><main><h1>Jug</h1><p>10 · Kitchen</p> <ul><li>Solid</li></ul> <nav><a href="/products/cup">Cup — 5</a><a href="/products/tray">Tray — 7</a></nav></main></body></html>`)
-	expect(t, s.page("/categories/c1"), `<html><body><header>Clay · 4 products</header><main><h1>Kitchen: 3, page 1 of 2</h1> <a href="/products/jug">Jug — 10</a><a href="/products/cup">Cup — 5</a> <a href="/categories/c1/2">next</a></main></body></html>`)
+	expect(t, s.page("/products/jug"), `<header>Clay · 4 products</header><main><h1>Jug</h1><p>10 · Kitchen</p> <ul><li>Solid</li></ul> <nav><a href="/products/cup">Cup — 5</a><a href="/products/tray">Tray — 7</a></nav></main>`)
+	expect(t, s.page("/categories/c1"), `<header>Clay · 4 products</header><main><h1>Kitchen: 3, page 1 of 2</h1> <a href="/products/jug">Jug — 10</a><a href="/products/cup">Cup — 5</a> <a href="/categories/c1/2">next</a></main>`)
 
 	t.Run("nothing changes", func(t *testing.T) {
 		report := s.update()
@@ -674,6 +674,8 @@ func TestLayoutKeptForEveryPage(t *testing.T) {
 	s := newSite(t, `
 -- shugo.json --
 {"data": "data/shop.db"}
+-- src/site.html --
+<html><head><meta charset="utf-8">%shugo.head%</head><body>%shugo.body%</body></html>
 -- src/pages/+layout.shugo --
 <script>
 import { query, page } from "shugo"
@@ -682,7 +684,7 @@ const menu = query("categories").order("id").all()
 console.log("layout " + page.url.pathname)
 </script>
 <svelte:head><title>Shop</title><meta name="menu" content={menu.length}></svelte:head>
-<html><head><meta charset="utf-8"></head><body><nav>{#each menu as item}<a href="/{item.id}" class:active={page.url.pathname === "/" + item.id}>{item.title}</a>{/each}</nav>{@render children()}</body></html>
+<nav>{#each menu as item}<a href="/{item.id}" class:active={page.url.pathname === "/" + item.id}>{item.title}</a>{/each}</nav>{@render children()}
 -- src/pages/[id].shugo --
 <script module>
 import { query, page } from "shugo"
@@ -702,14 +704,14 @@ console.log("page " + category.id)
 		t.Errorf("shared blocks: %d, want a layout for each of the 2 pages", report.Shared.Total)
 	}
 	s.computed()
-	expect(t, s.page("/c1"), `<html><head><meta charset="utf-8"/><meta name="menu" content="2"/><title>Kitchen</title></head><body><nav><a href="/c1" class="active">Kitchen</a><a href="/c2">Garden</a></nav><h1>Kitchen: 3</h1></body></html>`)
+	expect(t, s.page("/c1"), `<html><head><meta charset="utf-8"><meta name="menu" content="2"/><title>Kitchen</title></head><body><nav><a href="/c1" class="active">Kitchen</a><a href="/c2">Garden</a></nav><h1>Kitchen: 3</h1></body></html>`)
 
 	// The menu: every layout, no page.
 	s.changed(`UPDATE categories SET title = 'Yard' WHERE id = 'c2'`, "layout /c1", "layout /c2", "page c2")
-	expect(t, s.page("/c1"), `<html><head><meta charset="utf-8"/><meta name="menu" content="2"/><title>Kitchen</title></head><body><nav><a href="/c1" class="active">Kitchen</a><a href="/c2">Yard</a></nav><h1>Kitchen: 3</h1></body></html>`)
+	expect(t, s.page("/c1"), `<html><head><meta charset="utf-8"><meta name="menu" content="2"/><title>Kitchen</title></head><body><nav><a href="/c1" class="active">Kitchen</a><a href="/c2">Yard</a></nav><h1>Kitchen: 3</h1></body></html>`)
 	// A page: the page, not its layout.
 	s.changed(`UPDATE products SET category = 'c2' WHERE id = 'p3'`, "page c1", "page c2")
-	expect(t, s.page("/c2"), `<html><head><meta charset="utf-8"/><meta name="menu" content="2"/><title>Yard</title></head><body><nav><a href="/c1">Kitchen</a><a href="/c2" class="active">Yard</a></nav><h1>Yard: 2</h1></body></html>`)
+	expect(t, s.page("/c2"), `<html><head><meta charset="utf-8"><meta name="menu" content="2"/><title>Yard</title></head><body><nav><a href="/c1">Kitchen</a><a href="/c2" class="active">Yard</a></nav><h1>Yard: 2</h1></body></html>`)
 	// A page that goes takes its layout with it. The change reached that
 	// layout too, and it is computed like any shared block the change
 	// reaches: that nothing shows it any more is known only at the end.
