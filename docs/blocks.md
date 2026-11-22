@@ -13,24 +13,26 @@ The document describes what the page is built of and how the change in data reac
 - Everything is stored in disassembled form. The page does not contain its components, but calls them: the rantime collects it from layouts and components. The speed is obtained not because the rantime is written in Go, but because the whole structure and all the data are at hand.
 - The general block for the entire site, such as a header, does not touch the page entries when changing.
 - If the fifth item is removed from the list in 100,000, the remaining 99,995 is not considered changed.
+- The layout is stored separately from the pages: the layout change does not touch the page entries, the page change is a layout. The layout that reads the page address is stored with its own entry on each page (the decision of the author of the project 22 November 2026, according to his opinion).
 
 ## Implemented, pending approval
 
 ### Page records
 
 - **Block** is one display of one template: a page, layout, component or snippet.
-- **Tape** is the value of block expressions in the order of the template. There is no markup in the tape: it lies in the project program, one for all template impressions.
-- **Page Record** is a list of its blocks. The block has its template, its tape, the blocks inside it and the snippets that the caller gave it.
-- **Shared block** is a component that shows the same thing on any page. It has its own record under the name; pages link to that name.
+- **Tape** — block expression values in the order of the template. There is no markup in the tape: it lies in the project framework, one for all template impressions.
+- **Page Record** is a list of its blocks. The block has its template, its tape, the blocks inside it, the snippets that the caller gave it, and the blocks that its template gave `<head>` pages in `<svelte:head>`.
+- **Shared block** is a component that shows the same thing on any page. It has its own record under the name; pages link to this name. Layout is always a separate record: common to the entire site or its own to each page.
 
 Product page in the store from [examples/catalog](../examples/catalog/README.md):
 
 ```
 page entry /products/jug
-└─ src/pages/+layout.shugo{|children,head} layout common: one to all pages with <svelte:head>
-   ├─ end of <head>: snippet head in page entry: her <title>
+└─ layout src/pages/+layout.shugo{|children} general: one for the whole site
+   ├─ end of <head> here server puts <title> pages
    ├─ Header general: one for the whole site
    ├─ {@render children()}: page block in page entry
+   │  ├─ <svelte:head>: block <title> in page entry
    │  ├─ feed page "Kuvshin", "$2,400", ...
    │  ├─ Badge{text: "from the oven"} common: one for all such icons
    │  ├─ Variant  3 own tapes, in page record
@@ -38,7 +40,30 @@ page entry /products/jug
    └─ Footer general: one for the whole site
 ```
 
-The layout doesn’t read anything about the page, so it’s also a shared block. The page gives him two snippets: `children` is herself, and `head` is what is written in her `<svelte:head>`. Snippet names stand in the common block name after `|`: a page without `<svelte:head>` shows another common block, `src/pages/+layout.shugo{|children}`. The snippets themselves are calculated in the page and lie in its record; in the layout entry, in their place, there is a reference to "the snippet `children` of the one who showed me".
+The layout doesn’t read anything about the page, so it’s one-on-one for the entire site. The page gives him a snippet of `children` herself. Snippet names are in the common block name after `|`. The snippet itself is calculated in the page and lies in its entry; in the layout entry, in its place, there is a link "snippet `children` of the one who showed me".
+
+### Layouts
+
+The layout never lies in the page entry. The page stores a link to it and its snippets, and the layout is its own entry:
+
+- **A model that does not read a page**, — one entry for the entire site: `src/pages/+layout.shugo{|children}`.
+- **A model that reads the address** — `Shugo.url` or `Shugo.params`, for example, to highlight the current menu item, is its own entry on each page. Its name is the route and address of the page: `src/pages/+layout.shugo{"@path":"/c1","@route":0|children}`. The name of the record itself is calculated: from the address are obtained `Shugo.url` and `Shugo.params`, like a page.
+
+Readings of the layout are recorded on his record, readings of the page are recorded on it. Therefore:
+
+| What has changed | What is calculated |
+| --- | --- |
+| what reads the layout without an address, for example, a menu | one recording layout |
+| what to read with address | layout entry for each page; the pages themselves are not |
+| what the page reads | page entry; layout - no |
+
+A page that is no longer there takes its own layout record with it: no one shows it anymore. Checks this `TestLayoutKeptForEveryPage`.
+
+### Page head
+
+What the template writes in `<svelte:head>` is its own writing blocks: the template block has a head block list and a separate list of `<title>` blocks. The layout, which is calculated once on the entire site, stores its head blocks at home, the page - at home.
+
+The head of the page is collected by the server. As it shows a page, it remembers the head blocks of each template it met, in order: the outer layout is before the inner one, the layout before the page is the document order, as in Svelte. When a page is shown, it shows the blocks it remembers, and of `<title>`, only the last one, after the rest, and puts all this at the end of `<head>` before referring to styles. This end marks in the frame the same place where framework adds its markup.
 
 Tapes lie inside records, common blocks are separate records under their own name. The reasons are in [2](../spec/decisions.md#2-values-are-stored-by-content-and-shared-blocks-by-name) and [3](../spec/decisions.md#3-which-blocks-are-shared).
 

@@ -222,7 +222,7 @@ Props come from `$props()`, not from `Shugo`.
 - A page gives its title and meta tags with `<svelte:head>` at its top level. They go to the end of the `<head>`, in the order of the document: outer layouts first, the page last. A page has one `<title>`, the last one, as in Svelte, so the layout above gives a default and a page replaces it.
 - `<svelte:head>` works in pages and layouts, not in other components.
 - Pages do not import or call layouts.
-- A layout that reads neither `Shugo.url` nor `Shugo.params` is computed once for the whole site. A layout whose menu highlights the current page reads the address, so it is computed for every page, and a change of what it reads computes every page. Keep what is the same on every page in a component without props, such as `<Menu />` that reads the menu itself, and highlight the current item in the browser.
+- A layout is kept apart from its pages: once for the whole site when it reads nothing of the page, once for every page when it reads `Shugo.url` or `Shugo.params`, for example to highlight the current menu item. A change of what the layout reads computes the layout and not the pages; a change of a page computes the page and not its layout.
 
 ## Addresses
 
@@ -259,13 +259,13 @@ A file with a parameter in its name must say which pages there are. `getStaticPa
 <h1>{product.title}</h1>
 ```
 
-`getStaticPaths` runs once; `<script>` runs for every item it returned. `Shugo.params` holds the parameters as they stand in the address of the page: always text, and only the ones the file name has.
+`getStaticPaths` runs once; `<script>` runs for every address it returned. `Shugo.params` holds the parameters as they stand in the address of the page: always text, and only the ones the file name has.
 
-**Return `params` alone and let every page ask for its own data.** Then one product that changes has one page computed. `getStaticPaths` may also hand rows to its pages, `{ params, props: { product } }`, read with `let { product } = $props()`; but then only the route knows what a page shows, and when anything of a row it read changes, all its pages are computed again.
+**`getStaticPaths` returns addresses alone, `{ params }`, and every page asks for its own data by them.** Then one product that changes has one page computed. An item with `props` is an error. An address returned twice is one page, as in SvelteKit: no need to remove repeats.
 
 The list of addresses is the one place where `select` pays: of a hundred thousand rows it fetches one column instead of all.
 
-For lists split into pages name the file `[...page].shugo`. `paginate` in `getStaticPaths` takes the number of items and says which pages there are; `Shugo.paginate` in the page takes a query and returns the items of that page:
+For lists split into pages name the file `[...page].shugo`. `paginate` in `getStaticPaths` takes the number of items and says which pages there are; `Shugo.paginate` in the page takes a query, or an array, and returns the items of that page:
 
 ```svelte
 <!-- src/pages/blog/[...page].shugo gives /blog, /blog/2, /blog/3 … -->

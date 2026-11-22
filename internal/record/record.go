@@ -40,6 +40,10 @@ type Block struct {
 	Values     Tape  // the values of its expressions, in the order of the template
 	Children   []int // the components and snippets it shows, in the order it reaches them
 	Snippets   []Snippet
+	// Head are the blocks of what the template gives the <head> of the page
+	// in its <svelte:head>, and Title the blocks of the <title> elements in
+	// it, in the order of the template.
+	Head, Title []int
 }
 
 // Tape is the values of a block one after another: each is its length in
@@ -110,6 +114,8 @@ func (r *Record) Encode() []byte {
 			out = binary.AppendUvarint(out, uint64(len(b.Values)))
 			out = append(out, b.Values...)
 			out = appendList(out, b.Children)
+			out = appendList(out, b.Head)
+			out = appendList(out, b.Title)
 		}
 		out = binary.AppendUvarint(out, uint64(len(b.Snippets)))
 		for _, snippet := range b.Snippets {
@@ -152,6 +158,8 @@ func Decode(data []byte) (*Record, error) {
 				b.Values = values
 			}
 			b.Children = d.list(count)
+			b.Head = d.list(count)
+			b.Title = d.list(count)
 		}
 		if snippets := d.number(); snippets > 0 && snippets <= len(d.data) {
 			b.Snippets = make([]Snippet, snippets)
@@ -235,12 +243,15 @@ func (r *Record) Check() error {
 		}
 		seen[at] = true
 		left--
-		for _, child := range r.Blocks[at].Children {
-			if err := visit(child); err != nil {
-				return err
+		b := &r.Blocks[at]
+		for _, list := range [][]int{b.Head, b.Title, b.Children} {
+			for _, child := range list {
+				if err := visit(child); err != nil {
+					return err
+				}
 			}
 		}
-		for _, snippet := range r.Blocks[at].Snippets {
+		for _, snippet := range b.Snippets {
 			for _, given := range snippet.Blocks {
 				if err := visit(given); err != nil {
 					return err

@@ -21,7 +21,7 @@ Below is how the stages are arranged now: in the final version ([Change tracking
 
 | Stage | Who performs | What gets | What gives |
 | --- | --- | --- | --- |
-| 1. Compilation | Go | project Sources from `src/` | `_build/eval.mjs` — the entire JS project in one file; `_build/site.json` — project program; `_build/assets/` — styles |
+| 1. Compilation | Go | project Sources from `src/` | `_build/eval.mjs` — all JS project in one file; `_build/site.json` — project framework; `_build/assets/` — styles |
 | 2. Calculation | Bun or Node running Go | `eval.mjs`, project database and its log | changes in `_build/store.db` and report on them |
 | 3. Rantime | Go | `store.db`, `public/`, `assets/` | HTML pages on request or changed page files |
 
@@ -29,7 +29,7 @@ Below is how the stages are arranged now: in the final version ([Change tracking
 
 1. Finds all `.shugo` files in `src/` and parses each as a component of Svelte 5: `<script module>`, `<script>`, `<style>` and markup. What Svelte does not accept is a bug with a place in the file; what Svelte warns about, for example, the tag that the browser would rearrange if there was a block between the tags is a warning.
 2. For each file, JS is written. Imports, exports and all `<script module>` — `getStaticPaths` — remain at the top of the module. `<script>` and template become one normal function, without `async`, which is performed for each display of the component. The template is a regular `if` and `for` and the calls that record the meaning of each expression. `$props()` gives the parameters and snippers that the caller gave.
-3. For each file, a program writes: a template markup with places where values are substituted. Separate parts in it are the snippets of the template and its `<svelte:head>`. The spaces between tags are removed and compressed here, according to the rules of Svelte. There are no expressions or project code in the program.
+3. For each file, a framework writes: a template markup with places where values are substituted. Separate parts in it are the snippets of the template and its `<svelte:head>`. The spaces between tags are removed and compressed here, according to the rules of Svelte. There are no expressions or project code in the frame.
 4. Collects all modules, their imported code and the framework library in one file. TypeScript types are erased here. `@/` in imports means `src/`.
 5. Collects styles into one file with a hash in the name: `<style>` components, rewritten to act only on elements of its component (class `svelte-…`, as in Svelte), CSS files that import code, and Tailwind if it is installed in the project.
 
@@ -49,7 +49,7 @@ The first build goes the same way: everything is calculated.
 
 ### Failed updates
 
-Update is a single transaction of storage. If the project code has fallen, the record did not match the template program or the shared block that someone is showing has disappeared, the transaction is canceled. The storage remains the same: the server shows the previous site, export does not find changes. The error is printed with the space in the project file.
+Update is a single transaction of storage. If the project code has fallen, the record has not matched the template frame or a shared block that someone is showing has disappeared, the transaction is canceled. The storage remains the same: the server shows the previous site, export does not find changes. The error is printed with the space in the project file.
 
 The database log is not lost. Go erases the strings from it only to the place that is already written in the repository by the last successful update. The next update will encounter the same changes and drop again until the error is corrected. This is how the `TestFailedUpdateChangesNothing` and `TestSharedBlockThatFails` tests are tested.
 

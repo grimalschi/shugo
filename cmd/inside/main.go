@@ -1,6 +1,6 @@
 // Command inside walks a small project through every stage of Shugo and
 // writes what lies between the stages into one HTML page: the sources, the
-// JavaScript and the program the compiler makes of them, the data database
+// JavaScript and the skeleton the compiler makes of them, the data database
 // with its journal, the conversation of shugo with the JavaScript side, the
 // records of the store and how they lead to the data, and what every update
 // changes. It is a stand for looking inside, not a part of the framework.
@@ -235,7 +235,7 @@ func sources(project string, c *compiled) ([]sourceFile, error) {
 		f := sourceFile{Path: rel, Source: string(source), Module: c.Modules[rel], Number: -1}
 		for i, file := range c.Site.Files {
 			if file.Path == rel {
-				f.Number, f.Shared, f.Outlets = i, file.Shared, file.Outlets
+				f.Number, f.Shared = i, file.Shared
 				for p, ops := range file.Parts {
 					f.Parts = append(f.Parts, partView{Number: p, Ops: listOps(ops, 0)})
 				}

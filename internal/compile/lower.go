@@ -9,7 +9,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/grimalschi/shugo/internal/program"
+	"github.com/grimalschi/shugo/internal/skeleton"
 	"github.com/grimalschi/shugo/internal/syntax"
 )
 
@@ -36,7 +36,7 @@ type (
 	markup struct{ text string }
 	// output writes the result of an expression: as text, or as markup for {@html}.
 	output struct {
-		kind program.Kind
+		kind skeleton.Kind
 		expr code
 	}
 	// constant is {@const name = value}: code that runs at its place and shows nothing.
@@ -44,7 +44,7 @@ type (
 	// attribute is an attribute whose value is computed: written by the
 	// rules of Svelte, and left out where they say so.
 	attribute struct {
-		kind    program.Kind // Attr, or URL for an address
+		kind    skeleton.Kind // Attr, or URL for an address
 		name    string
 		value   value
 		boolean bool
@@ -125,9 +125,6 @@ type (
 	// what stands in <svelte:head> under "head", and its <title> under
 	// "title".
 	provide struct{ piece }
-	// outlet is the place in the <head> of a layout or a page where what
-	// was provided is shown.
-	outlet struct{ name string }
 	// mount is a place where the framework adds markup of its own.
 	mount struct{ name string }
 	// selected says whether an <option> is the chosen one of its <select>.
@@ -226,11 +223,10 @@ type lowerer struct {
 	// hash is the class that scopes the <style> of the component to its own
 	// elements; empty when it has none.
 	hash string
-	// outlets are where what pages give to layouts is shown: "head".
-	outlets []string
-	// provided are what the template gives to the layouts around it, each
-	// with the place it does so.
-	provided map[string]int
+	// head is where the first <svelte:head> of the template stands, -1 for
+	// none; writesHead tells that the template writes the <head> of a page.
+	head       int
+	writesHead bool
 	// selects counts the <select> elements met, to name their variables.
 	selects int
 }
@@ -407,7 +403,9 @@ func (l *lowerer) hoisted(n syntax.Node, ctx context) []node {
 			l.errorf(n.Start, "<svelte:head> works in pages and in +layout files for now")
 			return nil
 		}
-		l.provides("head", n.Start)
+		if l.head < 0 {
+			l.head = n.Start
+		}
 		return []node{provide{piece{"head", l.fragment(n.Children, context{head: true})}}}
 	}
 	return nil
@@ -430,9 +428,9 @@ func (l *lowerer) node(n syntax.Node, ctx context) []node {
 					l.errorf(n.Start, "text cannot stand right inside <%s>: <%s> only allows <%s>", ctx.ancestors[0].name, ctx.ancestors[0].name, strings.Join(rule.only, ">, <"))
 				}
 			}
-			return []node{output{program.Text, code{n.Code.Text, n.Code.Start}}}
+			return []node{output{skeleton.Text, code{n.Code.Text, n.Code.Start}}}
 		case syntax.HTMLTag:
-			return []node{output{program.HTML, code{n.Code.Text, n.Code.Start}}}
+			return []node{output{skeleton.HTML, code{n.Code.Text, n.Code.Start}}}
 		case syntax.RenderTag:
 			return l.render(n)
 		}
@@ -583,16 +581,6 @@ func (l *lowerer) value(a syntax.Attr) value {
 	return out
 }
 
-// provides notes that the template gives markup to the <head> of the page.
-func (l *lowerer) provides(name string, at int) {
-	if l.provided == nil {
-		l.provided = map[string]int{}
-	}
-	if _, seen := l.provided[name]; !seen {
-		l.provided[name] = at
-	}
-}
-
 // html5 lowers an element of HTML.
 func (l *lowerer) html5(e *syntax.Element, ctx context) []node {
 	name := e.Name
@@ -602,14 +590,12 @@ func (l *lowerer) html5(e *syntax.Element, ctx context) []node {
 	}
 	if name == "title" && ctx.head && !svg {
 		// A page has one title, as in Svelte: of the titles in <svelte:head>
-		// the last in the order of the document, the page's before its
-		// layouts', and it stands after the rest of the head.
-		l.provides("title", e.Start)
+		// the last in the order of the document, after the rest of the head.
 		ctx.head = false
 		return []node{provide{piece{"title", l.html5(e, ctx)}}}
 	}
-	if name == "head" && l.role != component && !slices.Contains(l.outlets, "head") {
-		l.outlets = append(l.outlets, "head", "title")
+	if name == "head" && l.role != component {
+		l.writesHead = true
 	}
 	if !svg {
 		l.placed(name, e.Start, ctx.ancestors)
@@ -655,11 +641,8 @@ func (l *lowerer) html5(e *syntax.Element, ctx context) []node {
 	default:
 		out = append(out, l.fragment(e.Children, inner)...)
 	}
-	// What pages give the head, then the framework's own markup, end the
-	// head; the framework's own markup ends the body.
-	if name == "head" && l.role != component {
-		out = append(out, outlet{"head"}, outlet{"title"})
-	}
+	// The end of the head gets what the templates of the page give it, then
+	// the framework's own markup; the end of the body that markup alone.
 	if name == "head" || name == "body" {
 		out = append(out, mount{name})
 	}
@@ -743,16 +726,16 @@ func (l *lowerer) attributes(e *syntax.Element, name, hash string, svg bool, ctx
 				v := value{parts: []valuePart{{expr: &code{c.Text, c.Start}}}}
 				switch {
 				case a.Name == "value" && name == "textarea":
-					var n node = output{program.Text, code{c.Text, c.Start}}
+					var n node = output{skeleton.Text, code{c.Text, c.Start}}
 					content = &n
 				case a.Name == "value" && name == "select":
 					selectValue = &v
 				case a.Name == "this" || a.Name == "group":
 				case a.Name == "innerHTML":
-					var n node = output{program.HTML, code{c.Text, c.Start}}
+					var n node = output{skeleton.HTML, code{c.Text, c.Start}}
 					content = &n
 				case a.Name == "textContent" || a.Name == "innerText":
-					var n node = output{program.Text, code{c.Text, c.Start}}
+					var n node = output{skeleton.Text, code{c.Text, c.Start}}
 					content = &n
 				default:
 					plain = append(plain, entry{name: a.Name, value: v})
@@ -818,7 +801,7 @@ func (l *lowerer) attributes(e *syntax.Element, name, hash string, svg bool, ctx
 			out = append(out, markup{" " + attrName + `="` + escapeAttr(text) + `"`})
 			continue
 		}
-		out = append(out, attribute{kind: program.Attr, name: attrName, value: en.value, boolean: !svg && booleanAttribute(attrName)})
+		out = append(out, attribute{kind: skeleton.Attr, name: attrName, value: en.value, boolean: !svg && booleanAttribute(attrName)})
 	}
 	if !classDone && (len(classes) > 0 || hash != "") {
 		out = append(out, l.classAttr(value{parts: nil}, classes, hash))
@@ -855,7 +838,7 @@ func (l *lowerer) classAttr(v value, classes []directive, hash string) node {
 		}
 		return markup{` class="` + escapeAttr(text) + `"`}
 	}
-	return attribute{kind: program.Attr, name: "class", value: v, class: true, directives: classes, hash: hash}
+	return attribute{kind: skeleton.Attr, name: "class", value: v, class: true, directives: classes, hash: hash}
 }
 
 // styleAttr lowers the style of an element with its directives.
@@ -873,7 +856,7 @@ func (l *lowerer) styleAttr(v value, styles []directive) node {
 		text = strings.Join(strings.Fields(text), " ")
 		return markup{` style="` + escapeAttr(text) + `"`}
 	}
-	return attribute{kind: program.Attr, name: "style", value: v, style: true, directives: styles}
+	return attribute{kind: skeleton.Attr, name: "style", value: v, style: true, directives: styles}
 }
 
 // isEvent tells an attribute that handles an event in the browser: onclick.

@@ -2,14 +2,14 @@
   import { products } from "../../lib/shop"
 
   export function getStaticPaths() {
-    return products.map((product) => ({ params: { slug: product.slug }, props: { product } }))
+    return products.map((product) => ({ params: { slug: product.slug } }))
   }
 </script>
 
 <script lang="ts">
-  import { formatPrice, type Product } from "../../lib/shop"
+  import { formatPrice } from "../../lib/shop"
 
-  let { product }: { product: Product } = $props()
+  const product = products.find((product) => product.slug === Shugo.params.slug)!
 </script>
 
 <svelte:head><title>{product.title}</title></svelte:head>

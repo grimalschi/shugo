@@ -12,9 +12,9 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/grimalschi/shugo/internal/data"
-	"github.com/grimalschi/shugo/internal/program"
 	"github.com/grimalschi/shugo/internal/record"
 	"github.com/grimalschi/shugo/internal/server"
+	"github.com/grimalschi/shugo/internal/skeleton"
 	"github.com/grimalschi/shugo/internal/store"
 )
 
@@ -109,7 +109,6 @@ type showRow struct {
 
 type routeRow struct {
 	ID       int
-	Props    bool
 	Readings []reading
 }
 
@@ -257,7 +256,7 @@ func lookAtStore(path string) (storeLook, error) {
 	for _, r := range meta {
 		value := text(r[1])
 		if text(r[0]) == "site" {
-			value = fmt.Sprintf("project program, %d JSON bytes — see Compilation", len(value))
+			value = fmt.Sprintf("project skeleton, %d JSON bytes — see Compilation", len(value))
 		}
 		s.Meta = append(s.Meta, pair{text(r[0]), value})
 	}
@@ -304,13 +303,13 @@ func lookAtStore(path string) (storeLook, error) {
 	for _, r := range shows {
 		s.Shows = append(s.Shows, showRow{r[0].(int64), text(r[1])})
 	}
-	routes, err := all(db, "SELECT id, props, reads FROM route ORDER BY id")
+	routes, err := all(db, "SELECT id, reads FROM route ORDER BY id")
 	if err != nil {
 		return s, err
 	}
 	for _, r := range routes {
-		rr := routeRow{ID: int(r[0].(int64)), Props: r[1].(int64) != 0}
-		if rr.Readings, err = readings(bytesOf(r[2])); err != nil {
+		rr := routeRow{ID: int(r[0].(int64))}
+		if rr.Readings, err = readings(bytesOf(r[1])); err != nil {
 			return s, err
 		}
 		s.Routes = append(s.Routes, rr)
@@ -605,13 +604,13 @@ func keyOrEmpty(key []any) []any {
 
 // compiled is what the compiler wrote.
 type compiled struct {
-	Site    *program.Site
+	Site    *skeleton.Site
 	Raw     string // site.json
 	Modules map[string]string
 	Bundle  int
 }
 
-// lookAtCompiled reads the program of the site and the module that the
+// lookAtCompiled reads the skeleton of the site and the module that the
 // bundle holds for every file of the project.
 func lookAtCompiled(project string) (*compiled, error) {
 	out := &compiled{Modules: map[string]string{}}
@@ -620,7 +619,7 @@ func lookAtCompiled(project string) (*compiled, error) {
 		return nil, err
 	}
 	out.Raw = string(raw)
-	if out.Site, err = program.Decode(raw); err != nil {
+	if out.Site, err = skeleton.Decode(raw); err != nil {
 		return nil, err
 	}
 	bundle, err := os.ReadFile(filepath.Join(project, "_build", "eval.mjs"))

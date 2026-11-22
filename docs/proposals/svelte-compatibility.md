@@ -51,9 +51,9 @@ The page view is the same: `<p>` has no rules, and the extra class doesn’t cha
 
 1. **`lang="ts"`.** TypeScript in `<script>` without `lang="ts"` is a prompt error like in Svelte. Then the file is transferred to Svelte without editing.
 2. **Rune places.** Same errors as Svelte: `$props()` only in the top level announcement of `<script>` and once, runes are not in markup, `$state` and `$derived` are only in the announcements.
-3. **Style class is like Svelte.** The compiler matches selectors with template elements and puts the class only on the selected ones; a selector that does not select anything is commented on in CSS, and the build warns. Then HTML will coincide with Svelte and in the class: `test/svelte` standards will not be an exception.
+3. **Style class is like Svelte.** The compiler matches selectors with template elements and puts the class only on the selected ones; a selector that does not select anything is commented on in CSS, and the build warns. Then HTML will coincide with Svelte and in the class: `test/svelte` standards will not be an exception. *Postponed by the author of the project 22 November 2026 year.*
 4. **Accessibility alerts.** Same as Svelte: picture without `alt`, link without address, roles, captions at fields. Agent they are useful, and in Svelte he is waiting for them.
-5. **`<svelte:head>` in a conventional component.** Allow in a component that is calculated inside the page. In the general component that is calculated once per entire site, there is an error with an explanation: it does not have a page in which `<head>` to write.
+5. **`<svelte:head>` in a conventional component.** With the 22 November 2026 year head page assembles a server from blocks of all templates it has shown, so `<svelte:head>` can work in any component, and in general too: its blocks lie in the component record and fall into the head of each page that shows it. Remove the ban from the compiler.
 6. **`$lib`.** Understand `$lib/…` as `src/lib/…`, along with `@/`: code from SvelteKit projects writes just like that.
 
 ### How to check: by yourself or by the compiler Svelte

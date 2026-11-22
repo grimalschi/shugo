@@ -1,13 +1,13 @@
 // Package compile turns the sources of a project into what the next stages
 // run: one JavaScript bundle that computes the values of every template,
 // reading the data database of the project through Shugo.query, and the
-// program the runtime puts those values into.
+// skeleton the runtime puts those values into.
 package compile
 
 import (
 	"strings"
 
-	"github.com/grimalschi/shugo/internal/program"
+	"github.com/grimalschi/shugo/internal/skeleton"
 	"github.com/grimalschi/shugo/internal/sourcemap"
 	"github.com/grimalschi/shugo/internal/syntax"
 )
@@ -18,20 +18,18 @@ type unit struct {
 	role   role
 	module *module
 	// parts are the operations of the template and of every snippet in it.
-	parts  [][]program.Op
+	parts  [][]skeleton.Op
 	styles []string // the <style> of the file, scoped to its elements
-	// outlets are where the file shows what pages give to layouts: "head"
-	// for a layout with <head>; provided are what the file gives, with the
-	// place of each in the file.
-	outlets  []string
-	provided map[string]int
+	// head is where the first <svelte:head> of the file stands, -1 for none;
+	// writesHead tells that the file writes the <head> of a page.
+	head       int
+	writesHead bool
 	// paths tells that the file exports getStaticPaths.
 	paths bool
 	// warnings are what is written in a way Svelte allows but warns about.
 	warnings []string
 	// own tells that the file itself cannot be computed once for all pages:
-	// it reads the page it is shown on, or gives markup to the layouts of
-	// that page.
+	// it reads the page it is shown on.
 	own bool
 }
 
@@ -55,7 +53,7 @@ func compileFile(path, source string, id int, r role) (*unit, error) {
 	}
 	moduleScript, instance := scripts[0], scripts[1]
 
-	l := &lowerer{file: f, role: r}
+	l := &lowerer{file: f, role: r, head: -1}
 	var styles []string
 	if f.Style != nil {
 		css := source[f.Style.Code.Start:f.Style.Code.End]
@@ -92,9 +90,9 @@ func compileFile(path, source string, id int, r role) (*unit, error) {
 
 	return &unit{
 		file: f, role: r, module: m, parts: e.parts, styles: styles,
-		outlets: l.outlets, provided: l.provided, paths: moduleScript.paths || instance.paths,
+		head: l.head, writesHead: l.writesHead, paths: moduleScript.paths || instance.paths,
 		warnings: append(warningsOf(f), l.warnings...),
-		own:      m.page || e.provides || readsPage(strings.Join(instance.lines, "\n")) || readsPage(strings.Join(moduleScript.lines, "\n")),
+		own:      m.page || readsPage(strings.Join(instance.lines, "\n")) || readsPage(strings.Join(moduleScript.lines, "\n")),
 	}, nil
 }
 

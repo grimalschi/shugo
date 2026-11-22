@@ -1,4 +1,4 @@
-package program
+package skeleton
 
 import (
 	"reflect"
@@ -18,7 +18,6 @@ func TestSiteRoundTrip(t *testing.T) {
 				{Kind: If, Bodies: [][]Op{{{Kind: HTML}}, {}}},
 				{Kind: For, Bodies: [][]Op{{{Kind: Call}, {Kind: Attr, Text: "id"}}}},
 				{Kind: Render},
-				{Kind: Render, Text: Last},
 				{Kind: For, Bodies: [][]Op{{{Kind: Text}}, {{Kind: Markup, Text: "none"}}}},
 				{Kind: Element, Bodies: [][]Op{{{Kind: Attr, Text: "id"}}, {{Kind: Text}}}},
 				{Kind: Mount, Text: "head"},
@@ -47,21 +46,18 @@ func TestSiteRoundTrip(t *testing.T) {
 	if want := `["r","<a class=\"x\""]`; !strings.Contains(string(data), want) {
 		t.Errorf("markup is escaped: %s", data)
 	}
-	if got := back.Files[0].Parts[0][8]; got.Kind != Render || got.Text != Last {
-		t.Errorf("the render of the last block came back as %v", got)
-	}
 }
 
 func TestDecodeRejects(t *testing.T) {
 	cases := []string{
-		`{"version":2,"files":[]}`,
-		`{"version":3,"files":[{"path":"a","parts":[[["x"]]]}]}`,
-		`{"version":3,"files":[{"path":"a","parts":[[["u","href"]]]}]}`,
-		`{"version":3,"files":[{"path":"a","parts":[[["f"]]]}]}`,
-		`{"version":3,"files":[{"path":"a","parts":[[["r"]]]}]}`,
-		`{"version":3,"files":[{"path":"a","parts":[[["t",[]]]]}]}`,
-		`{"version":3,"files":[{"path":"a","parts":[[[]]]}]}`,
-		`{"version":3,"files":[{"path":"a","parts":[[["n","first"]]]}]}`,
+		`{"version":3,"files":[]}`,
+		`{"version":4,"files":[{"path":"a","parts":[[["x"]]]}]}`,
+		`{"version":4,"files":[{"path":"a","parts":[[["u","href"]]]}]}`,
+		`{"version":4,"files":[{"path":"a","parts":[[["f"]]]}]}`,
+		`{"version":4,"files":[{"path":"a","parts":[[["r"]]]}]}`,
+		`{"version":4,"files":[{"path":"a","parts":[[["t",[]]]]}]}`,
+		`{"version":4,"files":[{"path":"a","parts":[[[]]]}]}`,
+		`{"version":4,"files":[{"path":"a","parts":[[["n","last"]]]}]}`,
 	}
 	for _, data := range cases {
 		if _, err := Decode([]byte(data)); err == nil {

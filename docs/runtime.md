@@ -4,7 +4,7 @@ Rantime is a server on Go that collects HTML pages from storage.
 
 ## Decisions
 
-- Runtime uses the project program and stored values. The project code it does not execute, requests data does not do, does not calculate anything.
+- Rantime uses the project framework and stored values. The project code it does not execute, requests to data does not do, does not calculate anything.
 - All pages and all data are known in advance. There are no pages that depend on cookies or query strings, API routes and processing forms.
 - The main mode is to assemble the page on the fly with each request. When data changes often, writing thousands of HTML files in advance makes no sense: the runtime collects a page from ready-made pieces very quickly.
 - The second mode is a one-time generation of all HTML-files of the site.
@@ -27,12 +27,13 @@ Rantime is a server on Go that collects HTML pages from storage.
 There are no copies of the site in the server memory. For each request, it:
 
 1. It takes a connection from the reading pool to the storage and opens a reading transaction.
-2. Reads the build name. It parses the template program once for each build and keeps it in memory: it is code, not data, and updating the data does not change it.
+2. Reads the build name. It parses the templates once for each build and keeps them in memory: it is code, not data, and updating the data does not change it.
 3. Finds a page entry at the address - one search by key. Values ribbons lie inside the record.
-4. It follows the program of the template of the first block. The markup is copied, the next value is taken from the block tape and screens it on the place of expression.
+4. It follows the framework of the template of the first block. The markup is copied, the next value is taken from the block tape and screens it on the place of expression.
 5. At the call point, the component moves to the next sub-block. The shared block reads from its own record, also by a single search; the block shown on the page twice is read once.
 6. In place, `{@render}` shows a snippet. The snippet with the parameters is the next nested block. The snippet without the parameters that the caller gave is blocks from the caller's record: the component block has written what blocks they are ([Storage](storage.md#tape)).
-7. Closes the transaction and returns the connection to the pool.
+7. Remembers where `<head>` ends, and blocks `<svelte:head>` of each template that showed. When the page is shown, shows them in order, from `<title>` is only the last, and puts `<head>` ([Blocks](blocks.md#page-head)) at the end.
+8. Closes the transaction and returns the connection to the pool.
 
 The entire page is assembled from one state: the update that ended in the middle does not affect it. The next request already sees it - without a storage survey and without re-reading.
 
@@ -86,7 +87,7 @@ Values came from the stage that executed the project code. Therefore:
 - tape that does not match the template gives the answer 500, and not a corrupted page - as it happens, described in [Storage](storage.md#how-the-tape-can-not-fit-with-the-page);
 - the nesting of components is limited by 256 levels, the page size is 64 MB.
 
-The project program is data, not code. The worst thing that a wrong program or tape can do is to have HTML or an error.
+The project framework is data, not code. The worst thing that a wrong frame or tape can do is to have a wrong HTML or an error.
 
 ### Export
 

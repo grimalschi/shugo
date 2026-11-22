@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/grimalschi/shugo/internal/program"
+	"github.com/grimalschi/shugo/internal/skeleton"
 )
 
 // emitter writes a lowered template twice at once: as JavaScript that
@@ -18,34 +18,32 @@ import (
 type emitter struct {
 	m *module
 	// parts are the operations of the template and of every snippet in it.
-	parts [][]program.Op
-	// provides tells that the template gives markup to the layouts around it.
-	provides bool
+	parts [][]skeleton.Op
 }
 
-func (e *emitter) nodes(list []node) []program.Op {
-	var ops []program.Op
+func (e *emitter) nodes(list []node) []skeleton.Op {
+	var ops []skeleton.Op
 	for _, n := range list {
 		switch n := n.(type) {
 		case markup:
 			// Markup written in a row is one operation.
-			if last := len(ops) - 1; last >= 0 && ops[last].Kind == program.Markup {
+			if last := len(ops) - 1; last >= 0 && ops[last].Kind == skeleton.Markup {
 				ops[last].Text += n.text
 			} else if n.text != "" {
-				ops = append(ops, program.Op{Kind: program.Markup, Text: n.text})
+				ops = append(ops, skeleton.Op{Kind: skeleton.Markup, Text: n.text})
 			}
 		case output:
 			method := "text"
-			if n.kind == program.HTML {
+			if n.kind == skeleton.HTML {
 				method = "html"
 			}
 			e.call("$$."+method+"((", n.expr, "));")
-			ops = append(ops, program.Op{Kind: n.kind})
+			ops = append(ops, skeleton.Op{Kind: n.kind})
 		case shown:
 			e.m.add("$$.text(")
 			e.value(n.value)
 			e.m.add(");")
-			ops = append(ops, program.Op{Kind: program.Text})
+			ops = append(ops, skeleton.Op{Kind: skeleton.Text})
 		case constant:
 			e.call("const", n.code, ";")
 		case declare:
@@ -54,15 +52,15 @@ func (e *emitter) nodes(list []node) []program.Op {
 			e.m.add(");")
 		case attribute:
 			e.attribute(n)
-			ops = append(ops, program.Op{Kind: n.kind, Text: n.name})
+			ops = append(ops, skeleton.Op{Kind: n.kind, Text: n.name})
 		case selected:
 			e.m.add("$$.attr(\"selected\", $$.selected(")
 			e.value(n.value)
 			e.m.add(", %s), true);", n.within)
-			ops = append(ops, program.Op{Kind: program.Attr, Text: "selected"})
+			ops = append(ops, skeleton.Op{Kind: skeleton.Attr, Text: "selected"})
 		case spread:
 			e.spread(n)
-			ops = append(ops, program.Op{Kind: program.Spread})
+			ops = append(ops, skeleton.Op{Kind: skeleton.Spread})
 		case choice:
 			ops = append(ops, e.choice(n))
 		case loop:
@@ -79,23 +77,15 @@ func (e *emitter) nodes(list []node) []program.Op {
 				e.m.code(n.args)
 			}
 			e.m.add("], %t);", n.optional)
-			ops = append(ops, program.Op{Kind: program.Render})
+			ops = append(ops, skeleton.Op{Kind: skeleton.Render})
 		case dynamic:
 			ops = append(ops, e.dynamic(n))
 		case provide:
-			e.provides = true
 			e.m.add("$$.provide(%s, %d, ($$) => {", quote(n.name), len(e.parts))
 			e.part(n.body)
 			e.m.add("});")
-		case outlet:
-			e.m.add("$$.outlet(%s);", quote(n.name))
-			op := program.Op{Kind: program.Render}
-			if n.name == "title" {
-				op.Text = program.Last
-			}
-			ops = append(ops, op)
 		case mount:
-			ops = append(ops, program.Op{Kind: program.Mount, Text: n.name})
+			ops = append(ops, skeleton.Op{Kind: skeleton.Mount, Text: n.name})
 		}
 	}
 	return ops
@@ -215,8 +205,8 @@ func (e *emitter) part(body []node) {
 
 // choice writes the chain of branches. The value it leaves says which branch
 // was taken, counting from 1, or 0 when none was.
-func (e *emitter) choice(n choice) program.Op {
-	op := program.Op{Kind: program.If}
+func (e *emitter) choice(n choice) skeleton.Op {
+	op := skeleton.Op{Kind: skeleton.If}
 	if n.await != nil {
 		// {#await}: a promise shows what stands before {:then}; anything
 		// else is the value, and shows {:then}.
@@ -254,7 +244,7 @@ func (e *emitter) choice(n choice) program.Op {
 
 // loop writes {#each}. The value it leaves is the number of items, known
 // only after the last one; {:else} follows when there are none.
-func (e *emitter) loop(n loop) program.Op {
+func (e *emitter) loop(n loop) skeleton.Op {
 	e.call("{\nconst $$list = $$.items((", n.list, "));")
 	e.m.add("const $$count = $$.loop();\nfor (let $$i = 0; $$i < $$list.length; $$i++) {")
 	if n.item != nil {
@@ -265,7 +255,7 @@ func (e *emitter) loop(n loop) program.Op {
 	}
 	body := e.nodes(n.body)
 	e.m.add("}\n$$.count($$count, $$list.length);")
-	op := program.Op{Kind: program.For, Bodies: [][]program.Op{body}}
+	op := skeleton.Op{Kind: skeleton.For, Bodies: [][]skeleton.Op{body}}
 	if n.empty != nil {
 		e.m.add("if ($$list.length === 0) {")
 		op.Bodies = append(op.Bodies, e.nodes(n.empty))
@@ -289,7 +279,7 @@ func (e *emitter) snippet(n snipp) {
 // component writes the call of a component with its parameters and its
 // snippets. <svelte:component> with a value that is not a component shows
 // nothing, so its call is a branch.
-func (e *emitter) component(n call) []program.Op {
+func (e *emitter) component(n call) []skeleton.Op {
 	if n.optional {
 		e.call("if ((", n.target, ")) {\n$$.branch(1);")
 	}
@@ -322,23 +312,23 @@ func (e *emitter) component(n call) []program.Op {
 		e.m.add("}],")
 	}
 	e.m.add("]);")
-	call := program.Op{Kind: program.Call}
+	call := skeleton.Op{Kind: skeleton.Call}
 	if !n.optional {
-		return []program.Op{call}
+		return []skeleton.Op{call}
 	}
 	e.m.add("} else {\n$$.branch(0);\n}")
-	return []program.Op{{Kind: program.If, Bodies: [][]program.Op{{call}}}}
+	return []skeleton.Op{{Kind: skeleton.If, Bodies: [][]skeleton.Op{{call}}}}
 }
 
 // dynamic writes <svelte:element>: the tag is a value, and so is whether it
 // is shown at all.
-func (e *emitter) dynamic(n dynamic) program.Op {
+func (e *emitter) dynamic(n dynamic) skeleton.Op {
 	e.call("{\nconst $$tag = $$.tag((", n.tag, "));\nif ($$tag !== \"\") {")
 	attrs := e.nodes(n.attrs)
 	e.m.add("if (!$$.void($$tag)) {")
 	children := e.nodes(n.children)
 	e.m.add("}\n}\n}")
-	return program.Op{Kind: program.Element, Bodies: [][]program.Op{attrs, children}}
+	return skeleton.Op{Kind: skeleton.Element, Bodies: [][]skeleton.Op{attrs, children}}
 }
 
 func quote(text string) string {

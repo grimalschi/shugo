@@ -7,11 +7,13 @@ import (
 
 func sample() *Record {
 	return &Record{Top: 3, Blocks: []Block{
-		{File: 5, Part: 0, Values: Tape(nil).Append([]byte("page")), Children: []int{1}},
+		{File: 5, Part: 0, Values: Tape(nil).Append([]byte("page")), Children: []int{1}, Head: []int{5}, Title: []int{6}},
 		{File: 0, Part: 0, Values: Tape(nil).Append([]byte("card")), Snippets: []Snippet{{"children", []int{2}}}},
 		{File: 5, Part: 2, Values: nil},
 		{Use: true, Shared: 7, Snippets: []Snippet{{"children", []int{0}}, {"foot", []int{4}}}},
 		{File: 5, Part: 1, Values: Tape(nil).Append([]byte("title")).Append([]byte("x\x00y"))},
+		{File: 5, Part: 3, Values: Tape(nil).Append([]byte("=description"))},
+		{File: 5, Part: 4, Values: Tape(nil).Append([]byte("Jug"))},
 	}}
 }
 
@@ -59,6 +61,7 @@ func TestCheck(t *testing.T) {
 		"a circle":            func(r *Record) { r.Blocks[2].Children = []int{0} },
 		"no such block":       func(r *Record) { r.Blocks[0].Children = []int{9} },
 		"no top":              func(r *Record) { r.Top = 9 },
+		"a head shown twice":  func(r *Record) { r.Blocks[0].Title = []int{5} },
 	}
 	for name, damage := range cases {
 		r := sample()

@@ -73,13 +73,13 @@ export const products: Product[] = JSON.parse(readFileSync("data.json", "utf8"))
 <h1>shop</h1>
 -- src/pages/products/[slug].shugo --
 <script module>
-import { products, type Product } from "../../lib/data"
+import { products } from "../../lib/data"
 export function getStaticPaths() {
-  return products.map((product) => ({ params: { slug: product.slug }, props: { product } }))
+  return products.map((product) => ({ params: { slug: product.slug } }))
 }
 </script>
 <script>
-const { product } = $props() as { product: Product }
+const product = products.find((product) => product.slug === Shugo.params.slug)
 </script>
 <h1>{product.title}</h1><p>{Shugo.params.slug} {Shugo.url.pathname} {Shugo.url.href}</p>
 -- src/pages/products/new.shugo --
@@ -93,13 +93,20 @@ export const getStaticPaths = () => [{ params: { path: undefined } }, { params: 
 <script module>
 import { products } from "../../lib/data"
 export function getStaticPaths({ paginate }) {
-  return paginate(products, { pageSize: 2 })
+  return paginate(products.length, { pageSize: 2 })
 }
 </script>
 <script>
-const { page } = $props()
+const page = Shugo.paginate(products, { pageSize: 2 })
 </script>
 <p>{page.currentPage}/{page.lastPage}: {page.data.map((p) => p.slug).join(",")} prev={page.url.prev} next={page.url.next}</p>
+-- src/pages/categories/[category].shugo --
+<script module>
+import { products } from "../../lib/data"
+// A category for every product: an address given twice is one page.
+export const getStaticPaths = () => products.map((product) => ({ params: { category: product.category } }))
+</script>
+<p>{Shugo.params.category}</p>
 `
 
 func TestDynamicPages(t *testing.T) {
@@ -114,10 +121,11 @@ func TestDynamicPages(t *testing.T) {
 	expect(t, s.page("/files/a/b c"), `<p>[a/b c]</p>`)
 	expect(t, s.page("/list"), `<p>1/2: jug,cup prev= next=/list/2</p>`)
 	expect(t, s.page("/list/2"), `<p>2/2: tray prev=/list next=</p>`)
+	expect(t, s.page("/categories/clay"), `<p>clay</p>`)
 	if s.has("/products/none") {
 		t.Error("a page that getStaticPaths did not return")
 	}
-	if want := 1 + 3 + 1 + 3 + 2; report.Pages.Total != want {
+	if want := 1 + 3 + 1 + 3 + 2 + 2; report.Pages.Total != want {
 		t.Errorf("pages: %d, want %d", report.Pages.Total, want)
 	}
 }
@@ -137,12 +145,12 @@ func TestProjectMistakes(t *testing.T) {
 	cases := []struct{ name, files, want string }{
 		{"a parameter without getStaticPaths", "-- src/pages/[id].shugo --\n<p>x</p>", "src/pages/[id].shugo:1:1: the name of this page has a parameter"},
 		{"two pages of one address", "-- src/pages/a.shugo --\n<p>1</p>\n-- src/pages/a/index.shugo --\n<p>2</p>", "give the same addresses"},
-		{"an unknown + file", "-- src/pages/+config.shugo --\n<p>x</p>", "names that start with + are kept for the framework"},
-		{"a page of SvelteKit", "-- src/pages/about/+page.shugo --\n<p>x</p>", "+page is a file of SvelteKit: in Shugo a page is a file named after its address"},
+		{"an unknown + file", "-- src/pages/+page.shugo --\n<p>x</p>", "names that start with + are kept for the framework"},
 		{"a snippet nobody gave", "-- src/pages/index.shugo --\n<script>\nlet { children } = $props()\n</script>\n{@render children()}", "{@render …} shows a snippet, and this is undefined"},
 		{"a missing parameter", "-- src/pages/[id].shugo --\n<script module>\nexport const getStaticPaths = () => [{ params: {} }]\n</script>\n<p>x</p>", `returned params without "id"`},
-		{"an address twice", "-- src/pages/[id].shugo --\n<script module>\nexport const getStaticPaths = () => [{ params: { id: \"a\" } }, { params: { id: \"a\" } }]\n</script>\n<p>x</p>", "returned the address /a twice"},
-		{"not a list", "-- src/pages/[id].shugo --\n<script module>\nexport const getStaticPaths = () => ({ id: 1 })\n</script>\n<p>x</p>", "must return a list of { params, props }"},
+		{"props of a route", "-- src/pages/[id].shugo --\n<script module>\nexport const getStaticPaths = () => [{ params: { id: \"a\" }, props: { title: \"A\" } }]\n</script>\n<p>x</p>", "gives its pages addresses alone: return { params: { … } }, and let every page ask for its data with Shugo.query"},
+		{"a list to paginate", "-- src/pages/[...page].shugo --\n<script module>\nexport const getStaticPaths = ({ paginate }) => paginate([1, 2, 3], { pageSize: 2 })\n</script>\n<p>x</p>", "paginate() in getStaticPaths takes how many items there are"},
+		{"not a list", "-- src/pages/[id].shugo --\n<script module>\nexport const getStaticPaths = () => ({ id: 1 })\n</script>\n<p>x</p>", "must return a list of { params }"},
 		{"a tag that is not a component", "-- src/pages/index.shugo --\n<script>\nconst Card = \"div\"\n</script>\n<Card />", "this tag is not a component"},
 		{"a component that shows itself forever", "-- src/pages/index.shugo --\n<script>\nimport Loop from \"../loop.shugo\"\n</script>\n<Loop />\n-- src/loop.shugo --\n<svelte:self />", "shows itself again with the same parameters"},
 		{"a script that waits", "-- src/pages/index.shugo --\n<script>\nconst items = await Promise.resolve([1])\n</script>\n<p>{items.length}</p>", "src/pages/index.shugo:2:15: a page is computed without waiting"},

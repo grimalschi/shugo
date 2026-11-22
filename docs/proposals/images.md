@@ -9,6 +9,7 @@ Proposal on how pictures are reduced and compressed. While this is not: pictures
 - The output format is WebP, AVIF or JPEG, depending on what the browser supports.
 - When generating the entire site into files, all images are compressed in advance and saved.
 - **Two modes** (Decision of the author 22 November 2026 years): built-in compression, where WebP is the recommended format, and, if desired, libvips, if it is installed in the system or associated with ShugoIt can be specified and used for acceleration.
+- **Format** (22 November 2026 solution): defaults to WebP only, in normal `<img>`; `<picture>` with AVIF - when libvips is enabled. No selection for the `Accept` header.
 
 ## Measurements
 
@@ -138,7 +139,7 @@ To not collect addresses with your hands, you need a function `Shugo.image("/pho
 | `<picture>` with AVIF and WebP | the browser takes the first format that understands | the lightest pictures | AVIF only with libvips; marking longer; component needed |
 | by the name `Accept` | one address, the server chooses the format | the markup does not change | does not work on static hosting; caches before the server confuse answers |
 
-**The Council:** is the default WebP only — in both modes; `<picture>` with AVIF is when the settings have `"avif"`, and it is only with libvips. The choice for `Accept` is not.
+Solved as follows: only WebP by default - in both modes; `<picture>` with AVIF - when the settings have `"avif"`, and it is only with libvips. The choice for `Accept` - no.
 
 ### Where is the cache: options
 
@@ -151,7 +152,7 @@ Compression of photos is tenths of a second, thousands of photos are minutes. Th
 | Shared user folder, `~/.cache/shugo/images/` | common to all projects and copies on the machine | grows without a host; on the build server it must be stored separately |
 | In Storage SQLite | one file | storage is inflated with pictures that the page server does not need |
 
-**The Council:** has its own project folder outside of `_build/`, and setting `"cache"` to `shugo.json` takes it anywhere — for example, in the build server cache.
+**The Council:** has its own project folder outside of `_build/`, and setting `"cache"` to `shugo.json` takes it anywhere — for example, in the build server cache. Details — in a separate [the Cash Offer](image-cache.md).
 
 ### Export
 
@@ -176,8 +177,7 @@ The third way remains possible: then the runtime only builds signed addresses. I
 - How `shugo` gets libvips: start with the `vipsthumbnail` command as suggested, or download the library immediately while running.
 - Address type: `/_img/w800/…` prefix as here, or file name ending; format last extension (`jug.jpg.webp`) or instead of original (`jug.webp`).
 - Finished image component: your own or write SvelteKit `<enhanced:img>`.
-- Format: only WebP by default, `<picture>` with AVIF at libvips - as advised above.
-- Cache: own project folder outside `_build/` with configuration, where to transfer it - as recommended above.
+- The cache is [separate offer](image-cache.md).
 
 ## Sources
 

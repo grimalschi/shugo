@@ -29,9 +29,8 @@ type report struct {
 
 type sourceFile struct {
 	Path, Source, Module string
-	Number               int // the number of the file in the program; -1 for files that are not templates
+	Number               int // the number of the file in the skeleton; -1 for files that are not templates
 	Shared               bool
-	Outlets              []string
 	Parts                []partView
 }
 
@@ -320,6 +319,12 @@ func blocks(c *compiled, s storeLook, rec *record.Record, shared bool) []blockVi
 		v := blockView{Index: i, Use: b.Use, Shared: b.Shared, Children: b.Children}
 		for _, snippet := range b.Snippets {
 			v.Snippets = append(v.Snippets, fmt.Sprintf("%s = blocks %v", snippet.Name, snippet.Blocks))
+		}
+		if len(b.Head) > 0 {
+			v.Snippets = append(v.Snippets, fmt.Sprintf("template <svelte:head> = blocks %v", b.Head))
+		}
+		if len(b.Title) > 0 {
+			v.Snippets = append(v.Snippets, fmt.Sprintf("<title> from <svelte:head> = blocks %v", b.Title))
 		}
 		if b.Use {
 			v.SharedName = s.SharedName(b.Shared)

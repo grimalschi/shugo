@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/grimalschi/shugo/internal/program"
 	"github.com/grimalschi/shugo/internal/record"
 	"github.com/grimalschi/shugo/internal/render"
+	"github.com/grimalschi/shugo/internal/skeleton"
 	"github.com/grimalschi/shugo/internal/store"
 )
 
@@ -19,7 +19,7 @@ import (
 // when it is asked for, its record and the records of the shared blocks it
 // shows, all in one read of the store. So a page always comes whole from one
 // state of the site, and an update is seen by the next page asked for, at
-// no cost to the server. Only the program of the site is kept, decoded once
+// no cost to the server. Only the skeleton of the site is kept, decoded once
 // for every compiled project: it is code, not data, and does not change
 // between builds.
 type Pages struct {
@@ -30,7 +30,7 @@ type Pages struct {
 
 	mu    sync.Mutex
 	build string
-	site  *program.Site
+	site  *skeleton.Site
 }
 
 // NewPages returns the pages of the site kept in st.
@@ -44,13 +44,13 @@ var errEmpty = errors.New("the store holds no site yet: run `shugo build` first"
 // Ready tells whether the store holds a site that can be shown.
 func (p *Pages) Ready() error {
 	return p.store.View(func(v *store.View) error {
-		_, err := p.program(v)
+		_, err := p.skeleton(v)
 		return err
 	})
 }
 
-// program returns the program of the compiled project the store holds.
-func (p *Pages) program(v *store.View) (*program.Site, error) {
+// skeleton returns the skeleton of the compiled project the store holds.
+func (p *Pages) skeleton(v *store.View) (*skeleton.Site, error) {
 	build, err := v.BuildID()
 	if err != nil {
 		return nil, err
@@ -67,7 +67,7 @@ func (p *Pages) program(v *store.View) (*program.Site, error) {
 	if err != nil {
 		return nil, err
 	}
-	site, err := program.Decode(data)
+	site, err := skeleton.Decode(data)
 	if err != nil {
 		return nil, err
 	}
@@ -114,15 +114,15 @@ func (s *source) Shared(id int64) (*record.Record, error) {
 type Page struct {
 	HTML  []byte
 	Found bool
-	// Site is the program the page was built by.
-	Site *program.Site
+	// Site is the skeleton the page was built by.
+	Site *skeleton.Site
 }
 
 // Render appends the HTML of the page at path to dst.
 func (p *Pages) Render(dst []byte, path string) (Page, error) {
 	page := Page{HTML: dst}
 	err := p.store.View(func(v *store.View) error {
-		site, err := p.program(v)
+		site, err := p.skeleton(v)
 		if err != nil {
 			return err
 		}
@@ -142,7 +142,7 @@ func (p *Pages) Render(dst []byte, path string) (Page, error) {
 }
 
 // build builds the HTML of a page from its record.
-func build(dst []byte, site *program.Site, data []byte, src *source) ([]byte, error) {
+func build(dst []byte, site *skeleton.Site, data []byte, src *source) ([]byte, error) {
 	rec, err := record.Decode(data)
 	if err != nil {
 		return dst, err

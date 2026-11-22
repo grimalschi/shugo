@@ -14,7 +14,7 @@ The standard is Svelte 5.59.1. The Shugo compiler parses the `.shugo` file itsel
 | Component Style Class and Selector Rewriting | hash `cssHash`, `phases/3-transform/css` | `internal/compile/css.go` |
 | Text and attributes: `stringify`, `attr`, `clsx`, `to_class`, `to_style`, attributes from `{...}` | `internal/shared/attributes.js`, `internal/server` | `internal/jsrt/runtime.js` |
 | Screening: `&` and `<` in text, more `"` in attributes | `escape_html` | `internal/render/escape.go` |
-| One `<title>` per page, last | `renderer.js` | `internal/jsrt/runtime.js`, `internal/render` |
+| Page head in order of document, one `<title>` is the last | `renderer.js` | `internal/render` |
 
 The value of the expressions is considered to be the real JS Bun or Node so everything that depends on JS coincides with the same: numbers, dates, `String()` arrays and objects.
 

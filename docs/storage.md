@@ -1,6 +1,6 @@
 # Storage
 
-Storage is what remains between the computation stage and the runtime: the project program and the values of all pages.
+Storage is what remains between the computation stage and the runtime: the project framework and the values of all pages.
 
 ## Decisions
 
@@ -25,12 +25,12 @@ The reasons are in [20](../spec/decisions.md#20-storage).
 | `shared` | number, name | recording the shared block, her hash that he read, version |
 | `shows` | the block and who shows it | who shows what common block: pages and other common blocks |
 | `gone` | address | missing pages and the version in which they disappeared: export deletes their files |
-| `route` | route number | that read the list of route pages and whether it distributes `props` |
+| `route` | route number | I read the list of the route pages. |
 | `shape`, `reads` | type of reading; view, search values and reader | reads Expanded for Search: Those who read the changed line are found ([Change tracking](change-tracking.md)) |
 | `plan` | question to the database | questions for which the project database already has an index |
-| `meta` | name | project program, build name, storage version, its random name, the beginning of the history of changes, the results, to which line of the log data are taken into account |
+| `meta` | name | project framework, build name, storage version, its random name, the beginning of the history of changes, the results, to which line of the log data are taken into account |
 
-The project program is located in the storage next to the records and changes with them with one transaction. Rantime does not need other build files.
+The project framework lies in the storage next to the records and changes with them with one transaction. Rantime does not need other build files.
 
 The version grows with each update. The version of the record is the one in which the record was last changed; it is written by the update itself along with the record, there are no other marks. Exports find what has changed since last time: [Runtime](runtime.md#export). A complete reassembly of the project begins anew: `origin` in `meta` is the version with which the repository knows all the changes.
 
@@ -41,6 +41,7 @@ Record - a list of blocks and the block number from which the display begins. Th
 - template: file number and part number (0 is the template itself, then its snippets and its `<svelte:head>`);
 - tape values;
 - blocks inside it in order of display: components and snippets with the parameters that he showed;
+- blocks that its template gave `<head>` pages in `<svelte:head>`, and separately - `<title>` blocks from there; the head of the page is collected by the server ([Blocks](blocks.md#page-head));
 - snippets without the parameters that the caller gave him: name and blocks. The blocks themselves lie in the same record as the caller's block.
 
 The block that stands in place of the shared block stores instead the common block number and the snippets that gave it that place. How the snippets get into the records is in [Blocks](blocks.md#snippets).
@@ -61,7 +62,6 @@ Tape - values of block expressions in a row. Before each value, its length is wr
 | `{#await}` | `1` — branch to `{:then}`, `2` — branch to `{:then}` |
 | `{#each}` | number of elements, then the value of each element; if there are no elements, the value of the branch `{:else}` |
 | `{@render snippet()}` | `-` is a snippet (`snippet?.()`); `c` and number are calculated here, this is the next nested block; `f`, a number and name, for example `f0:children`, is a snippet without parameters that gave the caller |
-| `<head>` end in layout | same as `{@render}`: `f0:head` or `-` |
 | `<svelte:element this={tag}>` | tag name; empty - no element. Then the values of its attributes and contents |
 | `<svelte:component this={…}>` | `1` — component shown, `0` — value not available |
 | component Call | nothing: Attached blocks are recorded in the record, not in the tape |
@@ -85,7 +85,7 @@ What remains is a limitation: all values are text. If the runtime needs to disti
 
 ### How the tape can not “fit” with the page
 
-Rantime follows the pattern program and takes values from the tape in order. The program says: here is the text, here is the branch number, here is the number of elements. The tape does not converge if the branch number is not in place of the number, values are less or more than the template reads, or blocks inside are not so much as calls of components and snippets calculated on the spot.
+Rantime follows the frame of the template and takes values from the tape in order. The framework says: here is the text, here is the branch number, here is the number of elements. The tape does not converge if the branch number is not in place of the number, values are less or more than the template reads, or blocks inside are not so much as calls of components and snippets calculated on the spot.
 
 When working properly, this does not happen. But the tape writes a stage that performs the project code, and this stage does not trust the runtime. Therefore, there are two checks: when accepting a record and when assembling a page. In the second case, the runtime responds with an error, and not with a corrupted HTML.
 

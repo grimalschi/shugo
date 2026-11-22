@@ -12,8 +12,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/grimalschi/shugo/internal/program"
 	"github.com/grimalschi/shugo/internal/record"
+	"github.com/grimalschi/shugo/internal/skeleton"
 )
 
 // Source gives the renderer the shared blocks that records name.
@@ -29,9 +29,12 @@ const (
 )
 
 // Page appends the HTML of a page to dst.
-func Page(dst []byte, site *program.Site, rec *record.Record, src Source) ([]byte, error) {
-	r := renderer{site: site, src: src, out: dst, start: len(dst)}
+func Page(dst []byte, site *skeleton.Site, rec *record.Record, src Source) ([]byte, error) {
+	r := renderer{site: site, src: src, out: dst, start: len(dst), headAt: -1}
 	if err := r.show(rec, rec.Top, nil); err != nil {
+		return dst, err
+	}
+	if err := r.putHead(); err != nil {
 		return dst, err
 	}
 	return r.out, nil
@@ -40,7 +43,7 @@ func Page(dst []byte, site *program.Site, rec *record.Record, src Source) ([]byt
 // Check tells whether the values of one block fit its template: whether
 // showing the block would read exactly its values and exactly as many
 // components as it has. The blocks inside it are not looked at.
-func Check(site *program.Site, b *record.Block) error {
+func Check(site *skeleton.Site, b *record.Block) error {
 	ops, ok := site.Part(b.File, b.Part)
 	if !ok {
 		return fmt.Errorf("there is no template %d, part %d", b.File, b.Part)
@@ -50,13 +53,27 @@ func Check(site *program.Site, b *record.Block) error {
 }
 
 type renderer struct {
-	site  *program.Site
+	site  *skeleton.Site
 	src   Source
 	out   []byte
 	start int
 	depth int
 	// dry tells to read the values of one block without showing anything.
 	dry bool
+	// head is what the templates of the page give its <head>, in the order
+	// they are shown, and title the last <title> among it. headAt is where
+	// the <head> of the page ends in out; -1 until it is met.
+	head   []given
+	title  *given
+	headAt int
+}
+
+// given is blocks of a record that a template gives the head of the page,
+// with the template they are written in.
+type given struct {
+	rec    *record.Record
+	blocks []int
+	frame  *frame
 }
 
 // frame is a component being shown, as seen from inside its template: the
@@ -111,13 +128,55 @@ func (r *renderer) show(rec *record.Record, at int, from *frame) error {
 	if !ok {
 		return fmt.Errorf("there is no template %d, part %d", c.block.File, c.block.Part)
 	}
+	if c.block.Part == 0 {
+		// What the template gives the head waits until the page is shown.
+		if len(c.block.Head) > 0 {
+			r.head = append(r.head, given{c.rec, c.block.Head, c.frame})
+		}
+		if n := len(c.block.Title); n > 0 {
+			r.title = &given{c.rec, c.block.Title[n-1:], c.frame}
+		}
+	}
 	c.rest = c.block.Values
 	return r.run(ops, &c)
 }
 
+// putHead puts what the templates of the page give its head at the end of
+// the <head>, as Svelte does: in the order the templates were shown, and of
+// the titles the last one, after the rest. A page without a <head> has
+// nowhere to put it.
+func (r *renderer) putHead() error {
+	if r.headAt < 0 {
+		return nil
+	}
+	body := len(r.out)
+	// A component inside <svelte:head> may give the head too: the list grows
+	// while it is shown.
+	for i := 0; i < len(r.head); i++ {
+		for _, at := range r.head[i].blocks {
+			if err := r.show(r.head[i].rec, at, r.head[i].frame); err != nil {
+				return err
+			}
+		}
+	}
+	if t := r.title; t != nil {
+		if err := r.show(t.rec, t.blocks[0], t.frame); err != nil {
+			return err
+		}
+	}
+	if len(r.out)-r.start > maxOutput {
+		return errors.New("the page is too large")
+	}
+	// The head was written after the page: it moves to its place.
+	head := append([]byte(nil), r.out[body:]...)
+	copy(r.out[r.headAt+len(head):], r.out[r.headAt:body])
+	copy(r.out[r.headAt:], head)
+	return nil
+}
+
 // run goes through the operations of a block and checks that they took all
 // of its values and all of its children.
-func (r *renderer) run(ops []program.Op, c *cursor) error {
+func (r *renderer) run(ops []skeleton.Op, c *cursor) error {
 	if err := r.ops(ops, c); err != nil {
 		return fmt.Errorf("%s: %w", r.site.Files[c.block.File].Path, err)
 	}
@@ -158,28 +217,28 @@ func (c *cursor) number(limit int) (int, error) {
 	return n, nil
 }
 
-func (r *renderer) ops(ops []program.Op, c *cursor) error {
+func (r *renderer) ops(ops []skeleton.Op, c *cursor) error {
 	for i := range ops {
 		op := &ops[i]
 		switch op.Kind {
-		case program.Markup:
+		case skeleton.Markup:
 			r.out = append(r.out, op.Text...)
 
-		case program.Text:
+		case skeleton.Text:
 			value, err := c.next()
 			if err != nil {
 				return err
 			}
 			r.out = appendEscaped(r.out, value, false)
 
-		case program.HTML:
+		case skeleton.HTML:
 			value, err := c.next()
 			if err != nil {
 				return err
 			}
 			r.out = append(r.out, value...)
 
-		case program.Attr:
+		case skeleton.Attr:
 			value, err := c.next()
 			if err != nil {
 				return err
@@ -188,7 +247,7 @@ func (r *renderer) ops(ops []program.Op, c *cursor) error {
 				return err
 			}
 
-		case program.Spread:
+		case skeleton.Spread:
 			count, err := c.number(len(c.rest))
 			if err != nil {
 				return err
@@ -210,7 +269,7 @@ func (r *renderer) ops(ops []program.Op, c *cursor) error {
 				}
 			}
 
-		case program.If:
+		case skeleton.If:
 			taken, err := c.number(len(op.Bodies))
 			if err != nil {
 				return err
@@ -221,7 +280,7 @@ func (r *renderer) ops(ops []program.Op, c *cursor) error {
 				}
 			}
 
-		case program.For:
+		case skeleton.For:
 			count, err := c.number(maxOutput)
 			if err != nil {
 				return err
@@ -240,7 +299,7 @@ func (r *renderer) ops(ops []program.Op, c *cursor) error {
 				}
 			}
 
-		case program.Call:
+		case skeleton.Call:
 			if c.child >= len(c.block.Children) {
 				return errors.New("the block has fewer components than its template shows")
 			}
@@ -252,16 +311,16 @@ func (r *renderer) ops(ops []program.Op, c *cursor) error {
 				return err
 			}
 
-		case program.Render:
+		case skeleton.Render:
 			value, err := c.next()
 			if err != nil {
 				return err
 			}
-			if err := r.snippet(value, c, op.Text == program.Last); err != nil {
+			if err := r.snippet(value, c); err != nil {
 				return err
 			}
 
-		case program.Element:
+		case skeleton.Element:
 			tag, err := c.next()
 			if err != nil {
 				return err
@@ -276,7 +335,7 @@ func (r *renderer) ops(ops []program.Op, c *cursor) error {
 			if err := r.ops(op.Bodies[0], c); err != nil {
 				return err
 			}
-			if program.IsVoid(string(tag)) {
+			if skeleton.IsVoid(string(tag)) {
 				r.out = append(r.out, "/>"...)
 				continue
 			}
@@ -286,7 +345,10 @@ func (r *renderer) ops(ops []program.Op, c *cursor) error {
 			}
 			r.out = append(append(append(r.out, "</"...), tag...), '>')
 
-		case program.Mount:
+		case skeleton.Mount:
+			if op.Text == "head" && r.headAt < 0 {
+				r.headAt = len(r.out)
+			}
 			r.out = append(r.out, r.site.Mounts[op.Text]...)
 
 		default:
@@ -320,8 +382,8 @@ func (r *renderer) attribute(name string, value []byte) error {
 // "c" and a number, the next child block, a snippet computed where it was
 // rendered, which belongs to the component that many levels out; "f", a
 // number, ":" and a name, what the caller of the component that many levels
-// out gave under that name; with last, only the last block of it.
-func (r *renderer) snippet(value []byte, c *cursor, last bool) error {
+// out gave under that name.
+func (r *renderer) snippet(value []byte, c *cursor) error {
 	if len(value) == 0 {
 		return errors.New("an empty value stands where a snippet is expected")
 	}
@@ -360,11 +422,7 @@ func (r *renderer) snippet(value []byte, c *cursor, last bool) error {
 		return fmt.Errorf("the snippet %s is shown where no component gave it", name)
 	}
 	// What the caller gave was written in the template of the caller.
-	blocks := f.block.Snippet(name)
-	if last && len(blocks) > 0 {
-		blocks = blocks[len(blocks)-1:]
-	}
-	for _, given := range blocks {
+	for _, given := range f.block.Snippet(name) {
 		if err := r.show(f.rec, given, f.outer); err != nil {
 			return err
 		}
