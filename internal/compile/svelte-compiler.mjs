@@ -31,7 +31,7 @@ for await (const line of createInterface({ input: process.stdin })) {
         server: server.js.code,
         css: client.css?.code ?? '',
         warnings: client.warnings.map(diagnostic),
-        request: server.js.code.includes('shugoSSR') && parseGenerated(server.js.code).body.some((node) =>
+        legacyRequest: server.js.code.includes('shugoSSR') && parseGenerated(server.js.code).body.some((node) =>
           node.type === 'ExportNamedDeclaration' && node.declaration?.kind === 'const' &&
           node.declaration.declarations.some(({ id, init }) => id.name === 'shugoSSR' && init?.value === true)),
       };

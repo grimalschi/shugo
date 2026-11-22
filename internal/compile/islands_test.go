@@ -20,7 +20,7 @@ func TestLowerIsland(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if u.islands["Counter"] != "@/components/Counter.svelte" || len(u.islands) != 1 {
+	if u.islands["Counter"] != (islandBinding{path: "@/components/Counter.svelte"}) || len(u.islands) != 1 {
 		t.Fatalf("island imports: %#v", u.islands)
 	}
 	var kinds []program.Kind
@@ -34,6 +34,30 @@ func TestLowerIsland(t *testing.T) {
 	}
 	if code := strings.Join(u.module.lines, "\n"); !strings.Contains(code, "$$.island((\nCounter\n), {") {
 		t.Fatalf("missing island evaluation: %s", code)
+	}
+}
+
+func TestSearchIslandUseSelectsRequestProgram(t *testing.T) {
+	for _, test := range []struct {
+		markup string
+		want   bool
+	}{
+		{`<Island />`, false},
+		{`<Island shugoSearch />`, true},
+		{`<Island shugoSearch={true} />`, true},
+		{`<Island shugoSearch={false} />`, false},
+		{`<Island shugoSearch={enabled} />`, true},
+		{`<Island {...props} shugoSearch={false} />`, false},
+		{`<Island shugoSearch={false} {...props} />`, true},
+		{`<Island shugoSearch /><Island shugoSearch={false} />`, true},
+	} {
+		u, err := compileFile("src/pages/catalog.shugo", `<script>import Island from './Island.svelte'</script>`+test.markup, 0, page)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := u.islands["Island"].request; got != test.want {
+			t.Errorf("%s: request program = %v, want %v", test.markup, got, test.want)
+		}
 	}
 }
 

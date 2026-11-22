@@ -12,6 +12,11 @@ import (
 	"github.com/grimalschi/shugo/internal/syntax"
 )
 
+type islandBinding struct {
+	path    string
+	request bool // at least one use of the binding can supply shugoSearch
+}
+
 // unit is one compiled .shugo file.
 type unit struct {
 	file   *syntax.File
@@ -29,7 +34,7 @@ type unit struct {
 	paths bool
 	// warnings are what is written in a way Svelte allows but warns about.
 	warnings []string
-	islands  map[string]string // bindings of Svelte components imported by the template
+	islands  map[string]islandBinding
 	// own tells that the file itself cannot be computed once for all pages:
 	// it reads the page it is shown on, or gives markup to the layouts of
 	// that page.
@@ -56,12 +61,12 @@ func compileFile(path, source string, id int, r role) (*unit, error) {
 	}
 	moduleScript, instance := scripts[0], scripts[1]
 
-	var islands map[string]string
+	var islands map[string]islandBinding
 	if len(moduleScript.islands)+len(instance.islands) > 0 {
-		islands = map[string]string{}
+		islands = map[string]islandBinding{}
 		for _, s := range scripts {
 			for name, path := range s.islands {
-				islands[name] = path
+				islands[name] = islandBinding{path: path}
 			}
 		}
 	}

@@ -20,9 +20,6 @@ const runtime = process.env.SHUGO_RUNTIME ?? "bun";
 let server;
 
 const nestedTemplate = `
-<script module>
-  export const shugoSSR = true
-</script>
 <script>
   import ProductCard from "./ProductCard.shugo"
   let { initial } = $props()
@@ -72,7 +69,7 @@ try {
   writeFileSync(join(project, "src", "pages", "nested.shugo"), `<script>
   import Nested from "../components/Nested.svelte"
 </script>
-<Nested shugoSearch={true} />`);
+<Nested shugoSearch />`);
   const shop = generate(1000);
   const [noSizes, discounted, available, unavailable] = shop.products;
   noSizes.variants = [];
@@ -86,6 +83,10 @@ try {
   await write(join(project, "data", "catalog.db"), shop);
   execFileSync("go", ["build", "-o", binary, "./cmd/shugo"], { cwd: join(demo, "../.."), stdio: "inherit" });
   execFileSync(binary, ["build", "-runtime", runtime, project], { stdio: "inherit" });
+  const { islandPrograms } = JSON.parse(readFileSync(join(project, "_build", "site.json"), "utf8"));
+  assert.ok(islandPrograms["src/components/Catalog.svelte"], "catalog call selects the Go program");
+  assert.ok(islandPrograms["src/components/Nested.svelte"], "nested island call selects the Go program");
+  assert.equal(islandPrograms["src/components/Counter.svelte"], undefined, "ordinary island uses its build-time HTML");
 
   // The CLI checks for the directory but serve needs no source files,
   // database inputs, Node/Bun, dependencies, or build-time JS bundles.

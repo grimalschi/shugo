@@ -5,4 +5,4 @@
 <svelte:head><title>Ceramics catalog — Measure</title></svelte:head>
 
 <h1>Ceramics catalog</h1>
-<Catalog shugoSearch={true} action="/catalog" endpoint="/_islands/catalog" />
+<Catalog shugoSearch action="/catalog" endpoint="/_islands/catalog" />

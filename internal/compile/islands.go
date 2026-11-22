@@ -44,7 +44,7 @@ type svelteModule struct {
 	Client, Server, CSS string
 	Warnings            []svelteDiagnostic
 	Error               *svelteDiagnostic
-	Request             bool
+	LegacyRequest       bool
 	Program             []program.IslandOp
 	SourceMap           json.RawMessage
 }
@@ -142,7 +142,8 @@ type islandOutput struct {
 func (b *builder) buildIslands() (*islandOutput, error) {
 	roots := map[string]bool{}
 	for _, u := range b.units {
-		for _, name := range u.islands {
+		for _, binding := range u.islands {
+			name := binding.path
 			var path string
 			switch {
 			case strings.HasPrefix(name, "@/"):
@@ -159,7 +160,7 @@ func (b *builder) buildIslands() (*islandOutput, error) {
 			if _, err := os.Stat(path); err != nil {
 				return nil, u.file.Errorf(0, "the island %q could not be read: %v", name, err)
 			}
-			roots[rel] = true
+			roots[rel] = roots[rel] || binding.request
 		}
 	}
 	if len(roots) == 0 {
@@ -230,7 +231,7 @@ func (b *builder) buildIslands() (*islandOutput, error) {
 		return nil, fmt.Errorf("Svelte bundler: the evaluation code should be one file, got %d", len(server.OutputFiles))
 	}
 	out.eval = string(server.OutputFiles[0].Contents)
-	out.programs, err = b.islandPrograms(compiler, paths)
+	out.programs, err = b.islandPrograms(compiler, paths, roots)
 	if err != nil {
 		return nil, err
 	}
@@ -414,7 +415,7 @@ func (b *builder) evalIslands(paths []string, islands map[string]islandEntry) st
 	return entry.String()
 }
 
-func (b *builder) islandPrograms(compiler *svelteProcess, roots []string) (map[string][]program.IslandOp, error) {
+func (b *builder) islandPrograms(compiler *svelteProcess, paths []string, request map[string]bool) (map[string][]program.IslandOp, error) {
 	programs := make(map[string][]program.IslandOp)
 	visiting := make(map[string]bool)
 	var add func(string) error
@@ -457,8 +458,8 @@ func (b *builder) islandPrograms(compiler *svelteProcess, roots []string) (map[s
 		programs[path] = lowered.Program
 		return nil
 	}
-	for _, path := range roots {
-		if compiler.modules[path].Request {
+	for _, path := range paths {
+		if request[path] || compiler.modules[path].LegacyRequest {
 			if err := add(path); err != nil {
 				return nil, err
 			}

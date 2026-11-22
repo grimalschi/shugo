@@ -1,7 +1,3 @@
-<script module>
-  export const shugoSSR = true
-</script>
-
 <script>
   import { onMount, tick } from "svelte"
   import ProductCard from "./ProductCard.shugo"

@@ -225,7 +225,7 @@ var oldTags = map[string]string{
 type lowerer struct {
 	file     *syntax.File
 	role     role
-	islands  map[string]string
+	islands  map[string]islandBinding
 	errs     Errors
 	warnings []string
 	// hash is the class that scopes the <style> of the component to its own
@@ -531,7 +531,7 @@ func (l *lowerer) element(e *syntax.Element, ctx context) []node {
 		if !ok {
 			return nil
 		}
-		if name := strings.TrimSpace(this.text); l.islands[name] != "" {
+		if name := strings.TrimSpace(this.text); l.islands[name].path != "" {
 			l.errorf(e.Start, "a Svelte island must be rendered by its imported tag <%s />", name)
 			return nil
 		}
@@ -565,16 +565,30 @@ func (l *lowerer) island(e *syntax.Element, ctx context) node {
 		l.errorf(e.Start, "the Svelte island <%s> takes JSON props; its tag cannot pass children or snippets", e.Name)
 	}
 	out := island{target: code{e.Name, e.Start + 1}}
+	explicitSearch, request := false, false
 	for _, a := range e.Attrs {
 		switch a.Kind {
 		case syntax.Spread:
 			c, _ := a.Expr()
 			out.props = append(out.props, prop{spread: &code{c.Text, c.Start}})
+			// A spread can override an explicitly supplied shugoSearch value.
+			request = request || explicitSearch
 		case syntax.Plain, syntax.Shorthand:
-			out.props = append(out.props, prop{name: a.Name, value: l.value(a)})
+			v := l.value(a)
+			out.props = append(out.props, prop{name: a.Name, value: v})
+			if a.Name == "shugoSearch" {
+				explicitSearch = true
+				expr, single := v.single()
+				request = !single || strings.TrimSpace(expr.text) != "false"
+			}
 		default:
 			l.errorf(a.Start, "pass a JSON prop to the Svelte island <%s>; directives belong inside its .svelte file", e.Name)
 		}
+	}
+	if request {
+		binding := l.islands[e.Name]
+		binding.request = true
+		l.islands[e.Name] = binding
 	}
 	return out
 }
