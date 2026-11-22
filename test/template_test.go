@@ -518,24 +518,61 @@ const c = counter(-1)
 		t.Errorf("a failure in a module with runes: %v", err)
 	}
 
-	modules, err := filepath.Abs(filepath.Join("svelte", "node_modules"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(modules, "svelte", "package.json")); err != nil {
-		t.Skip("islands need Svelte: cd test/svelte && bun install")
-	}
+	// An island needs no package of the project: Svelte comes with Shugo.
 	s = newSite(t, files+`
 -- src/pages/index.svelte --
 <script>
 import Counter from "../components/Counter.island.svelte"
 </script>
 <Counter start={5} />`)
-	if err := os.Symlink(modules, filepath.Join(s.root, "node_modules")); err != nil {
-		t.Fatal(err)
-	}
 	s.build()
 	if page := s.page("/"); !strings.Contains(page, "<button>5 × 2 = 10</button>") {
 		t.Errorf("an island with a module with runes: %s", page)
 	}
+}
+
+// A component compiled with css="injected" puts its styles into the head of
+// every page it is shown on, once, whichever blocks show it.
+func TestInjectedStyles(t *testing.T) {
+	s := newSite(t, `
+-- src/components/Badge.svelte --
+<svelte:options css="injected" />
+<script>let { text } = $props()</script>
+<b class="badge">{text}</b>
+<style>.badge { color: red }</style>
+-- src/pages/+layout.svelte --
+<script>
+import Badge from "../components/Badge.svelte"
+let { children } = $props()
+</script>
+<svelte:head><title>Shop</title></svelte:head>
+<Badge text="layout" />{@render children()}
+-- src/pages/index.svelte --
+<script>
+import Badge from "../components/Badge.svelte"
+</script>
+<svelte:head><title>Home</title></svelte:head>
+<Badge text="a" /><Badge text="b" />`)
+	s.build()
+	page := s.page("/")
+	if strings.Count(page, "<style") != 1 || !strings.Contains(page, "{color:red}") || !strings.HasSuffix(page[:strings.Index(page, "<b")], "<title>Home</title>") {
+		t.Errorf("one style and the title of the page: %s", page)
+	}
+}
+
+// A module with runes among the pages is code to import, not a file of the
+// site.
+func TestModulesWithRunesAmongPages(t *testing.T) {
+	s := newSite(t, `
+-- src/pages/shop/cart.svelte.ts --
+export const cart = $state({ items: 2 })
+-- src/pages/shop/index.svelte --
+<script>
+import { cart } from "./cart.svelte"
+</script>
+<p>{cart.items}</p>`)
+	if report := s.build(); report.Pages.Total != 1 || s.has("/shop/cart.svelte") {
+		t.Errorf("pages: %+v", report.Pages)
+	}
+	expect(t, s.page("/shop"), "<p>2</p>")
 }

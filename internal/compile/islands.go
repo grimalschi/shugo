@@ -2,12 +2,10 @@ package compile
 
 import (
 	"bytes"
-	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -21,110 +19,17 @@ import (
 	"github.com/grimalschi/shugo/internal/svelte"
 )
 
-//go:embed svelte-compiler.mjs
-var svelteCompiler string
-
-//go:embed island-program.mjs
-var islandCompiler string
-
-// The compiler does two passes over each reachable component in one JS process.
-// Both bundles use the same result, including Svelte's class names for CSS.
-type svelteProcess struct {
-	cmd      *exec.Cmd
-	stderr   bytes.Buffer
-	stdin    io.WriteCloser
-	request  *json.Encoder
-	response *json.Decoder
-	mu       sync.Mutex // esbuild loads files concurrently
-	modules  map[string]svelteModule
-	failed   error
+// islandParts are the parts of the graphs of the islands that Svelte has
+// compiled: a component or a module with runes, compiled once for the
+// browser and for the server, both bundles take it from here.
+type islandParts struct {
+	mu    sync.Mutex
+	parts map[string]islandPart // by the path from the root of the project
 }
 
-type svelteModule struct {
-	Client, Server, CSS string
-	Warnings            []svelteDiagnostic
-	Error               *svelteDiagnostic
-	Program             []skeleton.IslandOp
-	SourceMap           json.RawMessage
-}
-
-type svelteDiagnostic struct {
-	Message      string
-	Line, Column int
-}
-
-func startSvelte(p *project.Project) (*svelteProcess, error) {
-	var args []string
-	if p.Runtime() != "bun" {
-		args = append(args, "--input-type=module")
-	}
-	code := fmt.Sprintf("const wanted = %q;\n", svelte.Version) + islandCompiler + "\n" + svelteCompiler
-	args = append(args, "--eval", code)
-	s := &svelteProcess{cmd: exec.Command(p.Runtime(), args...), modules: map[string]svelteModule{}}
-	s.cmd.Dir = p.Root
-	s.cmd.Stderr = &s.stderr
-	var err error
-	if s.stdin, err = s.cmd.StdinPipe(); err != nil {
-		return nil, err
-	}
-	stdout, err := s.cmd.StdoutPipe()
-	if err != nil {
-		s.stdin.Close()
-		return nil, err
-	}
-	if err := s.cmd.Start(); err != nil {
-		s.stdin.Close()
-		stdout.Close()
-		return nil, fmt.Errorf("start the Svelte compiler: %w", err)
-	}
-	s.request = json.NewEncoder(s.stdin)
-	s.response = json.NewDecoder(stdout)
-	return s, nil
-}
-
-func (s *svelteProcess) close() {
-	if s.failed == nil {
-		s.stdin.Close()
-		s.cmd.Wait()
-	}
-}
-
-// compile compiles a component, or a module with runes when module is set,
-// for the browser and for the server.
-func (s *svelteProcess) compile(path, source string, module bool) (svelteModule, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.failed != nil {
-		return svelteModule{}, s.failed
-	}
-	if result, known := s.modules[path]; known {
-		return result, nil
-	}
-	result, err := s.ask(path, source, false, module)
-	if err == nil {
-		s.modules[path] = result
-	}
-	return result, err
-}
-
-func (s *svelteProcess) ask(path, source string, lower, module bool) (svelteModule, error) {
-	var result svelteModule
-	err := s.request.Encode(struct {
-		Filename string `json:"filename"`
-		Source   string `json:"source"`
-		Lower    bool   `json:"lower,omitempty"`
-		Module   bool   `json:"module,omitempty"`
-	}{path, source, lower, module})
-	if err == nil {
-		err = s.response.Decode(&result)
-	}
-	if err != nil {
-		s.stdin.Close()
-		s.cmd.Wait()
-		s.failed = fmt.Errorf("the Svelte compiler stopped: %w\n%s", err, strings.TrimSpace(s.stderr.String()))
-		return result, s.failed
-	}
-	return result, nil
+type islandPart struct {
+	code *svelte.IslandCode
+	err  error // the mistakes Svelte found in the file
 }
 
 type islandEntry struct {
@@ -178,12 +83,6 @@ func (b *builder) buildIslands() (*islandOutput, error) {
 	}
 	slices.Sort(paths)
 
-	compiler, err := startSvelte(b.project)
-	if err != nil {
-		return nil, err
-	}
-	defer compiler.close()
-
 	browserSources := map[string]string{}
 	var browserEntries []api.EntryPoint
 	for i, path := range paths {
@@ -200,7 +99,7 @@ func (b *builder) buildIslands() (*islandOutput, error) {
 	options.AssetNames = "island-file-[name]-[hash]"
 	options.Splitting = true
 	options.Loader = assetLoaders
-	options.Plugins = []api.Plugin{b.sveltePlugin(compiler, browserSources, true)}
+	options.Plugins = []api.Plugin{b.sveltePlugin(browserSources, true)}
 	browser := api.Build(options)
 	web, err := islandMetadata(browser)
 	if err != nil {
@@ -227,7 +126,7 @@ func (b *builder) buildIslands() (*islandOutput, error) {
 	options.EntryPoints = []string{serverEntry}
 	options.Platform = api.PlatformNode
 	options.Outfile = b.project.Path(project.Output, "island-eval.mjs")
-	options.Plugins = []api.Plugin{b.sveltePlugin(compiler, serverSources, false)}
+	options.Plugins = []api.Plugin{b.sveltePlugin(serverSources, false)}
 	server := api.Build(options)
 	ssr, err := islandMetadata(server)
 	if err != nil {
@@ -237,12 +136,11 @@ func (b *builder) buildIslands() (*islandOutput, error) {
 		return nil, fmt.Errorf("Svelte bundler: the evaluation code should be one file, got %d", len(server.OutputFiles))
 	}
 	out.eval = string(server.OutputFiles[0].Contents)
-	out.programs, err = b.islandPrograms(compiler, paths, roots)
+	out.programs, err = b.islandPrograms(paths, roots)
 	if err != nil {
 		return nil, err
 	}
 	out.files = append(out.files, ssr.inputs()...)
-	out.files = append(out.files, "package.json", "bun.lock", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "node_modules/svelte/package.json")
 	slices.Sort(out.files)
 	out.files = slices.Compact(out.files)
 	return out, nil
@@ -259,15 +157,21 @@ func (b *builder) islandOptions() api.BuildOptions {
 	}
 }
 
-// sveltePlugin uses Svelte's compiler throughout the island's graph, including
-// ordinary components shared with templates compiled by Shugo.
-func (b *builder) sveltePlugin(compiler *svelteProcess, entries map[string]string, client bool) api.Plugin {
+// sveltePlugin has Svelte compile the graph of an island, for the browser
+// or for the server, ordinary components it shares with pages included; the
+// modules of Svelte come from the runtimes Shugo ships.
+func (b *builder) sveltePlugin(entries map[string]string, client bool) api.Plugin {
 	return api.Plugin{Name: "shugo-svelte", Setup: func(build api.PluginBuild) {
 		rejectOldTemplates(build)
+		if client {
+			svelte.BrowserRuntime(build)
+		} else {
+			svelte.Runtime(build)
+		}
 		build.OnResolve(api.OnResolveOptions{Filter: `^shugo-island-`}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
 			return api.OnResolveResult{Path: args.Path, Namespace: "shugo-island"}, nil
 		})
-		build.OnResolve(api.OnResolveOptions{Filter: `^shugo:`}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
+		build.OnResolve(api.OnResolveOptions{Filter: `^shugo(:|$)`}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
 			return api.OnResolveResult{}, fmt.Errorf("Svelte islands cannot import %s: pass data through JSON props or an endpoint", args.Path)
 		})
 		build.OnLoad(api.OnLoadOptions{Filter: `^shugo-island-entry:`, Namespace: "shugo-island"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
@@ -275,18 +179,16 @@ func (b *builder) sveltePlugin(compiler *svelteProcess, entries map[string]strin
 			return api.OnLoadResult{Contents: &contents, Loader: api.LoaderJS, ResolveDir: b.project.Root}, nil
 		})
 		build.OnLoad(api.OnLoadOptions{Filter: `^shugo-island-css:`, Namespace: "shugo-island"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
+			// esbuild loads this module after its component.
 			path := strings.TrimPrefix(args.Path, "shugo-island-css:")
-			// esbuild loads this virtual module after its component.
-			compiler.mu.Lock()
-			css := compiler.modules[b.relative(path)].CSS
-			compiler.mu.Unlock()
-			return api.OnLoadResult{Contents: &css, Loader: api.LoaderCSS, ResolveDir: filepath.Dir(path)}, nil
+			part, err := b.islandPart(path)
+			if err != nil {
+				return api.OnLoadResult{}, err
+			}
+			return api.OnLoadResult{Contents: &part.CSS, Loader: api.LoaderCSS, ResolveDir: filepath.Dir(path)}, nil
 		})
-		build.OnLoad(api.OnLoadOptions{Filter: `\.svelte$`, Namespace: "file"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
-			return b.svelteLoad(compiler, args.Path, client)
-		})
-		build.OnLoad(api.OnLoadOptions{Filter: `\.svelte\.(js|ts)$`, Namespace: "file"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
-			return b.svelteLoad(compiler, args.Path, client)
+		build.OnLoad(api.OnLoadOptions{Filter: `\.svelte(\.js|\.ts)?$`, Namespace: "file"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
+			return b.svelteLoad(args.Path, client)
 		})
 		if !client {
 			build.OnLoad(api.OnLoadOptions{Filter: `\.css$`, Namespace: "file"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
@@ -297,43 +199,65 @@ func (b *builder) sveltePlugin(compiler *svelteProcess, entries map[string]strin
 	}}
 }
 
-func (b *builder) svelteLoad(compiler *svelteProcess, path string, client bool) (api.OnLoadResult, error) {
+// islandPart compiles a component or a module with runes of the graph of an
+// island, once for both bundles. Svelte reads JavaScript alone, so a
+// .svelte.ts file loses its types first.
+func (b *builder) islandPart(path string) (*svelte.IslandCode, error) {
+	rel := b.relative(path)
+	b.islands.mu.Lock()
+	defer b.islands.mu.Unlock()
+	if part, done := b.islands.parts[rel]; done {
+		return part.code, part.err
+	}
+	code, err := b.compileIslandPart(path, rel)
+	if b.islands.parts == nil {
+		b.islands.parts = map[string]islandPart{}
+	}
+	b.islands.parts[rel] = islandPart{code, err}
+	return code, err
+}
+
+func (b *builder) compileIslandPart(path, rel string) (*svelte.IslandCode, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	source := string(data)
+	if strings.HasSuffix(path, ".svelte.ts") {
+		stripped := api.Transform(source, api.TransformOptions{Loader: api.LoaderTS, Target: api.ESNext, Sourcefile: rel, LogLevel: api.LogLevelSilent})
+		if len(stripped.Errors) > 0 {
+			return nil, fmt.Errorf("%s: %s", rel, stripped.Errors[0].Text)
+		}
+		source = string(stripped.Code)
+	}
+	compilers, err := b.compilers()
+	if err != nil {
+		return nil, err
+	}
+	return compilers.CompileIsland(rel, source, !strings.HasSuffix(path, ".svelte"))
+}
+
+func (b *builder) svelteLoad(path string, client bool) (api.OnLoadResult, error) {
 	rel := b.relative(path)
 	if id, known := b.ids[rel]; known && b.units[id].role != component {
 		return api.OnLoadResult{}, fmt.Errorf("an island cannot import the page or layout %s; extract a reusable Svelte component", rel)
 	}
-	data, err := os.ReadFile(path)
+	part, err := b.islandPart(path)
+	var found svelte.Mistakes
+	if errors.As(err, &found) {
+		return api.OnLoadResult{Errors: messagesOf(rel, found, nil)}, nil
+	}
 	if err != nil {
 		return api.OnLoadResult{}, err
 	}
-	source := string(data)
-	// A module with runes: Svelte reads JavaScript alone, so a .svelte.ts
-	// file loses its types first.
-	module := !strings.HasSuffix(path, ".svelte")
-	if strings.HasSuffix(path, ".svelte.ts") {
-		stripped := api.Transform(source, api.TransformOptions{Loader: api.LoaderTS, Target: api.ESNext, Sourcefile: rel, LogLevel: api.LogLevelSilent})
-		if len(stripped.Errors) > 0 {
-			return api.OnLoadResult{Errors: stripped.Errors}, nil
-		}
-		source = string(stripped.Code)
-	}
-	compiled, err := compiler.compile(rel, source, module)
-	if err != nil {
-		return api.OnLoadResult{}, err
-	}
-	if compiled.Error != nil {
-		return api.OnLoadResult{Errors: []api.Message{compiled.Error.message(rel)}}, nil
-	}
-	code := compiled.Server
+	code := part.Server
 	var warnings []api.Message
 	if client {
-		code = compiled.Client
-		if compiled.CSS != "" {
+		code = part.Client
+		if part.CSS != "" {
 			code += "\nimport " + quote("shugo-island-css:"+path) + ";\n"
 		}
-		for _, warning := range compiled.Warnings {
-			warnings = append(warnings, warning.message(rel))
-		}
+		warnings = messagesOf(rel, part.Warnings, nil)
 	}
 	if strings.Contains(code, "Shugo") && readsShugo(code) {
 		return api.OnLoadResult{Errors: []api.Message{{Text: "a component inside a Svelte island cannot read Shugo; pass data as a prop",
@@ -348,10 +272,6 @@ func readsShugo(code string) bool {
 	parsed := api.Transform(code, api.TransformOptions{Loader: api.LoaderJS, Target: api.ESNext,
 		Define: map[string]string{"Shugo": noShugo}, LogLevel: api.LogLevelSilent})
 	return bytes.Contains(parsed.Code, []byte(noShugo))
-}
-
-func (d svelteDiagnostic) message(path string) api.Message {
-	return api.Message{Text: d.Message, Location: &api.Location{File: path, Line: max(1, d.Line), Column: d.Column}}
 }
 
 type islandMeta struct {
@@ -432,7 +352,13 @@ func (b *builder) evalIslands(paths []string, islands map[string]islandEntry) st
 	return entry.String()
 }
 
-func (b *builder) islandPrograms(compiler *svelteProcess, paths []string, request map[string]bool) (map[string][]skeleton.IslandOp, error) {
+// islandPrograms makes the programs of the islands bound to a request, and
+// of the components they show: Go builds their HTML by them on request.
+func (b *builder) islandPrograms(paths []string, request map[string]bool) (map[string][]skeleton.IslandOp, error) {
+	compilers, err := b.compilers()
+	if err != nil {
+		return nil, err
+	}
 	programs := make(map[string][]skeleton.IslandOp)
 	visiting := make(map[string]bool)
 	var add func(string) error
@@ -443,36 +369,36 @@ func (b *builder) islandPrograms(compiler *svelteProcess, paths []string, reques
 		if _, done := programs[path]; done {
 			return nil
 		}
-		source, ok := compiler.modules[path]
-		if !ok {
-			return fmt.Errorf("%s: request-time island component was not compiled by Svelte", path)
-		}
-		lowered, err := compiler.ask(path, source.Server, true, false)
+		part, err := b.islandPart(b.project.Path(filepath.FromSlash(path)))
 		if err != nil {
 			return err
 		}
-		if lowered.Error != nil {
-			diagnostic := lowered.Error
-			if diagnostic.Line > 0 {
-				if origin, err := sourcemap.Parse(lowered.SourceMap); err == nil {
-					_, line, column, found := origin.Find(diagnostic.Line-1, diagnostic.Column)
-					if found {
-						return Errors{&Error{
-							Path: path, Line: line + 1, Column: column + 1,
-							Message: "request-time island: " + diagnostic.Message,
-						}}
-					}
+		lowered, err := compilers.LowerIsland(part.Server)
+		var found svelte.Mistakes
+		if errors.As(err, &found) {
+			// The place of the mistake in the code of Svelte is a place in
+			// the file the code was compiled from.
+			m := found[0]
+			if origin, err := sourcemap.Parse([]byte(part.Map)); err == nil {
+				if _, line, column, ok := origin.Find(m.Line-1, m.Column-1); ok {
+					return Errors{{Path: path, Line: line + 1, Column: column + 1, Message: "request-time island: " + m.Text}}
 				}
-				return fmt.Errorf("%s: request-time island: %s (generated SSR %d:%d)", path, diagnostic.Message, diagnostic.Line, diagnostic.Column+1)
 			}
-			return fmt.Errorf("%s: request-time island: %s", path, diagnostic.Message)
+			return fmt.Errorf("%s: request-time island: %s (generated SSR %d:%d)", path, m.Text, m.Line, m.Column)
+		}
+		if err != nil {
+			return err
+		}
+		var program []skeleton.IslandOp
+		if err := json.Unmarshal(lowered, &program); err != nil {
+			return err
 		}
 		visiting[path] = true
 		defer delete(visiting, path)
-		if err := b.resolveIslandCalls(path, lowered.Program, add); err != nil {
+		if err := b.resolveIslandCalls(path, program, add); err != nil {
 			return err
 		}
-		programs[path] = lowered.Program
+		programs[path] = program
 		return nil
 	}
 	for _, path := range paths {

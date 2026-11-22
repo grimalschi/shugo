@@ -7,8 +7,9 @@ The document describes how to work with styles: component styles, common files C
 - Styles are collected when the project is compiled. At this stage, you can run Tailwind and other utilities.
 - Tailwind finds classes by viewing project files as text.
 - All styles of the site are collected in one file with a hash in the name, a link to it is before `</head>`; Tailwind connects if it is installed in the project (21 solution November 2026 year).
-- `<style>` component acts only on this component, as in Svelte (21 solution November 2026 year).
+- `<style>` component is valid only on this component (21 solution November 2026 year).
 - Multiple style files and critical styles right in the page postponed (21 November 2026 solution).
+- The exception is the `<svelte:options css="injected" />` component: its styles go to `<style>` in `<head>` each page where it is shown, once per page (the decision of the author of the project 22 November 2026 year).
 
 ## Implemented, pending approval
 
@@ -50,7 +51,7 @@ The style file is connected by import to `<script>`. You can connect it in any `
 
 All connected files and styles of all components are collected into one `_build/assets/styles.<hash>.css` file. Order of Imports. A link to the file is added to the `<head>` of each page, in place of the `%shugo.head%` shell of the `src/site.html`, after having given the templates. The file name changes with the content, so the browser caches it forever.
 
-The exception is the `<svelte:options css="injected" />` component: its styles go not to the file, but to the `<style>` in the `<head>` of each page where it is shown.
+The exception is the `<svelte:options css="injected" />` component: its styles go not to file, but to `<style>` in `<head>` of each page where it is shown, once per page, no matter how many blocks it shows.
 
 Fonts and images that styles link to via `url(…)` are copied alongside.
 

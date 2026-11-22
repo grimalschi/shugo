@@ -396,7 +396,8 @@ func (k *keeper) block(data []byte) (record.Block, error) {
 }
 
 // fragment reads HTML with holes as the project's code sends it: texts and
-// holes split by a byte 0, a hole c3, gname, or i and an island in JSON.
+// holes split by a byte 0, a hole c3, gname, i and an island in JSON, or s
+// and a <style>.
 func fragment(data []byte) (record.Fragment, error) {
 	parts := bytes.Split(data, []byte{0})
 	if len(parts)%2 == 0 {
@@ -421,7 +422,7 @@ func fragment(data []byte) (record.Fragment, error) {
 			if hole.Block, err = strconv.Atoi(string(value[1:])); err != nil || hole.Block < 0 {
 				return f, errDamaged
 			}
-		case record.Given, record.Island:
+		case record.Given, record.Island, record.Style:
 			hole.Text = value[1:]
 		default:
 			return f, errDamaged

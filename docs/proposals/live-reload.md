@@ -7,7 +7,8 @@ The proposal of how `shugo dev` shows changes in the browser: what is rebooted, 
 - Development mode is needed: reassembly when changing files and updating the page in the browser ([Command line](../../spec/cli.md)).
 - Changing the project code calculates the entire site anew - and it should be. The words of the author of the project, 21 November 2026 year.
 - For development you need Live Reload. It is done separately; while this is a proposal, without implementation. Words of the author of the project, 21 November 2026 year.
-- Development mode calculates the page when asked, rather than the entire site like SvelteKit and Astro; a page error that was not opened will find `shugo build` (22 November decision 2026). As it is arranged - below, in "[Page is calculated on request](#page-is-calculated-on-request)". Not done yet.
+- The development mode calculates the page when asked, rather than the entire site as SvelteKit; a mistake in the page that was not opened will find `shugo build` (22 November decision 2026 year). As it is arranged - below, in "[Page is calculated on request](#page-is-calculated-on-request)". Not done yet.
+- Editing the `<style>` template updates styles without reloading the page when the component code that Svelte gave has not changed; otherwise it is a change of code (the decision of the author of the project 22 November 2026). Details are in "[Styles Only](#styles-only-no-reset)". Not done yet.
 
 ## Like now
 

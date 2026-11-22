@@ -189,6 +189,34 @@ func TestStylesTrackTransitiveInputs(t *testing.T) {
 	}
 }
 
+// The code of the pages takes its packages from node_modules when it runs,
+// so the bundle does not hold them: what the package manager wrote tells
+// that they changed, with islands or without.
+func TestPackagesOfPagesCount(t *testing.T) {
+	for _, file := range []string{"package.json", "bun.lock", "package-lock.json"} {
+		t.Run(file, func(t *testing.T) {
+			p := templateProject(t, map[string]string{
+				"src/pages/index.svelte":          `<script>import { shout } from "shout"</script><p>{shout("hello")}</p>`,
+				"node_modules/shout/package.json": `{"name": "shout", "type": "module", "main": "index.js"}`,
+				"node_modules/shout/index.js":     `export const shout = (text) => text.toUpperCase();`,
+				"package.json":                    `{"dependencies": {"shout": "1.0.0"}}`,
+			})
+			if _, err := Build(p); err != nil {
+				t.Fatal(err)
+			}
+			if changed, err := Changed(p); err != nil || changed {
+				t.Fatalf("fresh build: changed = %v, error = %v", changed, err)
+			}
+			if err := os.WriteFile(p.Path(file), []byte(`{"dependencies": {"shout": "1.0.1"}}`), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if changed, err := Changed(p); err != nil || !changed {
+				t.Fatalf("%s changed: changed = %v, error = %v", file, changed, err)
+			}
+		})
+	}
+}
+
 func TestManifestHashesParsedTemplate(t *testing.T) {
 	const name = "src/pages/index.svelte"
 	const parsed = "<p>before</p>"

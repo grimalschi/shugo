@@ -4,11 +4,10 @@ One Svelte island serves both products and articles. The products page uses colu
 
 The `/counters` page contains two islands that use no search. Each has its own state, and the page loads the island module once. [Counter](src/components/Counter.island.svelte) · [Page](src/pages/counters.svelte) · [How islands work](../../docs/islands.md)
 
-Run the example from the repository root. The seed command expects a new database for this example.
+Run the example from the repository root. Shugo already bundles Svelte for islands. The seed command expects a new database for this example.
 
 ```sh
 go build -o bin/shugo ./cmd/shugo
-bun install --cwd examples/search --frozen-lockfile
 bun examples/search/scripts/seed.mjs
 bin/shugo build examples/search
 bin/shugo serve examples/search -addr 127.0.0.1:4321

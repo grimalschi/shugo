@@ -109,6 +109,9 @@ type renderer struct {
 	replace func(*Island) error
 	scripts map[string]bool
 	styles  map[string]bool
+	// injected are the <style> elements of components compiled with
+	// css="injected" that the page has already.
+	injected map[string]bool
 }
 
 // given is HTML of a record that a block gives the head of the page, with
@@ -189,6 +192,14 @@ func (r *renderer) fragment(rec *record.Record, f *record.Fragment, from *frame)
 		case record.Island:
 			if err := r.island(hole.Text); err != nil {
 				return err
+			}
+		case record.Style:
+			if !r.injected[string(hole.Text)] {
+				if r.injected == nil {
+					r.injected = make(map[string]bool)
+				}
+				r.injected[string(hole.Text)] = true
+				r.out = append(r.out, hole.Text...)
 			}
 		default:
 			return fmt.Errorf("a hole of an unknown kind %q", rune(hole.Kind))

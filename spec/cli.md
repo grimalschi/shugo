@@ -6,7 +6,7 @@
 - Changing the project code calculates the entire site anew, and this is correct. The development mode will receive a real Live Reload separately: [proposal](../docs/proposals/live-reload.md) (21 solution November 2026 year).
 - CLI messages and the specification use English so agents can read them and search for their wording. Confirmed November 21, 2026.
 - `shugo init` is needed: a new project with an example, `tsconfig.json`, types for the editor and a memo for the agent (21 solution November 2026 years). Not yet done.
-- Type check — a separate command `shugo check`, together with verification of component parameters (21 solution November 2026 year). Not yet done.
+- Type checking is a separate `shugo check` command, along with component parameter checking (21 November 2026 solution). It is made by `svelte-check` with TypeScript sewn into Shugo as Svelte: the project does not need to put them, nor npm (the decision of the author of the project 22 November 2026 years). Not yet.
 - How `shugo` gets on the machine: ready files for all systems in releases on GitHub, npm package, which puts the finished file under the system, like esbuild, and Homebrew (22 solution November 2026 years). Not yet done.
 
 ## Implemented, pending approval

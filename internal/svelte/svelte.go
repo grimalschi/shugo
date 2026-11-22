@@ -1,7 +1,8 @@
 // Package svelte is the Svelte that Shugo ships: its compiler, which turns
-// the templates of a project into code for a server, and its server runtime,
-// which that code runs on. Both are of one version, vendor/README.md tells
-// where they come from, so a project does not install Svelte to have pages.
+// the templates of a project into code for a server and the islands into
+// code for the browser too, and its runtimes, for the server and for the
+// browser. All are of one version, vendor/README.md tells where they come
+// from, so a project does not install Svelte.
 package svelte
 
 import (
@@ -28,10 +29,16 @@ const Version = "5.59.1"
 //go:embed vendor/compiler-5.59.1.cjs
 var compilerBundle []byte
 
+//go:embed vendor/acorn.cjs
+var acornBundle []byte
+
 //go:embed compile.mjs
 var compilerScript string
 
-//go:embed vendor/runtime/*.js
+//go:embed island-program.mjs
+var islandProgram string
+
+//go:embed vendor/runtime/*.js vendor/runtime-browser/*.js
 var runtime embed.FS
 
 // Template is a template compiled for a server.
@@ -41,7 +48,7 @@ type Template struct {
 	CSS  string // the styles of the component, scoped to it by Svelte
 	// Warnings are what Svelte warns about in the template.
 	Warnings []Message
-	Facts
+	Facts    `json:"facts"`
 }
 
 // Facts are what the framework needs to know of a template.
@@ -106,22 +113,18 @@ type Compiler struct {
 // Start starts the compiler with the JavaScript runtime given, "bun" or
 // "node", in the folder dir.
 func Start(runtime, dir string) (*Compiler, error) {
-	// createRequire needs an absolute path, even when TMPDIR is relative.
-	temp, err := filepath.Abs(os.TempDir())
+	compiler, err := temporary("shugo-svelte-*.cjs", compilerBundle)
 	if err != nil {
 		return nil, err
 	}
-	file, err := os.CreateTemp(temp, "shugo-svelte-*.cjs")
+	defer os.Remove(compiler)
+	acorn, err := temporary("shugo-acorn-*.cjs", acornBundle)
 	if err != nil {
 		return nil, err
 	}
-	defer os.Remove(file.Name())
-	_, writeErr := file.Write(compilerBundle)
-	if err := errors.Join(writeErr, file.Close()); err != nil {
-		return nil, err
-	}
+	defer os.Remove(acorn)
 
-	cmd := exec.Command(runtime, "--input-type=module", "--eval", compilerScript, file.Name(), Version)
+	cmd := exec.Command(runtime, "--input-type=module", "--eval", islandProgram+"\n"+compilerScript, compiler, acorn, Version)
 	cmd.Dir = dir
 	c := &Compiler{cmd: cmd}
 	cmd.Stderr = &c.stderr
@@ -154,51 +157,106 @@ func Start(runtime, dir string) (*Compiler, error) {
 	return c, nil
 }
 
+// temporary writes data into a new file of the folder of temporary files
+// and returns its absolute path: createRequire needs one, even when TMPDIR
+// is relative.
+func temporary(pattern string, data []byte) (string, error) {
+	folder, err := filepath.Abs(os.TempDir())
+	if err != nil {
+		return "", err
+	}
+	file, err := os.CreateTemp(folder, pattern)
+	if err != nil {
+		return "", err
+	}
+	_, writeErr := file.Write(data)
+	if err := errors.Join(writeErr, file.Close()); err != nil {
+		os.Remove(file.Name())
+		return "", err
+	}
+	return file.Name(), nil
+}
+
 // Compile compiles one template. path is how messages name the file. The
 // mistakes in the template come as Mistakes.
 func (c *Compiler) Compile(path, source string) (*Template, error) {
-	return c.ask(path, source, false)
+	var t Template
+	return &t, c.ask(request{Path: path, Source: source}, &t)
 }
 
 // CompileModule compiles a module with runes, a .svelte.js file, for the
 // server: the Template has Code, Map and Warnings. A .svelte.ts file is
 // given with its types taken away.
 func (c *Compiler) CompileModule(path, source string) (*Template, error) {
-	return c.ask(path, source, true)
+	var t Template
+	return &t, c.ask(request{Path: path, Source: source, Module: true}, &t)
 }
 
-func (c *Compiler) ask(path, source string, module bool) (*Template, error) {
-	if !utf8.ValidString(source) {
-		return nil, Mistakes{{Line: 1, Column: 1, Text: "a source file is text in UTF-8"}}
+// IslandCode is a component of an island, or a module with runes in its
+// graph, compiled for the browser and for the server.
+type IslandCode struct {
+	Client, Server string
+	Map            string // the source map of Server, as JSON
+	CSS            string // the styles of the component, scoped to it
+	Warnings       []Message
+}
+
+// CompileIsland compiles a component of an island, or a module with runes
+// when module is set; a .svelte.ts file is given with its types taken away.
+func (c *Compiler) CompileIsland(path, source string, module bool) (*IslandCode, error) {
+	var code IslandCode
+	return &code, c.ask(request{Path: path, Source: source, Island: true, Module: module}, &code)
+}
+
+// LowerIsland makes the program by which Go builds the HTML of an island
+// bound to a request, from the server code of its component, as JSON. A
+// mistake is told at its place in that code.
+func (c *Compiler) LowerIsland(server string) (json.RawMessage, error) {
+	var answer struct{ Program json.RawMessage }
+	return answer.Program, c.ask(request{Source: server, Lower: true}, &answer)
+}
+
+// request is what the compiler is asked; see compile.mjs.
+type request struct {
+	Path   string `json:"path"`
+	Source string `json:"source"`
+	Module bool   `json:"module,omitempty"`
+	Island bool   `json:"island,omitempty"`
+	Lower  bool   `json:"lower,omitempty"`
+}
+
+// ask asks the compiler and reads its answer into out; the mistakes it
+// found come as Mistakes.
+func (c *Compiler) ask(r request, out any) error {
+	if !utf8.ValidString(r.Source) {
+		return Mistakes{{Line: 1, Column: 1, Text: "a source file is text in UTF-8"}}
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.failed != nil {
-		return nil, c.failed
+		return c.failed
 	}
 	if c.cmd == nil {
-		return nil, errors.New("the compiler of Svelte is closed")
+		return errors.New("the compiler of Svelte is closed")
 	}
-	if err := c.request.Encode(struct {
-		Path   string `json:"path"`
-		Source string `json:"source"`
-		Module bool   `json:"module,omitempty"`
-	}{path, source, module}); err != nil {
-		return nil, c.fail(err)
+	if err := c.request.Encode(r); err != nil {
+		return c.fail(err)
 	}
-	var answer struct {
-		Code, Map, CSS string
-		Warnings       []Message
-		Facts          Facts
-		Errors         Mistakes
-	}
+	var answer json.RawMessage
 	if err := c.response.Decode(&answer); err != nil {
-		return nil, c.fail(err)
+		return c.fail(err)
 	}
-	if len(answer.Errors) > 0 {
-		return nil, answer.Errors
+	var mistakes struct{ Errors Mistakes }
+	if err := json.Unmarshal(answer, &mistakes); err != nil {
+		return c.fail(err)
 	}
-	return &Template{Code: answer.Code, Map: answer.Map, CSS: answer.CSS, Warnings: answer.Warnings, Facts: answer.Facts}, nil
+	if len(mistakes.Errors) > 0 {
+		return mistakes.Errors
+	}
+	if err := json.Unmarshal(answer, out); err != nil {
+		return c.fail(err)
+	}
+	return nil
 }
 
 // Close stops the compiler and waits for it. It can be called more than once.
@@ -260,6 +318,20 @@ func (p *Pool) CompileModule(path, source string) (*Template, error) {
 	return c.CompileModule(path, source)
 }
 
+// CompileIsland compiles a part of an island with a compiler that is free.
+func (p *Pool) CompileIsland(path, source string, module bool) (*IslandCode, error) {
+	c := <-p.free
+	defer func() { p.free <- c }()
+	return c.CompileIsland(path, source, module)
+}
+
+// LowerIsland makes the program of an island with a compiler that is free.
+func (p *Pool) LowerIsland(server string) (json.RawMessage, error) {
+	c := <-p.free
+	defer func() { p.free <- c }()
+	return c.LowerIsland(server)
+}
+
 // Close stops the compilers. Nothing may be compiling.
 func (p *Pool) Close() {
 	for {
@@ -277,13 +349,25 @@ func (p *Pool) Close() {
 // server runtime Shugo ships. A module of Svelte that a server has no use
 // for is an error.
 func Runtime(build api.PluginBuild) {
+	runtimeOf(build, "runtime", "a page is computed with the server runtime")
+}
+
+// BrowserRuntime has the bundler take the modules of Svelte that an island
+// imports in the browser from the browser runtime Shugo ships.
+func BrowserRuntime(build api.PluginBuild) {
+	runtimeOf(build, "runtime-browser", "an island runs in the browser with the browser runtime")
+}
+
+// runtimeOf resolves the modules of Svelte to the files of a runtime under
+// vendor/.
+func runtimeOf(build api.PluginBuild, folder, which string) {
 	build.OnResolve(api.OnResolveOptions{Filter: `^svelte(/|$)`}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
 		name := "svelte.js"
 		if rest, sub := strings.CutPrefix(args.Path, "svelte/"); sub {
 			name = strings.ReplaceAll(rest, "/", "-") + ".js"
 		}
-		if _, err := runtime.Open("vendor/runtime/" + name); err != nil {
-			return api.OnResolveResult{}, fmt.Errorf("a page is computed with the server runtime of Svelte %s that Shugo ships, and %s is not a part of it: it has %s", Version, args.Path, strings.Join(Modules(), ", "))
+		if _, err := runtime.Open("vendor/" + folder + "/" + name); err != nil {
+			return api.OnResolveResult{}, fmt.Errorf("%s of Svelte %s that Shugo ships, and %s is not a part of it: it has %s", which, Version, args.Path, strings.Join(modules(folder), ", "))
 		}
 		return api.OnResolveResult{Path: name, Namespace: "svelte"}, nil
 	})
@@ -291,7 +375,7 @@ func Runtime(build api.PluginBuild) {
 		return api.OnResolveResult{Path: path.Join(path.Dir(args.Importer), args.Path), Namespace: "svelte"}, nil
 	})
 	build.OnLoad(api.OnLoadOptions{Filter: `.*`, Namespace: "svelte"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
-		data, err := runtime.ReadFile("vendor/runtime/" + args.Path)
+		data, err := runtime.ReadFile("vendor/" + folder + "/" + args.Path)
 		if err != nil {
 			return api.OnLoadResult{}, err
 		}
@@ -302,7 +386,12 @@ func Runtime(build api.PluginBuild) {
 
 // Modules lists the modules of Svelte that a page may import.
 func Modules() []string {
-	entries, _ := runtime.ReadDir("vendor/runtime")
+	return modules("runtime")
+}
+
+// modules lists the modules of Svelte in a runtime under vendor/.
+func modules(folder string) []string {
+	entries, _ := runtime.ReadDir("vendor/" + folder)
 	var out []string
 	for _, entry := range entries {
 		name := strings.TrimSuffix(entry.Name(), ".js")

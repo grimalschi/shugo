@@ -56,7 +56,7 @@ type Fragment struct {
 type Hole struct {
 	Kind  HoleKind
 	Block int    // Child: the block of the record that stands here
-	Text  []byte // Given: the name of the snippet; Island: what the island is, in JSON
+	Text  []byte // Given: the name of the snippet; Island: what the island is, in JSON; Style: the <style>
 }
 
 // HoleKind says what fills a hole.
@@ -66,6 +66,9 @@ const (
 	Child  HoleKind = 'c' // a block of the same record: a use of a shared block
 	Given  HoleKind = 'g' // the snippet of that name that the place a shared block is shown at gave it
 	Island HoleKind = 'i' // a Svelte island
+	// Style is the <style> of a component compiled with css="injected": it
+	// goes into the head of a page once, however many blocks give it.
+	Style HoleKind = 's'
 )
 
 // Empty tells whether a fragment has nothing to show.
@@ -267,7 +270,7 @@ func (d *decoder) fragment(limit int) Fragment {
 			if h.Block = d.number(); h.Block >= limit {
 				d.failed = true
 			}
-		case Given, Island:
+		case Given, Island, Style:
 			h.Text = d.bytes()
 		default:
 			d.failed = true
