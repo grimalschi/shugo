@@ -2,7 +2,7 @@
 
 Here is written what is decided without direct confirmation of the author of the project: where the answer was “don’t know”, “decision” or question before. Every decision has a reason. After approval, the decision is transferred to the “Decision” section of its document, after refusal redone. The numbers don’t change so that the links don’t break; every decision above tells you what happened to it.
 
-Decisions 1–27 taken during the assembly of the first version, 28–35 when switching to syntax Svelte 21 November 2026 years, 36–38 — 22 November 2026 The year when the shell appeared `src/site.html` Files are not HTML, 39 When there is only one search, 40–48 — the same time when the templates began to compile and render themselves Svelte, 49–53 — then, according to the author's answers to questions about documents.
+Decisions 1–27 taken during the assembly of the first version, 28–35 when switching to syntax Svelte 21 November 2026 years, 36–38 — 22 November 2026 The year when the shell appeared `src/site.html` Files are not HTML, 39 When there is only one search, 40–48 — the same time when the templates began to compile and render themselves Svelte, 49–53 — then, according to the author's answers to questions about documents, 54–55 then, according to the answers about the packages npm and waiting.
 
 ## 1. Data loading and expression are counted together, Go compares the result
 
@@ -476,8 +476,34 @@ The only difference from Svelte is that the layout context does not reach the pa
 
 **Why not.** The build package code does not compile, and such a component fell when calculating: on Bun - page, on Node - the whole process, without a hint.
 
+*22 November 2026 year verification moved to where the assembler allows the import of the package: component is the path it found, on `.svelte`, or the package whose `package.json` names components. In the islands, the components of the packages work: the island is compiled entirely by the sewn Svelte.*
+
 ## 53. Files of the package manager — source of the project
 
 **Waiting for approval.** `package.json`, `bun.lock`, `package-lock.json`, `pnpm-lock.yaml` and `yarn.lock` are included in the source code of each project: after their change, `shugo update` collects the project again and calculates the site. They used to only enter when the project had islands. The build revision is 5, so the project assembled earlier is reassembling once.
 
-**Why not.** The page code takes packets from `node_modules` when calculating, and the assembler does not see them. Updating the package in the project without islands left pages old, and no one talked about it. Editing files inside `node_modules` hands it does not catch; how to deal with packages on — [questions 4 and 5](open-questions.md#4-who-puts-the-packages-of-npm).
+**Why not.** The page code takes packages from `node_modules` when calculating, and the collector does not see them. Updating the package in the project without islands left the pages old, and no one talked about it. Editing files inside `node_modules` hands does not catch it.
+
+*22 November 2026 Year-round packages are being assembled in `eval.mjs` ([Project structure](project-structure.md#decisions)), and each of their files in the assembly is a source with a hash: you can see and edit inside `node_modules`. The files of the package manager remained sources for what is taken from `node_modules` by the assembly, Tailwind.*
+
+## 54. Site modules are not waiting at the top level
+
+**Waiting for approval.** The author of the project decided to intentionally ban `await` at the top level of `<script module>` to see where the wait is needed and track the data past the database. The ban applies to all site modules that calculate pages: `src/lib/`, modules with runes `.svelte.ts` and `.svelte.js`, modules among the pages. `await` and `for await` at their top level is an assembly error in its place: Shugo asks esbuild to assemble a module for the environment without such an expectation, and he calls the place. You can wait inside the function. Islands and modules that import only islands are code for the browser: they can wait. The memo no longer advises to prepare at the top of the module what is waiting, for example, code highlighting.
+
+**Why not.** Without this prohibition in `<script module>` Transferring the waiting to `src/lib/`where he was advised to carry the memo, and the ban would not show anything.
+
+## 55. Packages in `eval.mjs`: how made
+
+**Waiting for approval.** The author of the project decided that the packages are put by the package manager of the project, and the page code is collected with them. Details:
+
+- Importing a package first allows the assembler to itself, in the same way as it will then collect, and checks the package for its `package.json`. The error occurs at the point of import, including import from another package.
+- Package is not in any `node_modules` around the file — error with the installation command. The command is on the project lock file: `bun.lock` — `bun add`, `package-lock.json` — `npm install`, `pnpm-lock.yaml` — `pnpm add`, `yarn.lock` — `yarn add`without it, in the form of an early time that calculates pages.
+- Svelte versions, which the package calls in `peerDependencies` or `dependencies`, are checked against the `github.com/Masterminds/semver` sewn library: it understands the npm ranges. A record that does not range, such as `workspace:*`, says nothing.
+- The package written for CommonJS, the framework library gives `require`, `__filename` and `__dirname` assembly through `globalThis`: it is performed first, before the site code. Their ads of these names in the modules do not face them.
+- An error while the site code is loaded goes to Go just like a page error: it is caught by the `uncaughtException` handler, and Bun, and Node calls it for an error at the top of the module. Previously, the process was just completed, and Go wrote that it ended before the site is computed.
+- The error `ENOENT`, whose innermost place is in the package, gets a hint: the package reads the file next to its code, and the code is now in `_build/`.
+- esbuild's message about a file it can't assemble, `No loader is configured for ".node" files`, gets a prompt to take a packet on one JavaScript.
+- In the islands, the same checks are made except for the components: the islands compile them.
+- Build revision - 6: A project assembled when packages were taken from `node_modules` when computed is reassembled once.
+
+**Why not.** So there's only one page. Svelte: `getContext` the package sees the context of the page, and the package `svelte/store` works without package `svelte` in the project. The missing package is at the assembly, at the place of import, and not at calculation. Changes to packages are visible as accurately as changes to the project code. Checked on Bun and NodeCommonJS Package `require` and `__dirname`Package with `getContext` and `svelte/store` Next to a stranger `svelte` the City of London `node_modules`, missing package, package under Svelte 4, native code, reading your file.

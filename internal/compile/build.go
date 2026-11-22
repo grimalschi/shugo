@@ -210,13 +210,13 @@ type sources struct {
 // protocol to the generated bundle, along with the current compiler input
 // tracking; 3 takes search from the module shugo and drops shugo:catalog; 4
 // has Svelte compile the templates; 5 counts the files of the package
-// manager in every project.
-const sourcesRevision = 5
+// manager in every project; 6 bundles the packages of npm with the code.
+const sourcesRevision = 6
 
-// packageFiles tell which packages of npm the project has. The code of the
-// pages imports its packages from node_modules when it runs, and islands
-// take theirs in when they are bundled; neither is a file of the bundle.
-// When these files change, the packages may have changed too.
+// packageFiles tell which packages of npm the project has. The packages
+// that the code of the site imports are bundled with it, and their files
+// count one by one; these count too, for what reads node_modules past the
+// bundle, such as Tailwind.
 var packageFiles = []string{"package.json", "bun.lock", "package-lock.json", "pnpm-lock.yaml", "yarn.lock"}
 
 // sources hashes the files of the project that the compiled result depends on.
@@ -326,6 +326,9 @@ type builder struct {
 	startCompilers sync.Once
 	// islands are the parts of the graphs of the islands Svelte compiled.
 	islands islandParts
+	// packages are what the build has read of the packages of npm the code
+	// imports.
+	packages npmPackages
 }
 
 // roleOf tells what a file is by where it lies.
@@ -628,11 +631,11 @@ func (b *builder) bundle(routes []skeleton.Route, islands *islandOutput) (*bundl
 		build.OnLoad(api.OnLoadOptions{Filter: `\.svelte\.(js|ts)$`, Namespace: "file"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
 			return b.runeModule(args.Path)
 		})
-		// The code of packages is loaded as it is when the pages are
-		// computed, and nothing compiles the components of Svelte in it.
-		build.OnResolve(api.OnResolveOptions{Filter: `^(@[^/]+/)?[^./@:]`, Namespace: "file"}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
-			return api.OnResolveResult{}, b.svelteLibrary(args.Path)
+		// The code of the site does not wait at the top of a module either.
+		build.OnLoad(api.OnLoadOptions{Filter: `\.[cm]?[jt]sx?$`, Namespace: "file"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
+			return b.siteModule(args.Path)
 		})
+		b.checkPackages(build, true)
 		// Style sheets do not go into JavaScript: they are collected and
 		// built into a file of their own.
 		build.OnLoad(api.OnLoadOptions{Filter: `\.css$`}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
@@ -647,7 +650,6 @@ func (b *builder) bundle(routes []skeleton.Route, islands *islandOutput) (*bundl
 		Platform:      api.PlatformNode,
 		Target:        api.ESNext,
 		Charset:       api.CharsetUTF8,
-		Packages:      api.PackagesExternal,
 		External:      []string{"bun:sqlite"}, // built into Bun; Node has node:sqlite
 		Alias:         map[string]string{"@": filepath.Join(root, project.Source)},
 		Plugins:       []api.Plugin{plugin},
@@ -691,6 +693,9 @@ func (b *builder) runeModule(path string) (api.OnLoadResult, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return api.OnLoadResult{}, err
+	}
+	if at := waits(rel, string(data)); at != nil {
+		return api.OnLoadResult{Errors: []api.Message{*at}}, nil
 	}
 	source, types := string(data), (*sourcemap.Map)(nil)
 	if strings.HasSuffix(path, ".ts") {
@@ -798,7 +803,7 @@ func (b *builder) diagnose(message api.Message) *Error {
 	path := strings.TrimSuffix(b.relative(at.File), compiledSuffix)
 	id, known := b.ids[path]
 	if !known {
-		return &Error{Path: at.File, Line: at.Line, Column: at.Column + 1, Message: message.Text}
+		return &Error{Path: at.File, Line: at.Line, Column: at.Column + 1, Message: b.explained(message.Text)}
 	}
 	u := b.units[id]
 	line, column := 1, 1
@@ -812,8 +817,12 @@ func (b *builder) diagnose(message api.Message) *Error {
 
 // explained adds to a message of the bundler what to do, where Shugo knows
 // better: a type imported without type is no export of its module, as
-// Svelte keeps a plain import of it.
+// Svelte keeps a plain import of it; and a package brings a file that
+// cannot be bundled.
 func (b *builder) explained(text string) string {
+	if told := notCode(text); told != "" {
+		return told
+	}
 	m := missingExport.FindStringSubmatch(text)
 	if m == nil {
 		return text
@@ -826,33 +835,6 @@ func (b *builder) explained(text string) string {
 }
 
 var missingExport = regexp.MustCompile(`^No matching export in "([^"]+)" for import "([^"]+)"`)
-
-// svelteLibrary tells of an import of a package of Svelte components: a
-// component of a package, or a package whose package.json gives the
-// components of Svelte it exports under "svelte". nil for any other package.
-func (b *builder) svelteLibrary(specifier string) error {
-	parts := strings.SplitN(specifier, "/", 3)
-	name := parts[0]
-	if strings.HasPrefix(name, "@") && len(parts) > 1 {
-		name += "/" + parts[1]
-	}
-	library := strings.HasSuffix(specifier, ".svelte")
-	if !library {
-		data, err := os.ReadFile(b.project.Path("node_modules", filepath.FromSlash(name), "package.json"))
-		if err != nil {
-			return nil
-		}
-		var manifest struct {
-			Svelte  string          `json:"svelte"`
-			Exports json.RawMessage `json:"exports"`
-		}
-		library = json.Unmarshal(data, &manifest) == nil && (manifest.Svelte != "" || bytes.Contains(manifest.Exports, []byte(`"svelte"`)))
-	}
-	if !library {
-		return nil
-	}
-	return fmt.Errorf("%s gives components of Svelte, and Shugo does not compile the components of packages yet: copy the component into src/components/ and import it from there", name)
-}
 
 // shugoModule is the module shugo as the bundler knows it.
 const shugoModule = "shugo:module"

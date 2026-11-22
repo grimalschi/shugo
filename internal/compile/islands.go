@@ -174,6 +174,7 @@ func (b *builder) sveltePlugin(entries map[string]string, client bool) api.Plugi
 		build.OnResolve(api.OnResolveOptions{Filter: `^shugo(:|$)`}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
 			return api.OnResolveResult{}, fmt.Errorf("Svelte islands cannot import %s: pass data through JSON props or an endpoint", args.Path)
 		})
+		b.checkPackages(build, false)
 		build.OnLoad(api.OnLoadOptions{Filter: `^shugo-island-entry:`, Namespace: "shugo-island"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
 			contents := entries[args.Path]
 			return api.OnLoadResult{Contents: &contents, Loader: api.LoaderJS, ResolveDir: b.project.Root}, nil

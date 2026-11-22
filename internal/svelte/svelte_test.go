@@ -103,6 +103,8 @@ func TestMistakes(t *testing.T) {
 		{`<script>import C from "./c.svelte"</script><C><b slot="x">t</b></C>`, `slot="…" is a part of the slots of Svelte 4`},
 		{`<html><body><p>x</p></body></html>`, "1:1: <html> is written in src/site.html"},
 		{"<script>\nconst items = await Promise.resolve([1])\n</script>", "a page is computed without waiting"},
+		{"<script module>\nconst items = await Promise.resolve([1])\n</script>", "2:15: <script module> does not wait either: a page is computed without waiting"},
+		{"<script module>\nfor await (const item of list) {}\n</script>", "2:1: <script module> does not wait either"},
 		{`<script>export function getStaticPaths() { return [] }</script>`, "getStaticPaths goes into <script module>"},
 		{`<p>{#if x}</p>`, "1:11: `</p>` attempted to close an element that was not open"},
 	} {

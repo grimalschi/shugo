@@ -11,6 +11,7 @@ The document describes where the data for pages comes from and when they are loa
 - Updating part of the data on signals from sources is a good idea for the future. *Updated 21 November 2026 year:* point data changes bring adapter — [proposal](../docs/proposals/data-adapter.md).
 - The framework stores a copy of the project data in SQLite; data from the source brings an adapter to it: [Data adapter](../docs/proposals/data-adapter.md).
 - Pages are calculated without waiting: `await`, `getStaticPaths` synchronous is not in the code of pages and components. The wait is left from the first version, where the code itself loaded data over the network. 21 solved on November 2026 year.
+- `await` at the top level of `<script module>` is also prohibited - intentionally, until you can see where the wait is needed: so are the data that goes past the base (the decision of the author of the project 22 November 2026 year).
 - The query constructor remains as it is; a new one is added as needed, and the first in line is to track the links between tables (21 solution of November 2026 year).
 
 ## Implemented, pending approval
@@ -42,16 +43,18 @@ The file can be imported: `import posts from "../../data/posts.json"`. Then it b
 
 ### Without waiting
 
-Svelte compiles templates without `experimental.async`: page render is synchronous. Pages and common blocks are calculated one at a time. `await` in a `<script>` page or component is an assembly error: instead of reporting Svelte about `experimental.async`, Shugo explains that the page is computed without waiting. Asynchronous `getStaticPaths` or `GET` is also a hint error. What is expected and done once, for example, creating a code highlight, is expected at the top level of the module from `src/lib/`, and the page calls ready in synchronously.
+Svelte compiles templates without `experimental.async`: page render is synchronous. Pages and common blocks are calculated one at a time. `await` in a `<script>` page or component is an assembly error: instead of reporting Svelte about `experimental.async`, Shugo explains that the page is computed without waiting. Asynchronous `getStaticPaths` or `GET` is also a hint error.
+
+You can not wait when downloading code: `await` at the top level `<script module>` and site module - `src/lib/`, modules with runes, modules among pages - build error with the same explanation. This is a time ban: where waiting is needed, it will be sorted out. Most often, they wait for data on the network, and this is reading past the database. You can wait inside the function, but the page of its result will not wait. Island - code for the browser: in the functions and at the top of the modules that only he imports, you can wait.
 
 What it gave:
 
-- reading past the base via `await fetch(…)` — build error, not a page that silently becomes obsolete;
+- reading past the base via `await fetch(…)` — build error, not a page that silently becomes obsolete, both in the page and at the top of the module;
 - the line left in the module can always be caught: pages do not interleave;
 - first store assembly on 100,000 products, measured 21 November 2026 year: calculation on Bun 7.41–7.44 s instead of 7.50–7.75 s, on Node 9.66–9.82 s instead of 10.88–11.46 s; on updates from several pages of difference is not visible
 - the framework code is simpler: there is no pool of 32 pages and `AsyncLocalStorage`.
 
-What is lost: a library without a synchronous option cannot be called for each page. Its place is an adapter that prepares data, or the top of the module.
+What is lost: a library without a synchronous version cannot be called in the code of pages, even once at the top of the module. Its place is an adapter that prepares data.
 
 ### What is worth knowing
 

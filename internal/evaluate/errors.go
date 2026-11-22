@@ -74,4 +74,20 @@ func (e *ScriptError) locate(p *project.Project) {
 			e.Frames = append(e.Frames, frame)
 		}
 	}
+	e.explain()
 }
+
+// explain adds to the message what the author of the site can do, where
+// Shugo knows: a package bundled with the code of the site looked for a file
+// next to its own code, and the bundle is in _build/, where that file is
+// not.
+func (e *ScriptError) explain() {
+	if len(e.Frames) == 0 || !strings.Contains(e.Message, "ENOENT") || strings.Contains(e.Message, readsOwnFiles) {
+		return
+	}
+	if name, _ := project.PackageOf(e.Frames[0].File); name != "" {
+		e.Message += fmt.Sprintf(": the package %s %s, and its code is bundled with the code of the site into %s/%s, where that file is not: take a package that does not read its own files", name, readsOwnFiles, project.Output, compile.Bundle)
+	}
+}
+
+const readsOwnFiles = "reads a file next to its own code"

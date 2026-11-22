@@ -3,6 +3,7 @@ module github.com/grimalschi/shugo
 go 1.27
 
 require (
+	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/blevesearch/snowballstem v0.9.0
 	github.com/evanw/esbuild v0.28.2
 	github.com/fsnotify/fsnotify v1.10.1
