@@ -20,6 +20,8 @@ The value of the expressions is considered to be the real JS Bun or Node so ever
 
 The Svelte snippets and component parameters are placed on Shugo blocks: a parameter-free snippet written inside the component tag is calculated where it is written and stored in the caller's record; a parameter-based snippet is calculated where it is shown by `{@render}`. See also [Blocks](blocks.md).
 
+The document around the Svelte page does not write: `render()` gives the head and body separately. Shugo, like SvelteKit with `src/app.html`, puts them in the shell of `src/site.html`: head in place of `%shugo.head%`, body in place of `%shugo.body%`. Therefore, the root layout starts immediately with the contents of `<body>`, like `+layout.svelte`, and the template that `<html>`, `<head>` or `<body>` writes is an error. The address and page parameters also give the object modeled on SvelteKit: `page` from the `shugo` module with `url`, `params`, `route.id` and `status` fields, as `page` from `$app/state`.
+
 ## How it is checked
 
 - **Tasks of testing.** V `test/svelte/` The reference components 30 The test (below) and what Svelte 5.59.1 It gives on each data set. `TestSvelteTasks` collects each task as a site and compares pages. The standards do it yourself Svelte: `cd test/svelte && bun install && bun render.mjs`.

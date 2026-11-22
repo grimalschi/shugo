@@ -23,7 +23,7 @@ The words of the author of the project, 20 November 2026 year.
 
 ## What already has
 
-Site data is in one database SQLite project; its path calls `shugo.json`: `{ "data": "data/site.db" }`. Pages read it only through `Shugo.query` ([Data loading](../../spec/data-loading.md)). Any program can fill the base of the usual SQL: so does the store stand.
+The data of the site lies in one database SQLite project; its path is called `shugo.json`: `{ "data": "data/site.db" }`. Pages read it only through `query` from the module `shugo` ([Data loading](../../spec/data-loading.md)). Any program can fill the base with a usual SQL: so does the store stand.
 
 The rest of Shugo does it yourself:
 
@@ -38,14 +38,14 @@ The adapter adds to this one proven way to bring the database in line with the s
 ### The overall picture
 
 ```
-source ──► adapter ──► project Database ──► Shugo.query ──► pages and common blocks
+source ──► adapter ──► project Database ──► query ──► pages and common blocks
              full article on triggers: who read what
              loading what actually
              or points have changed
              changes
 ```
 
-The left half is this document. Right done: queries through `Shugo.query` and calculation of only those pages that have read the changed lines, - [Change tracking](../change-tracking.md).
+The left half is this document. Right done: queries through `query` and calculation of only those pages that have read the changed lines, - [Change tracking](../change-tracking.md).
 
 The adapter knows nothing about the pages. He is responsible for one thing: to make the base coincide with the source. What exactly has changed, the base finds out itself.
 
@@ -87,7 +87,7 @@ The adapter does not follow the source itself: it is launched. Who starts - solv
 
 Webhoek and queue handler is not a part of Shugo: these are a few lines that cause `shugo data put` and `shugo data drop` (commands below). Full schedule download stands next to them as insurance: the point signal can get lost, full download will fix everything.
 
-There used to be a separate document on partial data reset: how not to load all the data at each update with tags or a data layer that remembers who read what. This is closed by the journal and requests via `Shugo.query`: the update reads only the changed lines from the journal and finds who read them. The question of several JS processes for the first assembly remained open from that document it is in [the Offer](parallel-build.md).
+There used to be a separate document on partial data reset: how not to load all the data at each update with tags or a data layer that remembers who read what. This is closed by the journal and requests via `query`: the update reads only the changed lines from the journal and finds who read them. The question of several JS processes for the first assembly remained open from that document it is in [the Offer](parallel-build.md).
 
 ### What the Adapter Author Says
 
@@ -186,7 +186,7 @@ shugo update                         find pages that have read the changed
 ## Open questions
 
 - What is the schema library: Valibot, Zod or any that gives JSON Schema and supports Standard Schema.
-- What are the limitations of page requests to the database; your SQL can only be tracked roughly, by tables and columns. Now requests are only through the designer `Shugo.query`.
+- What are the limitations of page requests to the database; your SQL can only be tracked roughly, by tables and columns. Now requests are only through the designer `query`.
 - After the `shugo data …` commands, the site is updated by itself or by a separate `shugo update` command.
 - Multiple adapters in one project and connections between their collections.
 - Ready adapters: JSON and Markdown files, databases with SQL, common CMS.

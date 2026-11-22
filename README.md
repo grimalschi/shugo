@@ -1,6 +1,6 @@
 # Shugo
 
-Shugo - framework for static sites. Pages, layouts and components are `.shugo` files, and each is a component of Svelte 5: `<script>`, markup, `<style>`. Shugo produces the same HTML that the Svelte server produces 5.59. The data of the site is in the database of the SQLite project, and the pages read them only through `Shugo.query`. Project code is executed when pages are calculated; the page visitor is given a server on Go that collects HTML from ready values and does not calculate anything.
+Shugo - framework for static sites. Pages, layouts and components are `.shugo` files, and each is a component of Svelte 5: `<script>`, markup, `<style>`. Shugo produces the same HTML as the Svelte server 5.59. The document around the pages — `<html>`, `<head>`, `<body>` — is written once, in the `src/site.html` shell; files not in HTML, such as `sitemap.xml`, give modules on TypeScript among the pages. The site data is in the database of the SQLite project, and the pages read them only through `query` from the `shugo` module. Project code is executed when pages are calculated; the visitor page is given a server on Go, which collects HTML from ready values and does not calculate anything.
 
 How to collect and run projects that are finally decided, and what awaits approval, in [specifications](spec/README.md). As Shugo arranged inside - in [docs](docs/README.md), offers - in [docs/proposals](docs/proposals/README.md).
 
@@ -10,7 +10,7 @@ How to collect and run projects that are finally decided, and what awaits approv
 source files ── compilation (Go) ─┬─ eval.mjs: code pages and components
                               └─ site.json: markup templates with places for values
 
-project Database ──► calculation (Bun or Node): eval.mjs reads lines via Shugo.query
+project Database ──► calculation (Bun or Node): eval.mjs reads strings via query
   (Triggers are          │  records of pages and common blocks, and what each has read
    journal of Changes)       ▼
                        storage (SQLite) ──► server (Go): HTML for each request
@@ -46,7 +46,7 @@ bin/shugo export examples/basic       # site to files: examples/basic/_build/dis
 | [spec/](spec/README.md) | specification: how to collect and run projects, solutions, open questions |
 | [spec/authoring.md](spec/authoring.md) | a memo for someone who writes a site on Shugo (in English, for agents) |
 | [docs/](docs/README.md) | how Shugo is arranged inside; [docs/proposals](docs/proposals/README.md) offers |
-| [examples/basic](examples/basic) | small site without a database: layout, components, snippets, dynamic pages |
+| [examples/basic](examples/basic) | small site without database: `src/site.html` shell, layout, components, snippets, dynamic pages, `sitemap.xml` and `robots.txt` from modules |
 | [examples/catalog](examples/catalog/README.md) | store of any size with database and point update stand |
 | [examples/inside](examples/inside/README.md) | Shugo booth inside: all intermediate formats and connections in a small store |
 | [examples/tailwind](examples/tailwind) | styles through Tailwind |

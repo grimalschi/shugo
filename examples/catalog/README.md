@@ -2,7 +2,7 @@
 
 A shop with a configurable number of products, a page for each product, category listings of 24 products per page, a header with navigation and a featured product, and recommendations.
 
-The shop stores its data in SQLite. Pages use `Shugo.query`, and each row records which columns were read. The benchmark checks that a data change reevaluates only the readers of the changed columns in the changed rows. Export writes only pages whose HTML changed. See [how it works](../../README.md#how-it-works) and the [change tracking design](../../docs/change-tracking.md).
+The shop stores its data in SQLite. Pages read it with `query` from `shugo`, and each row records which columns were read. The benchmark checks that a data change reevaluates only the readers of the changed columns in the changed rows. Export writes only pages whose HTML changed. See [how it works](../../README.md#how-it-works) and the [change tracking design](../../docs/change-tracking.md).
 
 ## Run the benchmark
 
@@ -28,11 +28,12 @@ Only the list of product URLs specifies columns. Each page depends on the column
 | File | What it shows |
 | --- | --- |
 | `scripts/generate.mjs` | Shop tables with single-column keys and separate ordering columns. The generator leaves index creation to the build. |
+| `src/site.html` | Shell for every page, with `<html lang="en">`, `<head>`, `<body>`, and the `%shugo.head%` and `%shugo.body%` placeholders. `src/pages/+layout.shugo` starts with the header. |
 | `src/components/Header.shugo` | Shared block with no parameters. It reads its own configuration, navigation, and category counts. |
 | `src/components/ProductCard.shugo` | Shared block that takes a product ID and reads the product. The template calls `finalPrice(item)`, so the card depends on the `price` and `discount` fields that the function reads. |
 | `src/components/Variant.shugo` | Regular component that receives the full variant row. Reading `title` and `stock` adds them as page dependencies. The variant's shelf location is never read. |
 | `src/pages/products/[slug].shugo` | The route lists URLs, and each page queries its own product, variants, reviews, badges, and recommendations. The page reads the expected arrival date only when the product is out of stock, and the discount expiration date only when a discount applies. |
-| `src/pages/categories/[category]/[...page].shugo` | The route uses `paginate` with a product count. The page uses `Shugo.paginate` with a query. |
+| `src/pages/categories/[category]/[...page].shugo` | The route passes a product count to `paginate` from `shugo`. The page passes a query. |
 | `src/lib/catalog.ts` | Price helpers that load no data. |
 
 ## Results

@@ -28,12 +28,16 @@ There are no copies of the site in the server memory. For each request, it:
 
 1. It takes a connection from the reading pool to the storage and opens a reading transaction.
 2. Reads the build name. It parses the templates once for each build and keeps them in memory: it is code, not data, and updating the data does not change it.
-3. Finds a page entry at the address - one search by key. Values ribbons lie inside the record.
-4. It follows the framework of the template of the first block. The markup is copied, the next value is taken from the block tape and screens it on the place of expression.
-5. At the call point, the component moves to the next sub-block. The shared block reads from its own record, also by a single search; the block shown on the page twice is read once.
-6. In place, `{@render}` shows a snippet. The snippet with the parameters is the next nested block. The snippet without the parameters that the caller gave is blocks from the caller's record: the component block has written what blocks they are ([Storage](storage.md#tape)).
-7. Remembers where `<head>` ends, and blocks `<svelte:head>` of each template that showed. When the page is shown, shows them in order, from `<title>` is only the last, and puts `<head>` ([Blocks](blocks.md#page-head)) at the end.
-8. Closes the transaction and returns the connection to the pool.
+3. Finds the page record and its route number - one search by key. Values ribbons lie inside the record.
+4. Writes the `src/site.html` shell to the `%shugo.head%` location, remembers this location and writes the shell further, to the `%shugo.body%`. The shell lies in the frame already cut through these locations.
+5. It follows the framework of the template of the first block. The markup is copied, the next value is taken from the block tape and screens it on the place of expression.
+6. At the call point, the component moves to the next sub-block. The shared block reads from its own record, also by a single search; the block shown on the page twice is read once.
+7. In place, `{@render}` shows a snippet. The snippet with the parameters is the next nested block. The snippet without the parameters that the caller gave is blocks from the caller's record: the component block has written what blocks they are ([Storage](storage.md#tape)).
+8. When the page is shown, it adds a body framework markupin development mode, this is a reboot scriptand the rest of the shell.
+9. The `<svelte:head>` blocks of each template that he showed he memorized along the way. Now shows them in order, from `<title>` - only the last one, adds a link to styles and inserts all this into the remembered place of `%shugo.head%` ([Blocks](blocks.md#page-head)).
+10. Closes the transaction and returns the connection to the pool.
+
+The file is not in HTML, for example `/sitemap.xml` from the `src/pages/sitemap.xml.ts` module, the server recognizes by route: the module route has an extension. The record of such a file is one block with the text that returned `GET`; the server gives this text as it is, without shell and without head.
 
 The entire page is assembled from one state: the update that ended in the middle does not affect it. The next request already sees it - without a storage survey and without re-reading.
 
@@ -44,6 +48,7 @@ The connections in the pool are twice as large as the cores; everyone has pre-pr
 | Request | Response |
 | --- | --- |
 | page Address | 200, HTML, `Cache-Control: no-cache`, `ETag` |
+| the file address that gives the module among pages, for example `/sitemap.xml` | same, but type — by extension, through `mime.TypeByExtension`, as in files from `public/`; unknown extension — `application/octet-stream` |
 | the address of the page with `If-None-Match`, where is its `ETag` | 304 without body |
 | address of the page with a slash at the end | 308 to address without slash |
 | address from `redirects` | 301 |
@@ -82,7 +87,7 @@ Time determines the number of searches by key, not the number of SQL queries: to
 
 Values came from the stage that executed the project code. Therefore:
 
-- text and attribute values are always screened, as in Svelte: in the text of `&` and `<`, in the attribute of `"`; without screening, only the value of `{@html}` is inserted;
+- text and attribute values are always saved, as in Svelte: in the text of `&` and `<`, in the attribute of `"`; without the screen, only the value of `{@html}` is inserted and the file text is not in HTML, which returned `GET`: it and the file;
 - attribute name from `{...attributes}` and tag name `<svelte:element>` are checked;
 - tape that does not match the template gives the answer 500, and not a corrupted page - as it happens, described in [Storage](storage.md#how-the-tape-can-not-fit-with-the-page);
 - the nesting of components is limited by 256 levels, the page size is 64 MB.
@@ -91,17 +96,17 @@ The project framework is data, not code. The worst thing that a wrong frame or t
 
 ### Export
 
-`shugo export` Write the site in a folder as SvelteKit Writes pages that build in advance: page `/about` the National Museum `about.html`, `/blog/2` the National Museum `blog/2.html`, `/` the National Museum `index.html`, page 404 the National Museum `404.html`; near `public/` and `_assets/`. Static hostings give away `/about` the City of `about.html` themselves; nginx with `try_files $uri $uri.html =404`.
+`shugo export` Write the site in a folder as SvelteKit Writes pages that build in advance: page `/about` the National Museum `about.html`, `/blog/2` the National Museum `blog/2.html`, `/` the National Museum `index.html`, page 404 the National Museum `404.html`; near `public/` and `_assets/`. Static hostings give away `/about` the City of `about.html` themselves; nginx with `try_files $uri $uri.html =404`. The file that gives the module among the pages is written under its address: `/sitemap.xml` the National Museum `sitemap.xml`, `/api/jug.json` the National Museum `api/jug.json`. How to name a file, export will know the route of the page: the repository gives the route number along with the record.
 
-Export follows the previous one. In the folder, he leaves a list of `.shugo-export.json`: what storage and what version he recorded, and which files he copied - with the size and time of the original change. The next export from the same storage:
+Exports follow the previous one. In the folder, he leaves a list of `.shugo-export.json`: what storage and what version of it he wrote down, which files he copied with the size and time of the original change and which files gave modules among the pages (`files`). The following exports from the same storage:
 
 - builds anew pages whose entry has changed after this version, and pages that show the shared block with the changed entry, directly or through other common blocks. It finds them by the version indexes and the `shows` table;
-- deletes files of pages that were missing after this version;
+- deletes files of pages that were missing after this version. The `gone` table stores the address of the missing page along with its route, so the export deletes the desired file: `about.html` or `sitemap.xml`;
 - copies only files that have changed size or time of change.
 
 His work grows with the change, not with the site. Update for this nothing to note: version of the recording it writes along with the recording itself.
 
-If there is no list, exports build all pages and do not delete anything. If the list is from another repository or version before the project is completely reassembled, the export builds all pages and removes `.html` files from the folder, which are not among the pages of the site or among the copied files. The rest of the files and folders whose name starts with a dot, it does not touch. The file with the previous content is not rewritten.
+If there is no list, exports build all pages and do not delete anything. If the list is from another storage or version before the project is completely reassembled, the export builds all pages and removes `.html` files from the folder, which are not among the pages of the site or among the copied files, as well as module files from the previous list, which the site no longer gives. The rest of the files and folders whose name starts with a dot, it does not touch. The file with the previous content is not rewritten.
 
 Measured on the store in 100,000 products, 104,202 pages, Bun disk ext4, one run of 21 November 2026 year. After each change — `shugo update`, then `shugo export`:
 
@@ -123,7 +128,7 @@ Previously, exports collected HTML of all pages to compare with what lies on the
 
 ### Development Mode
 
-`shugo dev` updates the site in the same way as `shugo update`, runs the server and monitors the project files. After changing the source, the project is compiled again and all pages are calculated; after changing the database, what the changed lines read is calculated; after changing other files, for example in `public/`, nothing is calculated. After each update, the pages opened in the browser are rebooted completely: the server adds a script to each page that listens to `/_shugo/live` (`EventSource`). If there is an error in the project, it is printed, and the server continues to show the last successful build.
+`shugo dev` updates the site in the same way as `shugo update`, runs the server and monitors the project files. After changing the source code including the `src/site.html` shell the project is compiled anew and all pages are calculated; after changing the database, what the changed lines read is calculated; after changing other files, for example, in `public/`, nothing is calculated. After each update, the pages opened in the browser are rebooted completely: the server adds to each page, immediately after it, in place of `%shugo.body%`, a script that listens to `/_shugo/live` (`EventSource`). If there is an error in the project, it is printed, and the server continues to show the last successful build.
 
 How to make code editing in a large project not wait for the calculation of the entire site [live Reload](proposals/live-reload.md).
 

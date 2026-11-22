@@ -24,13 +24,15 @@ The reasons are in [20](../spec/decisions.md#20-storage).
 | `page` | page Address | page entry, hash, route number that the page read from the database, version in which the entry was last changed |
 | `shared` | number, name | recording the shared block, her hash that he read, version |
 | `shows` | the block and who shows it | who shows what common block: pages and other common blocks |
-| `gone` | address | missing pages and the version in which they disappeared: export deletes their files |
+| `gone` | address | missing pages, their route and the version in which they disappeared: on them, export deletes their files |
 | `route` | route number | I read the list of the route pages. |
 | `shape`, `reads` | type of reading; view, search values and reader | reads Expanded for Search: Those who read the changed line are found ([Change tracking](change-tracking.md)) |
 | `plan` | question to the database | questions for which the project database already has an index |
 | `meta` | name | project framework, build name, storage version, its random name, the beginning of the history of changes, the results, to which line of the log data are taken into account |
 
-The project framework lies in the storage next to the records and changes with them with one transaction. Rantime does not need other build files.
+The project framework along with the `src/site.html` shell lies in storage next to the records and changes with them with one transaction. Rantime does not need other build files.
+
+The storage page entry is given along with the route number. According to it, the server and export know what it is: a page in HTML or a file of another type that gave the module among the pages, for example `sitemap.xml`. The missing page carries the route number to `gone` so that the export deletes the file with the name under which it was recorded.
 
 The version grows with each update. The version of the record is the one in which the record was last changed; it is written by the update itself along with the record, there are no other marks. Exports find what has changed since last time: [Runtime](runtime.md#export). A complete reassembly of the project begins anew: `origin` in `meta` is the version with which the repository knows all the changes.
 
@@ -45,6 +47,8 @@ Record - a list of blocks and the block number from which the display begins. Th
 - snippets without the parameters that the caller gave him: name and blocks. The blocks themselves lie in the same record as the caller's block.
 
 The block that stands in place of the shared block stores instead the common block number and the snippets that gave it that place. How the snippets get into the records is in [Blocks](blocks.md#snippets).
+
+The file entry is not in HTML, which gives the module among the pages, is one block: the module number, part of 0 and one value is text that returned `GET`. Modules are numbered after templates; the module framework is one part with one operation that writes the value as is.
 
 The numbers are written in a compact way. In the store on 100,000 goods page recording together with tapes takes up an average of 399 bytes, the record of the common block is 75 bytes.
 
@@ -93,7 +97,7 @@ When working properly, this does not happen. But the tape writes a stage that pe
 
 The update only calculates what the changes touched and deletes in the same transaction:
 
-- pages that are no longer routed: the server responds to their 404 address, and the address and version fall into the `gone` table, where export deletes their files ([Runtime](runtime.md#decisions));
+- pages that the route no longer gives: the server responds to their 404 address, and the address, route, and version fall into the `gone` table, through which the export deletes their files ([Runtime](runtime.md#decisions));
 - common blocks that no one else shows are on the `shows` table, without reading the rest of the site.
 
 When the project is compiled again, all records are written again: they contain the file numbers of this build. So it is conceived: changing the code calculates the entire site ([Build pipeline](build-pipeline.md#decisions)).
