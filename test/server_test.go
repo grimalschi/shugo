@@ -1,6 +1,8 @@
 package test
 
 import (
+	"bytes"
+	"compress/gzip"
 	"fmt"
 	"io"
 	"net/http"
@@ -122,6 +124,77 @@ func TestServer(t *testing.T) {
 }
 
 // A server that is running shows the result of an update at once.
+// A page goes compressed to a browser that takes gzip, with a tag of its
+// content; asked with that tag, the server answers 304 and nothing more.
+// Text files too go compressed; small answers and pictures as they are.
+func TestCompressionAndTags(t *testing.T) {
+	long := strings.Repeat("<p>Handmade clay pitcher.</p>", 60)
+	s := newSite(t, small+"-- src/pages/long.shugo --\n"+long+"\n-- public/notes.txt --\n"+strings.Repeat("notes ", 400)+"\n")
+	s.build()
+	ts := serve(t, s)
+	ask := func(address string, headers ...string) (*http.Response, string) {
+		t.Helper()
+		req, _ := http.NewRequest(http.MethodGet, ts.URL+address, nil)
+		for i := 0; i < len(headers); i += 2 {
+			req.Header.Set(headers[i], headers[i+1])
+		}
+		// The transport would ask for gzip and unpack the answer itself.
+		res, err := (&http.Transport{DisableCompression: true}).RoundTrip(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		body, _ := io.ReadAll(res.Body)
+		if res.Header.Get("Content-Encoding") == "gzip" {
+			unpacked, err := gzip.NewReader(bytes.NewReader(body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, _ = io.ReadAll(unpacked)
+		}
+		return res, string(body)
+	}
+
+	plain, page := ask("/long")
+	packed, same := ask("/long", "Accept-Encoding", "gzip, deflate, br")
+	if packed.Header.Get("Content-Encoding") != "gzip" || plain.Header.Get("Content-Encoding") != "" || same != page || !strings.Contains(page, long) {
+		t.Errorf("the long page: %q and %q", plain.Header.Get("Content-Encoding"), packed.Header.Get("Content-Encoding"))
+	}
+	if n := packed.ContentLength; n <= 0 || n*4 > int64(len(page)) {
+		t.Errorf("the page of %d bytes went as %d", len(page), n)
+	}
+	tag := packed.Header.Get("ETag")
+	if tag == "" || tag != plain.Header.Get("ETag") || packed.Header.Get("Vary") != "Accept-Encoding" {
+		t.Errorf("tags %q and %q, vary %q", tag, plain.Header.Get("ETag"), packed.Header.Get("Vary"))
+	}
+	if res, body := ask("/long", "If-None-Match", tag); res.StatusCode != http.StatusNotModified || body != "" {
+		t.Errorf("asked with its tag: %d %q", res.StatusCode, body)
+	}
+	if res, _ := ask("/long", "If-None-Match", `W/"other", `+tag); res.StatusCode != http.StatusNotModified {
+		t.Errorf("asked with a list of tags: %d", res.StatusCode)
+	}
+	if res, _ := ask("/long", "Accept-Encoding", "gzip;q=0"); res.Header.Get("Content-Encoding") != "" {
+		t.Error("a browser that refuses gzip got it")
+	}
+	// Another page has another tag; a small one goes as it is.
+	if res, _ := ask("/about", "Accept-Encoding", "gzip"); res.Header.Get("ETag") == tag || res.Header.Get("Content-Encoding") != "" {
+		t.Errorf("the small page: tag %q, encoding %q", res.Header.Get("ETag"), res.Header.Get("Content-Encoding"))
+	}
+	if res, body := ask("/notes.txt", "Accept-Encoding", "gzip"); res.Header.Get("Content-Encoding") != "gzip" || !strings.HasPrefix(body, "notes notes") {
+		t.Errorf("a text file: %q", res.Header.Get("Content-Encoding"))
+	}
+	if res, _ := ask("/img/dot.svg", "Accept-Encoding", "gzip"); res.Header.Get("Content-Encoding") != "" {
+		t.Error("a file under the size went compressed")
+	}
+
+	// The page changes: its tag does too.
+	s.write("-- src/pages/long.shugo --\n<h1>new</h1>" + long)
+	s.build()
+	if res, body := ask("/long", "If-None-Match", tag); res.StatusCode != http.StatusOK || !strings.Contains(body, "<h1>new</h1>") {
+		t.Errorf("the changed page: %d", res.StatusCode)
+	}
+}
+
 func TestServerSeesUpdates(t *testing.T) {
 	s := newShop(t)
 	s.build()

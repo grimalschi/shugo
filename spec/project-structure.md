@@ -66,5 +66,6 @@ Packages from npm to `eval.mjs` are not sewn: they are taken from the `node_modu
 ## Open questions
 
 - `shugo init` is a new project with an example, `tsconfig.json`, `Shugo` types for the editor and a memo for the agent: it is decided to do (21 decision of November 2026 years), has not yet been done.
-- As in SvelteKit: `src/routes/` with folder per page and files `+page`, `src/lib/` with abbreviation `$lib`. Now pages are files in `src/pages/` as in Astro. See [question of routes](open-questions.md).
+- As in SvelteKit: `src/routes/` with folder per page and files `+page`, or as in Fresh: `_layout`. The pages are now files in `src/pages/`. See [question about service files](open-questions.md).
+- `$lib` of SvelteKit along with `@/` is in [Svelte Compatibility Offer](../docs/proposals/svelte-compatibility.md).
 - Settings in `shugo.json` that are not available yet: languages, pictures, build folder, site address in the subfolder (`base`, it is decided to do).

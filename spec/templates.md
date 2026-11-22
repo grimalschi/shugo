@@ -15,6 +15,8 @@ The document describes the `.shugo` files: what parts they are and how to write 
 - The name tag is only as it is in Svelte: `<svelte:element this={…}>` (21 November 2026 solution).
 - Expressions are written in JS, in source code - TypeScript. Functions and components are connected by explicit imports.
 - The values are screened when inserted into the page.
+- Addresses in `href`, `src` and similar attributes are displayed as is, as in Svelte: `javascript:` address replacement is canceled (22 November 2026 year solution).
+- The file extension remains `.shugo` (22 solution of November 2026 year).
 - An error in expression shows a row and column in the `.shugo` file.
 
 ## Implemented, pending approval
@@ -94,7 +96,6 @@ The expression is a regular TypeScript, and only it: you can not write the marku
 - Attributes that either are or are not (`disabled`, `checked`, `hidden`, `selected` and others from the Svelte list) are displayed as `disabled=""`; the false value removes them. An empty string, as in the markup, leaves.
 - `class` accepts array and object as in Svelte: true elements and keys with true values fall into the class. There are `class:name={condition}` and `style:property={value}`.
 - Event handlers (`onclick`, `on:click`), `bind:`, `use:`, `transition:` and the like work as on the Svelte server: handlers and actions do not fall into the page, `bind:value` outputs a value.
-- The address with the scheme that executes the code (`javascript:`) is replaced by `about:invalid#blocked` - in this Shugo departs from Svelte.
 
 ### Condition
 
@@ -164,7 +165,6 @@ Svelte Rules:
 | What | Svelte | Shugo |
 | --- | --- | --- |
 | hydration tags `<!--[-->`, `<!--]-->` | sd | it does not say: static page they are not needed |
-| Address `javascript:` | displays as is | replaces by `about:invalid#blocked` |
 | A class that limits styles to a component | only bet on items that selectors choose | is placed on all components; page view is the same |
 | TypeScript without `lang="ts"` | error | adopted |
 | `<svelte:head>` | in any component | only in page and layout |
@@ -184,10 +184,7 @@ Svelte Rules:
 
 ## Open questions
 
-- File Extension: `.shugo` or `.svelte`C. `.svelte` file opens in the editor with highlighting and hints Svelte without setting, but such file cannot be given to the real Svelte: `Shugo.query` and `<script module>` S `getStaticPaths` not Svelte.
-- Whether to require `lang="ts"` for TypeScript, like Svelte, then the file is transferred to Svelte without editing.
-- Svelte Availability Warnings: Do You Repeat Them?
-- Check if runes are as strict as Svelte: `$props()` only at the beginning of `<script>`, once.
+- How to remove remaining deviations from Svelte — `lang="ts"`, runes, availability warnings, style class, `<svelte:head>` in components, `$lib` — [Svelte compatibility offer](../docs/proposals/svelte-compatibility.md).
 - Type check: it is decided to make a separate command `shugo check` together with verification of component parameters ([Command line](cli.md#decisions)). While the types are only erased.
 - Warning when an object is displayed in the text: it is almost always a mistake. In Svelte it is not.
 

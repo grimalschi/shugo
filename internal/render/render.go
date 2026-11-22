@@ -179,12 +179,12 @@ func (r *renderer) ops(ops []program.Op, c *cursor) error {
 			}
 			r.out = append(r.out, value...)
 
-		case program.Attr, program.URL:
+		case program.Attr:
 			value, err := c.next()
 			if err != nil {
 				return err
 			}
-			if err := r.attribute(op.Text, value, op.Kind == program.URL); err != nil {
+			if err := r.attribute(op.Text, value); err != nil {
 				return err
 			}
 
@@ -205,7 +205,7 @@ func (r *renderer) ops(ops []program.Op, c *cursor) error {
 				if !attributeName(name) {
 					return fmt.Errorf("%q cannot be the name of an attribute", name)
 				}
-				if err := r.attribute(string(name), value, program.IsAddress(string(name))); err != nil {
+				if err := r.attribute(string(name), value); err != nil {
 					return err
 				}
 			}
@@ -299,7 +299,7 @@ func (r *renderer) ops(ops []program.Op, c *cursor) error {
 // attribute writes one attribute. The value starts with a sign: "-" for no
 // attribute, "+" for one that is there without a value, as disabled="",
 // "=" before the text of the value.
-func (r *renderer) attribute(name string, value []byte, address bool) error {
+func (r *renderer) attribute(name string, value []byte) error {
 	if len(value) == 0 {
 		return errors.New("an empty value stands where an attribute is expected")
 	}
@@ -308,12 +308,8 @@ func (r *renderer) attribute(name string, value []byte, address bool) error {
 	case '+':
 		r.out = append(append(append(r.out, ' '), name...), `=""`...)
 	case '=':
-		text := value[1:]
-		if address && !safeAddress(text) {
-			text = blockedAddress
-		}
 		r.out = append(append(append(r.out, ' '), name...), '=', '"')
-		r.out = append(appendEscaped(r.out, text, true), '"')
+		r.out = append(appendEscaped(r.out, value[1:], true), '"')
 	default:
 		return fmt.Errorf("the value %q stands where an attribute is expected", value)
 	}

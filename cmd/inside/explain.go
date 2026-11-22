@@ -166,17 +166,13 @@ func (w *walker) ops(ops []program.Op, depth int) error {
 				what = "rendered HTML: inserted as-is"
 			}
 			w.add(depth, string(rune(op.Kind)), what, value, place)
-		case program.Attr, program.URL:
+		case program.Attr:
 			value, place, err := w.take()
 			if err != nil {
 				return err
 			}
 			sign := map[byte]string{'=': "attribute with a value", '-': "no attribute", '+': "attribute name only"}[firstByte(value)]
-			what := fmt.Sprintf("attribute %s — %s", op.Text, sign)
-			if op.Kind == program.URL {
-				what += "; the URL is validated"
-			}
-			w.add(depth, string(rune(op.Kind)), what, value, place)
+			w.add(depth, "a", fmt.Sprintf("attribute %s — %s", op.Text, sign), value, place)
 		case program.Spread:
 			count, place, err := w.number()
 			if err != nil {
@@ -317,7 +313,7 @@ func firstByte(s string) byte {
 
 // opNames explains the operations of a program.
 var opNames = map[string]string{
-	"r": "markup", "t": "text", "h": "rendered HTML", "a": "attribute", "u": "URL",
+	"r": "markup", "t": "text", "h": "rendered HTML", "a": "attribute",
 	"s": "spread attributes", "i": "conditional", "f": "loop", "c": "component", "n": "{@render}",
 	"e": "<svelte:element>", "m": "insertion point",
 }
@@ -338,7 +334,7 @@ func listOps(ops []program.Op, depth int) []opLine {
 		code := string(rune(op.Kind))
 		line := opLine{Depth: depth, Code: code, Name: opNames[code], Text: op.Text}
 		switch op.Kind {
-		case program.Text, program.HTML, program.Attr, program.URL, program.If, program.For, program.Render, program.Element:
+		case program.Text, program.HTML, program.Attr, program.If, program.For, program.Render, program.Element:
 			line.Takes = 1
 		}
 		out = append(out, line)

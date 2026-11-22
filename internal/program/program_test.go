@@ -11,7 +11,7 @@ func TestSiteRoundTrip(t *testing.T) {
 		Files: []File{{Path: "src/pages/index.shugo", Shared: true, Parts: [][]Op{
 			{
 				{Kind: Markup, Text: `<a class="x"`},
-				{Kind: URL, Text: "href"},
+				{Kind: Attr, Text: "href"},
 				{Kind: Spread},
 				{Kind: Markup, Text: ">"},
 				{Kind: Text},
@@ -54,13 +54,14 @@ func TestSiteRoundTrip(t *testing.T) {
 
 func TestDecodeRejects(t *testing.T) {
 	cases := []string{
-		`{"version":1,"files":[]}`,
-		`{"version":2,"files":[{"path":"a","parts":[[["x"]]]}]}`,
-		`{"version":2,"files":[{"path":"a","parts":[[["f"]]]}]}`,
-		`{"version":2,"files":[{"path":"a","parts":[[["r"]]]}]}`,
-		`{"version":2,"files":[{"path":"a","parts":[[["t",[]]]]}]}`,
-		`{"version":2,"files":[{"path":"a","parts":[[[]]]}]}`,
-		`{"version":2,"files":[{"path":"a","parts":[[["n","first"]]]}]}`,
+		`{"version":2,"files":[]}`,
+		`{"version":3,"files":[{"path":"a","parts":[[["x"]]]}]}`,
+		`{"version":3,"files":[{"path":"a","parts":[[["u","href"]]]}]}`,
+		`{"version":3,"files":[{"path":"a","parts":[[["f"]]]}]}`,
+		`{"version":3,"files":[{"path":"a","parts":[[["r"]]]}]}`,
+		`{"version":3,"files":[{"path":"a","parts":[[["t",[]]]]}]}`,
+		`{"version":3,"files":[{"path":"a","parts":[[[]]]}]}`,
+		`{"version":3,"files":[{"path":"a","parts":[[["n","first"]]]}]}`,
 	}
 	for _, data := range cases {
 		if _, err := Decode([]byte(data)); err == nil {

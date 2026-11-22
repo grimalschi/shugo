@@ -11,9 +11,11 @@ import (
 	"strings"
 )
 
-// Version changes when an older runtime could not read the format any more:
-// 2 is the program of Svelte templates, with snippets and <svelte:element>.
-const Version = 2
+// Version changes when an older runtime could not read the format any more,
+// or this one an older format: 2 is the program of Svelte templates, with
+// snippets and <svelte:element>; 3 writes addresses as they are, as Svelte
+// does, and has no operation of its own for them.
+const Version = 3
 
 // Site is a whole compiled project.
 type Site struct {
@@ -70,7 +72,6 @@ const (
 	Text    Kind = 't' // write the next value as text
 	HTML    Kind = 'h' // write the next value as markup
 	Attr    Kind = 'a' // write an attribute that may be absent
-	URL     Kind = 'u' // the same for an attribute that holds an address
 	Spread  Kind = 's' // write attributes known only when the page is computed
 	If      Kind = 'i' // go on with one of several branches, or with none
 	For     Kind = 'f' // repeat the body for every item, or show the second body for none
@@ -87,7 +88,7 @@ const Last = "last"
 // Mount takes the next value the block has computed.
 type Op struct {
 	Kind Kind
-	// Text is the markup of Markup and the name of Attr, URL and Mount.
+	// Text is the markup of Markup and the name of Attr and Mount.
 	// A Render with the text Last shows only the last block of a snippet
 	// the caller gave: the <title> of a page, which Svelte takes from the
 	// last <title> in <svelte:head>.
@@ -156,7 +157,7 @@ func (o *Op) UnmarshalJSON(data []byte) error {
 // the kinds that need one, and for a Render that shows the last block.
 func (o Op) hasText() bool {
 	switch o.Kind {
-	case Markup, Attr, URL, Mount:
+	case Markup, Attr, Mount:
 		return true
 	case Render:
 		return o.Text != ""
@@ -168,7 +169,7 @@ func (o Op) hasText() bool {
 func (o Op) check() error {
 	want := 0
 	switch o.Kind {
-	case Markup, Text, HTML, Attr, URL, Spread, Call, Render, Mount:
+	case Markup, Text, HTML, Attr, Spread, Call, Render, Mount:
 	case For:
 		want = min(max(1, len(o.Bodies)), 2)
 	case Element:
@@ -212,16 +213,6 @@ func (s *Site) Encode() ([]byte, error) {
 	s.Version = Version
 	return marshal(s)
 }
-
-// Attributes that hold an address. The runtime replaces an address that
-// could run code, such as javascript:alert(1).
-var addresses = map[string]bool{
-	"href": true, "src": true, "action": true, "formaction": true, "poster": true,
-	"cite": true, "background": true, "xlink:href": true,
-}
-
-// IsAddress tells whether an attribute holds an address.
-func IsAddress(name string) bool { return addresses[name] }
 
 // Elements that never have content or a closing tag. Svelte writes them as <br/>.
 var void = map[string]bool{

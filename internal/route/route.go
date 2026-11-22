@@ -28,6 +28,14 @@ const Extension = ".shugo"
 // Layout is the name of the file that wraps the pages of its folder.
 const Layout = "+layout" + Extension
 
+// What stands in Shugo for the route files of SvelteKit, which an agent
+// used to SvelteKit writes first.
+var sveltekit = map[string]string{
+	"+page":   "in Shugo a page is a file named after its address, src/pages/about.shugo for /about and src/pages/blog/[slug].shugo for /blog/…",
+	"+error":  "the page for addresses that have no page is src/pages/404.shugo",
+	"+server": "Shugo has no endpoints; a page gives HTML",
+}
+
 // Parse reads the path of a page file under src/pages/, such as
 // "products/[slug].shugo". It returns no segments and false for a file that
 // gives no address: one whose name or folder starts with "_".
@@ -40,6 +48,9 @@ func Parse(file string) ([]Segment, bool, error) {
 		case strings.HasPrefix(part, "_"):
 			return nil, false, nil
 		case strings.HasPrefix(part, "+"):
+			if hint, known := sveltekit[part]; known {
+				return nil, false, fmt.Errorf("%s is a file of SvelteKit: %s", part, hint)
+			}
 			return nil, false, fmt.Errorf("names that start with + are kept for the framework, and %s is not one of them (there is %s)", part, Layout)
 		case strings.HasPrefix(part, "(") && strings.HasSuffix(part, ")") && !last:
 			// A folder in parentheses groups pages without changing their addresses.

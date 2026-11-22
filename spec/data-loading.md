@@ -59,8 +59,8 @@ What is lost: a library without a synchronous option cannot be called for each p
 - Modules from `src/lib/` and `<script module>` are performed once per calculation.
 - Creating `Intl.NumberFormat` and similar objects is expensive. You need to create them once in the module, not every call: at the stand, this accelerated the calculation threefold.
 
-- Time and random numbers (`Date.now()`, `Math.random()`) do not calculate anything themselves: a page is calculated only when what it read from the database has changed. But when it is calculated for another reason, the value is different and the page is considered changed, and neighboring pages show the time of their calculation. Take time from data: for example, the date of publication from the database line.
+- Time and random numbers (`Date.now()`, `Math.random()`) do not calculate anything themselves: a page is calculated only when what it read from the database has changed. But when it is calculated for another reason, the value is different and the page is considered changed, and neighboring pages show the time of their calculation. Whether to take time from the data, decides the author of the site: Shugo does not prohibit this (the decision of 22 November 2026 year).
 
 ## Open questions
 
-- Libraries without a synchronous option: whether the top of the module and adapter is enough.
+- Libraries without a synchronous version: whether the top of the module and adapter is enough is postponed in [proposal for an adapter](../docs/proposals/data-adapter.md#libraries-without-synchronous-option).

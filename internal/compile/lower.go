@@ -818,11 +818,7 @@ func (l *lowerer) attributes(e *syntax.Element, name, hash string, svg bool, ctx
 			out = append(out, markup{" " + attrName + `="` + escapeAttr(text) + `"`})
 			continue
 		}
-		kind := program.Attr
-		if program.IsAddress(attrName) {
-			kind = program.URL
-		}
-		out = append(out, attribute{kind: kind, name: attrName, value: en.value, boolean: !svg && booleanAttribute(attrName)})
+		out = append(out, attribute{kind: program.Attr, name: attrName, value: en.value, boolean: !svg && booleanAttribute(attrName)})
 	}
 	if !classDone && (len(classes) > 0 || hash != "") {
 		out = append(out, l.classAttr(value{parts: nil}, classes, hash))

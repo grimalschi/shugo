@@ -119,6 +119,6 @@ What follows:
 - Byte byte - only with one fixed version of Svelte. Update version is a comparison run and correction of discrepancies, judging by the history - several times a year.
 - It is not necessary to repeat the hydration labels: this is the internal format of Svelte, it changes most often, and it is not needed for a static page. The island of the label is given by Svelte itself, which renders it.
 - The one-to-one match also includes Svelte traps: the gap at the edge of `{#if}` will disappear in the same way as in Svelte. The compiler warning about such a gap HTML does not change.
-- Where to deviate from Svelte consciously is decided separately: for example, whether to block the addresses of `javascript:`. The author of the project decided to block.
+- Where to deviate from Svelte consciously is decided separately: for example, whether to block addresses of `javascript:`. The author of the project first decided to block, and 22 November 2026 year canceled: addresses are displayed as in Svelte.
 
 Checking is in the trust store: `research/svelte-exact` (`README.md`).

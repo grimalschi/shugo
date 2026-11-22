@@ -87,7 +87,7 @@ The adapter does not follow the source itself: it is launched. Who starts - solv
 
 Webhoek and queue handler is not a part of Shugo: these are a few lines that cause `shugo data put` and `shugo data drop` (commands below). Full schedule download stands next to them as insurance: the point signal can get lost, full download will fix everything.
 
-There used to be a separate document on partial data reset: how not to load all the data at each update with tags or a data layer that remembers who read what. This is closed by the journal and requests via `Shugo.query`: the update reads only the changed lines from the journal and finds who read them. The question of several JS processes for the first assembly remained open from that document it is in [open-ended Questions](../../spec/open-questions.md).
+There used to be a separate document on partial data reset: how not to load all the data at each update with tags or a data layer that remembers who read what. This is closed by the journal and requests via `Shugo.query`: the update reads only the changed lines from the journal and finds who read them. The question of several JS processes for the first assembly remained open from that document it is in [the Offer](parallel-build.md).
 
 ### What the Adapter Author Says
 
@@ -168,6 +168,10 @@ This is done and works without an adapter:
 
 The scheme has changed the database tables have changed. The journal can not say what has changed in the data, and the site is calculated as a whole; this is how the database works now.
 
+### Libraries without synchronous option
+
+Page is calculated without waiting: `await` is not in its code. A library that can only wait Markdown parsing with plugins, API query, code highlighting cannot be called for each page. Its place is an adapter: it waits as long as necessary, and puts the finished HTML articles in the database, the answer is API, the data is analyzed. What you need once for the entire calculation, for example, a created backlight, you can wait at the top level of the module from `src/lib/`. The author of the project postponed the question of whether this is enough, here 22 November 2026 year; advice - enough.
+
 ### Commands
 
 Outline:
@@ -189,3 +193,4 @@ shugo update                         find pages that have read the changed
 - Source, which itself is the base with SQL: can you do without a copy if the journal is running it.
 - Where the adapter is located: in `src/`, like the rest of the project code, or near the base.
 - Images from the source: the adapter downloads them into the project along with the data ([Pictures](images.md)).
+- Whether to make the adapter the next big step. Advice is yes: without it, data in the database bring their scripts.
