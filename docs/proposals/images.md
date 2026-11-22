@@ -10,6 +10,8 @@ Proposal on how pictures are reduced and compressed. While this is not: pictures
 - When generating the entire site into files, all images are compressed in advance and saved.
 - **Two modes** (Decision of the author 22 November 2026 years): built-in compression, where WebP is the recommended format, and, if desired, libvips, if it is installed in the system or associated with ShugoIt can be specified and used for acceleration.
 - **Format** (22 November 2026 solution): defaults to WebP only, in normal `<img>`; `<picture>` with AVIF - when libvips is enabled. No selection for the `Accept` header.
+- **Image Component** (the decision of the author of the project 22 November 2026 year): its component Svelte, which gives Shugo, and the function `image()` from the module `shugo`. The template is compiled as written, and addresses from the data work.
+- **Addresses for export** (22 November 2026 project author's decision): Export finds `/_img/…` addresses in HTML, which writes. Store them list at each entry — if `shugo images clean` becomes slow.
 
 ## Measurements
 
@@ -129,7 +131,7 @@ The format "depending on what the browser supports" is chosen by the browser its
 
 The choice of the header `Accept` is not needed: on static hosting it is not, and caches in front of the server it is often confused. WebP understand all browsers that are currently in use, so in built-in mode, one `<img>` is enough.
 
-To not collect addresses with your hands, you need a function `image("/photos/jug.jpg", { width: 800 })` from module `shugo` The finished component that it produces `<picture>` with formats from settings, `srcset` for several widths, `width` and `height` against page jumps and `loading="lazy"`B. SvelteKit He does the same `<enhanced:img>`. It is not a component but a tag that plugin `@sveltejs/enhanced-img` rewrites in source to compiler Sveltewithout such step Svelte Detox `<enhanced:img>` On the page as is.
+To avoid collecting addresses with your hands, you need the function `image("/photos/jug.jpg", { width: 800 })` from the module `shugo` and a ready component that itself displays `<picture>` with formats from settings, `srcset` for several widths, `width` and `height` against page jumps and `loading="lazy"`. The component is its own, Svelte component from Shugo, and not a `<enhanced:img>` record from SvelteKit: that is not a component, but a tag that the `@sveltejs/enhanced-img` plugin rewrites in the source to the Svelte compiler, and takes only files known during assembly, not addresses.
 
 ### How to choose a format: options
 
@@ -176,7 +178,6 @@ The third way remains possible: then Shugo does not compress the pictures, but o
 
 - How `shugo` gets libvips: start with the `vipsthumbnail` command as suggested, or download the library immediately while running.
 - Address type: `/_img/w800/…` prefix as here, or file name ending; format last extension (`jug.jpg.webp`) or instead of original (`jug.webp`).
-- The finished image component: its Svelte component, which gives Shugo, or a SvelteKit record `<enhanced:img>` — then Shugo would rewrite it in the source to the Svelte compiler, as does the SvelteKit plugin.
 - The cache is [separate offer](image-cache.md).
 
 ## Sources

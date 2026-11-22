@@ -20,6 +20,8 @@ _build/          written by shugo; never edit, never commit
 
 Only `src/pages/` is required. Every `.svelte` file lives in `src/`. `@/` in an import is `src/`: `import { price } from "@/lib/shop"`.
 
+Svelte comes with Shugo: never install `svelte`. A package from npm is installed with the package manager of the project, `bun add date-fns` or `npm install date-fns`, and imported by its name. A Svelte component from a package is an error: copy it into `src/components/`.
+
 `shugo.json`, every field optional:
 
 ```json
@@ -84,10 +86,10 @@ Run `shugo build` after every change and read the errors and warnings: each name
 - `<script module>` runs once, when the module loads. `getStaticPaths` goes there: in `<script>` it is an error. Names imported in `<script module>` are seen in `<script>` too; importing one again is an error of Svelte.
 - There is no `await`: a page is computed without waiting, since `query` answers at once. What takes time and needs doing once, such as making a highlighter, can be awaited at the top of a module in `src/lib/`. Top-level `return` is an error.
 - TypeScript: write `<script lang="ts">`. Svelte removes the types and does not check them: a type error does not stop the build, and `post.titel` shows nothing. TypeScript that turns into code, such as `enum`, is an error: use an object `as const`. Import a type with `type`: `import type { Product } from "@/lib/shop"`, or `import { price, type Product } from "@/lib/shop"`. Svelte does not know that `Product` is a type and keeps a plain import of it, and the build stops with `No matching export`.
-- Only runes: `export let`, `$:` and the slots of Svelte 4 (`<slot>`, `slot="…"` right inside a component's tag, `let:`, `<svelte:fragment>`) are errors; take props with `$props()` and markup with snippets.
-- Modules with runes, `counter.svelte.ts` or `state.svelte.js`, are compiled by Svelte too: import them like any module. In an island they run in the browser.
+- Only runes: `export let`, `$:`, `<svelte:options runes={false} />` and the slots of Svelte 4 (`<slot>`, `slot="…"` right inside a component's tag, `let:`, `<svelte:fragment>`) are errors; take props with `$props()` and markup with snippets.
+- Modules with runes, `counter.svelte.ts` or `state.svelte.js`, are compiled by Svelte too: import them like any module. In an island they run in the browser. In `src/pages/` they are code to import, not files of the site.
 - A page is rendered on the server: `$state(x)` is just `x`, `$derived(…)` is computed once, `$effect` never runs. The page is static.
-- These modules of Svelte come with Shugo, so a project installs nothing for its pages: `svelte`, `svelte/store`, `svelte/reactivity`, `svelte/reactivity/window`, `svelte/easing`, `svelte/transition`, `svelte/animate`, `svelte/motion`, `svelte/events`, `svelte/attachments`, `svelte/server`. Any other, such as `svelte/legacy`, is an error.
+- These modules of Svelte come with Shugo, so a project does not install `svelte`: `svelte`, `svelte/store`, `svelte/reactivity`, `svelte/reactivity/window`, `svelte/easing`, `svelte/transition`, `svelte/animate`, `svelte/motion`, `svelte/events`, `svelte/attachments`, `svelte/server`. Any other, such as `svelte/legacy`, is an error.
 
 ## Text and attributes
 
@@ -201,7 +203,7 @@ import { query, paginate, page, search } from "shugo"
 | `page.status` | 200, and 404 on `src/pages/404.svelte` |
 | `search("table", { … })` | a search of a table, for islands: see [Islands](#islands) |
 
-`page` is the `page` of `$app/state` in SvelteKit, with the fields a static page has. Props come from `$props()`. There is no global `Shugo` or `Astro`: writing one is an error that names the import.
+`page` is the `page` of `$app/state` in SvelteKit, with the fields a static page has. Props come from `$props()`. There is no global `Shugo`: writing it is an error that names the import.
 
 ## Layouts
 
@@ -241,7 +243,7 @@ import { query, paginate, page, search } from "shugo"
 
   `%shugo.body%` is the page in its layouts, `%shugo.head%` what the templates give in `<svelte:head>` and then the link to the style sheet. Each stands once. The file is plain HTML, copied as it is: no expressions. Without it Shugo uses the one above, without `lang`. `<html>`, `<head>`, `<body>` or `<!doctype>` in a template is an error.
 - A page gives its title and meta tags with `<svelte:head>` at its top level; any component may. They go to `%shugo.head%`, in the order of the document: outer layouts first, the page last. A page has one `<title>`, the last one, so the layout above gives a default and a page replaces it.
-- Pages do not import or call layouts.
+- Pages do not import or call layouts: importing a `+layout.svelte` is an error. Markup that pages share goes into a component.
 - A layout is kept apart from its pages: once for the whole site when it reads nothing of the page, once for every page when it imports `page` from `shugo`, for example to highlight the current menu item. A change of what the layout reads computes the layout and not the pages; a change of a page computes the page and not its layout.
 - So a layout is rendered apart from the page in it: a context the layout sets with `setContext` reaches its own components, not the page. Pass what the page needs through `query` or a module of `src/lib/`.
 
@@ -283,7 +285,7 @@ A file with a parameter in its name must say which pages there are. `getStaticPa
 <h1>{product.title}</h1>
 ```
 
-`getStaticPaths` runs once; `<script>` runs for every address it returned. `page.params` holds the parameters as they stand in the address of the page: always text, and only the ones the file name has. `getStaticPaths({ query })` as in Astro is an error: import instead.
+`getStaticPaths` runs once; `<script>` runs for every address it returned. `page.params` holds the parameters as they stand in the address of the page: always text, and only the ones the file name has. `getStaticPaths({ query })` is an error: import instead.
 
 **`getStaticPaths` returns addresses alone, `{ params }`, and every page asks for its own data by them.** Then one product that changes has one page computed. An item with `props` is an error. An address returned twice is one page, as in SvelteKit: no need to remove repeats.
 
@@ -431,7 +433,7 @@ A component named `*.island.svelte` is an island: the page shows its HTML, and i
 <Catalog request:initial={products} action="/catalog" />
 ```
 
-- An island needs the package `svelte@5.59.1` in the project. Regular templates do not.
+- Nothing is installed for islands: Shugo brings Svelte for the browser too. An island is written with runes, as every template is.
 - Props are JSON data: no functions, no snippets, nothing inside the tag.
 - An island may import regular components, such as `ProductCard.svelte`, when they take data through props and use Svelte alone: no `query`, no `page`.
 - `search("table", { … })` describes a search of a table of the data database; Shugo builds and names its index. `text` are the columns of the full-text search by `q`; `filters` take `multi` (`category=cups&category=plates`), `range` (`price_from`, `price_to`) and `boolean` (`available=1`); `sorts` and `defaultSort` name the orders for `sort`; `where` fixes a part of the table: `{ published: true }`. The result has `hits`, `total`, `facets`, `query`, the fields of pages and `endpoint`.

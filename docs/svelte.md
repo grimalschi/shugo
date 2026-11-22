@@ -1,6 +1,6 @@
 # Shugo and Svelte
 
-Shugo templates — pages, layouts and components, `.svelte` files are components of Svelte 5. Compiles them Svelte 5.59.1 s output for the server, as in SvelteKit, and renders when assembling its server part on Bun or Node. The compiler and server part are sewn into Shugo: for the pages of the project, you do not need to put the `svelte` package. Shugo has its own blocks, which are the pages, and what is around the pages: the shell, head, storage, server. `.island.svelte` Island compiles the `svelte` project package, for server and browser; for the island, tied to the request data, Shugo prepares from the server output Svelte program SSR. [Templates](../spec/templates.md) · [Svelte islands](islands.md) · [Blocks](blocks.md)
+Shugo templates — pages, layouts and components, `.svelte` files are components of Svelte 5. Compiles them Svelte 5.59.1 s output for the server, as in SvelteKit, and renders when assembling its server part on Bun or Node. The compiler, server and browser parts are sewn into Shugo: the project does not need to put the `svelte` package. Shugo has its own blocks, which are the pages, and what is around the pages: the shell, head, storage, server. `.island.svelte` Island the same Svelte compiles for server and browser; for the island, tied to the query data, Shugo prepares from the server output Svelte program SSR. [Templates](../spec/templates.md) · [Svelte islands](islands.md) · [Blocks](blocks.md)
 
 ## What Svelte and Shugo do
 
@@ -10,7 +10,9 @@ Shugo templates — pages, layouts and components, `.svelte` files are component
 | Spaces, shielding, attributes, `class` and `style`, `{#each}`, `{#if}`, snippets, `<svelte:element>`, `<select value>` | Svelte: compiled code and its server part | `internal/svelte/vendor/runtime` |
 | Component Styles: `svelte-…` class, rewritten selectors, unused selectors | Svelte, `css: "external"` | styles assemble in file Shugo, `internal/compile/styles.go` |
 | Types of TypeScript | `<script lang="ts">` erases Svelte, `enum` and other things that TypeScript turns into code — error Svelte; in modules `.ts` — esbuild | `internal/svelte/compile.mjs`, `internal/compile/build.go` |
-| Your checks: shell, islands, first syntax tags Shugo, slots Svelte 4 | Shugo, by tree, which gave the same compiler call | `internal/svelte/compile.mjs` |
+| Your checks: shell, islands, tags of the first syntax Shugo, slots Svelte 4, `runes={false}`; hint when `{…}` is worth marking | Shugo, by tree, which gave the same call to the compiler, and by its error | `internal/svelte/compile.mjs` |
+| Import layout, components from npm packages, tip about type without `type` | Shugo, in assembler | `internal/compile/build.go` |
+| A component that endlessly shows itself | Shugo, when calculating: error with file chain | `internal/jsrt/runtime.js` |
 | What component is the common block and what renders on the spot | Shugo: when assembled - by template tree and imports, with each display - by parameters, in `component()` wrapper around each component | `internal/svelte/compile.mjs`, `internal/compile/build.go`, `internal/jsrt/runtime.js` |
 | Common block labels, snippets of common blocks in separate renders, cutting HTML into blocks, `<title>` separately from the head | Shugo | `internal/jsrt/runtime.js` |
 | Modules with runes, `.svelte.js` and `.svelte.ts` | Svelte, `compileModule`; types `.svelte.ts` removes esbuild, source cards add up | `internal/compile/build.go` |
@@ -42,7 +44,7 @@ HTML writes Svelte. Tests check that after cutting into blocks, cutting out comm
 - **Random pages.** `TestRandomPages` writes pages at random and considers them HTML as its model on Go, independent of the Shugo code. The model is checked with Svelte 5.59.1 on 400 random pages: all matched.
 - Before comparing, Svelte output removes the hydration labels, and both removes the style class: the reference is compiled with the other file path, and the hash class is the other.
 
-When updating Svelte synchronously change the sewn compiler and server part, the version of the package in `examples/search` and `test/svelte` and benchmark tests, and programs SSR The islands are re-aligned with HTML Svelte ([Svelte islands](islands.md#what-does-the-ssr-program-of-the-island)). [How a copy is made](../internal/svelte/vendor/README.md)
+When updating Svelte synchronously change the sewn compiler, server and browser parts and parser acorn, the version of the package in `test/svelte` and benchmark tests, and programs SSR The islands are re-aligned with HTML Svelte ([Svelte islands](islands.md#what-does-the-ssr-program-of-the-island)). [How a copy is made](../internal/svelte/vendor/README.md)
 
 ## How much does the compilation cost
 

@@ -5,14 +5,15 @@ Here lies what Shugo does not have yet: proposals that are waiting for the decis
 | Proposal | About what | Status |
 | --- | --- | --- |
 | [Image cache](image-cache.md) | Own project folder outside `_build/`, hash names, write without half files, clean | decided, waiting for pictures |
-| [Live Reload](live-reload.md) | Development mode calculates the page on request, not the entire site; reboots only the changed, replaces styles, shows an error in the browser | page on request solved; rest waiting for decision; not done |
+| [Live Reload](live-reload.md) | Development mode calculates the page on request, not the entire site; reboots only the changed, replaces styles, shows an error in the browser | page on request and styles without reboot solved; rest waiting for decision; not done |
 | [Data adapter](data-adapter.md) | How data from any source gets into the project database: full load with comparison, point changes, a scheme that signals, libraries that can only wait | waiting for a decision; advice is the next big step |
-| [Pictures](images.md) | Built-in compression with WebP and, optionally, libvips for speed and AVIF; format, addresses, export | two modes and format are solved; the rest is waiting for the decision |
-| [Internationalization](i18n.md) | One page for all languages, lines in the database, addresses `/about` and `/en/about`, optional parameter `[[lang]]` | lines in the database are solved; the rest is waiting for the decision |
+| [Pictures](images.md) | Built-in compression with WebP and, optionally, libvips for speed and AVIF; format, addresses, export | two modes, format, image component and export addresses are solved; the rest is waiting for the decision |
+| [Internationalization](i18n.md) | One page for all languages, lines in the database, addresses `/about` and `/en/about`, optional parameter `[[lang]]` | lines in the database and `t` in modules are solved; the rest is waiting for the solution |
+| [npm Packages](npm-packages.md) | Who puts the packages and how does the calculation take them: the project package manager, one Svelte at all, build error for the missing package, packages inside `eval.mjs` | waiting for decisions |
 | [Multiple JS processes for first build](parallel-build.md) | First Assembly Divides Calculation Between Processes by Number of Cores | postponed |
 | [Comparisons and windows in readings](range-queries.md) | Accurate update of comparison queries and `limit`: Reading boundaries and R*Tree index | postponed |
 
-Accepted and done 22 November 2026 years, so we left this folder: `query`, `paginate` and `page` from module `shugo` the National Museum [Templates](../../spec/templates.md#file-structure); shell `src/site.html` the National Museum [Layouts](../../spec/layouts.md#shell-srcsitehtml). Closed on the same day: compatibility with Svelte templates `.svelte` compile and render itself Svelte 5.59.1, TypeScript Written with `lang="ts"`And that little that Shugo does around Svelte In its own way, it is listed in [Templates](../../spec/templates.md#how-shugo-differs-from-svelte).
+Accepted and done 22 November 2026 years, so we left this folder: `query`, `paginate` and `page` from module `shugo` the National Museum [Templates](../../spec/templates.md#file-structure); shell `src/site.html` the National Museum [Layouts](../../spec/layouts.md#site-shell). Closed on the same day: compatibility with Svelte templates `.svelte` compile and render itself Svelte 5.59.1, TypeScript Written with `lang="ts"`And that little that Shugo does around Svelte In its own way, it is listed in [Templates](../../spec/templates.md#how-shugo-differs-from-svelte).
 
 ## Done and waiting for approval later
 

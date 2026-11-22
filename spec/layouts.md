@@ -1,37 +1,37 @@
 # Layouts
 
-Layout — a general binding of pages: a cap, footer and place for the content of the page. The document itself — `<html>`, `<head>` and `<body>` — is written once, in the shell of `src/site.html`.
+A layout wraps pages in shared markup such as a header and footer. Put the document itself, including `<html>`, `<head>`, and `<body>`, in the site shell at `src/site.html`.
 
 ## Decisions
 
-- The layout is a `.svelte` file.
-- Layouts are modeled after `+layout` from SvelteKit: the layout file is located in the folder with the pages and acts on them.
-- The layout works as a component, but it cannot be called.
-- The model can upload its data.
-- Data from page to page, how `load` the City of London `+layout.ts` SvelteKit, no: page asks the base itself (solution 22 November 2026 years).
-- The layout is kept separate from the pages: changing what it reads does not compute the pages, and changing the page does not compute the layout (decision 22 November 2026 A layout that does not read the address is one entry for the entire site; a layout that reads the address is its own entry for each page.
-- The layout is written as a component Svelte 5 (Decision of the author 21 November 2026 Year: Page he gets snippet `children` and shows her `{@render children()}`How `+layout.svelte` the City of London SvelteKit; title and meta tags page writes in `<svelte:head>`. It replaces the old `<g-slot />` and `<title slot="head">`.
-- `<html>`, `<head>` and `<body>` in a separate file `src/site.html` with places `%shugo.head%` and `%shugo.body%`How `src/app.html` the City of London SvelteKit; root layout - a common component (solution) 22 November 2026 years).
+- Use `.svelte` files for layouts.
+- Layouts follow the SvelteKit `+layout` convention. A layout file wraps the pages in its directory.
+- Shugo invokes layouts automatically. They behave like components and can load their own data.
+- Importing `+layout.svelte` is a build error. Put markup that templates import in a component (November 22, 2026).
+- Each page queries the database for its own data. Layouts have no equivalent of the `load` export in SvelteKit's `+layout.ts` (November 22, 2026).
+- Shugo stores layouts and pages separately. Changes to a layout's data recompute the layout, and changes to a page recompute the page. A layout that depends on the URL has one record per page. Other layouts have one record for the site (November 22, 2026).
+- A layout is a Svelte 5 component. It receives the page as a `children` snippet and renders it with `{@render children()}`. Pages contribute titles and metadata through `<svelte:head>`. This replaces `<g-slot />` and `<title slot="head">` (November 21, 2026).
+- `src/site.html` holds `<html>`, `<head>`, and `<body>`, with placeholders `%shugo.head%` and `%shugo.body%`. It serves the same role as `src/app.html` in SvelteKit. The root layout is a regular component (November 22, 2026).
 
 ## Implemented, pending approval
 
-### Where it is and what it works for
+### Layout location and scope
 
-```
+```text
 src/pages/
-  +layout.svelte wraps all pages
+  +layout.svelte            wraps every page
   index.svelte
   docs/
-    +layout.svelte wraps docs/ pages, itself lying inside the root
+    +layout.svelte          wraps pages in docs/, inside the root layout
     index.svelte
     (guides)/
-      +layout.svelte folder in parentheses: another layout without part of the address
-      start.svelte address /docs/start
+      +layout.svelte        adds a layout without adding a URL segment
+      start.svelte          served at /docs/start
 ```
 
-The nested layout is inside the external one, as in SvelteKit. The `/docs/start` page is wrapped with three layouts.
+Nested layouts render inside their parents, as in SvelteKit. Three layouts wrap `/docs/start`.
 
-### Shell: `src/site.html`
+### Site shell
 
 ```html
 <!doctype html>
@@ -47,14 +47,14 @@ The nested layout is inside the external one, as in SvelteKit. The `/docs/start`
 </html>
 ```
 
-- `%shugo.body%` is a page in its layouts.
-- `%shugo.head%` is what the page templates gave in `<svelte:head>`, followed by a link to the site style file.
-- Each place is in the file exactly once, the head - before the body; otherwise, the assembly will stop with an error.
-- The shell is a regular HTML, not a template: there are no expressions and code in it, it is copied as written. Page language, `<html lang="en">`, is here, one on the site.
-- No file - takes the shell of the framework, the same as above, but without `lang`.
-- A layout, page, or component that writes `<html>`, `<head>`, `<body>`, or `<!doctype>` is an assembly error: it is written in the shell.
+- `%shugo.body%` inserts the page wrapped in its layouts.
+- `%shugo.head%` inserts the templates' `<svelte:head>` contributions, followed by a stylesheet link.
+- Include each placeholder exactly once, with the head before the body. The build rejects missing, duplicated, or out-of-order placeholders.
+- The shell is plain HTML copied verbatim. Its `lang` attribute sets the language for the whole site.
+- If `src/site.html` is missing, Shugo uses the shell above without the `lang` attribute.
+- Put `<html>`, `<head>`, `<body>`, and `<!doctype>` in the shell. The build rejects them in layouts, pages, and other components.
 
-### How the layout shows the page
+### Rendering the page
 
 ```svelte
 <!-- src/pages/+layout.svelte -->
@@ -69,47 +69,47 @@ The nested layout is inside the external one, as in SvelteKit. The `/docs/start`
 <main>{@render children()}</main>
 ```
 
-`{@render children()}` is the place of the page. The layout that does not show it is an assembly error. The root layout starts immediately with what is in `<body>`, like `+layout.svelte` in SvelteKit, and is transferred between them without editing.
+`{@render children()}` marks where the page appears. Every layout must render its children. Like a SvelteKit root layout, it starts with content that belongs inside `<body>` and can be moved between the frameworks as written.
 
-### How a page conveys title and meta tags
+### Page titles and metadata
 
 ```svelte
 <!-- src/pages/about.svelte -->
 <svelte:head>
-  <title>About the store</title>
-  <meta name="description" content="Pottery workshop">
+  <title>About the Shop</title>
+  <meta name="description" content="A pottery studio">
 </svelte:head>
 
-<h1>About the store</h1>
+<h1>About the Shop</h1>
 ```
 
-- `<svelte:head>` is written in any component page, layout or other at the top level: inside an element or block, it is a Svelte error.
-- Its contents fall into the place of `%shugo.head%` shell.
-- Order is the order of display: the component is ahead of those it shows, wherever `<svelte:head>` stands in it. Therefore, first external layouts, then internal ones, then the page.
-- `<title>` has one page: the last in this order, and it stands after the rest. Therefore, the default title is written in `<svelte:head>` root layout, and the page replaces it with its own:
+- Put `<svelte:head>` at the top level of a page, layout, or other component. Svelte rejects it inside elements and blocks.
+- Its content goes in the shell at `%shugo.head%`.
+- A component's head content comes before that of the components it renders, regardless of where its own `<svelte:head>` appears. This places outer layouts before inner layouts and pages.
+- Shugo keeps the last `<title>` in render order and puts it after the other head contributions. Set a default in the root layout and override it in individual pages.
 
   ```svelte
   <!-- src/pages/+layout.svelte -->
   <svelte:head><title>Measure</title></svelte:head>
   ```
 
-### What does framework add
+### Framework additions
 
-In place of `%shugo.head%`, after the templates have been given, a link to the site style file is added. In the post-page development mode, in place of `%shugo.body%`, a script is added that restarts the page after updating.
+Shugo appends the site stylesheet link to the content inserted at `%shugo.head%`. In development, it adds a script after the page at `%shugo.body%` so the browser reloads when the site updates.
 
-### The layout is kept separate from the pages
+### Layouts are stored separately from pages
 
-Page comes to the layout with a snippet `children` and is stored in its record, and the layout is in its:
+A layout receives the page as `children`. Each has its own record.
 
-- a layout that does not take `page` from the `shugo` module - neither itself nor through the modules that it imports - one entry per entire site; the menu has changed - one entry is calculated;
-- a layout that reads the address - for example, highlights the current menu item, `class:active={page.url.pathname === item.href}` with `import { page } from "shugo"` - its own entry for each page; the menu has changed - the layout for each page is calculated, and the pages themselves are not calculated;
-- the page has changed it is calculated alone, without a layout.
+- A layout that never imports `page` from `shugo`, directly or through another module, uses one record for the site. A menu change recomputes that record once.
+- A layout that reads the URL uses a record per page. For example, `class:active={page.url.pathname === item.href}` with `import { page } from "shugo"` can highlight the current menu item. A menu change recomputes each layout record while the page records stay current.
+- A change that affects only a page recomputes that page.
 
-Therefore, the layout is rendered separately from the page: the context it sets through `setContext` sees its components, but not the nested layout and not the page inside it. What a page needs is to take through `query` or from the module in `src/lib/`. The names from `$props.id()` in the layout start with his file number, `b3-s1`, to avoid matching page names.
+Shugo renders layouts separately. A layout's `setContext` values reach its own components. Nested layouts and pages have their own contexts and can get data via `query` or a module in `src/lib/`. Shugo prefixes `$props.id()` values with the layout's file number, as in `b3-s1`, to avoid collisions with IDs from the page.
 
-How it works in [Blocks](../docs/blocks.md).
+See [Blocks](../docs/blocks.md).
 
 ## Open questions
 
-- Reset chain: page or section without external layouts. In SvelteKit it is `+page@.svelte` and `+layout@.svelte`.
-- Language of the page for the site in several languages: the shell will need space for `lang` - it will give [internationalization](../docs/proposals/i18n.md).
+- Resetting the layout chain for a page or section. SvelteKit uses `+page@.svelte` and `+layout@.svelte`.
+- Setting `lang` per page on a multilingual site. The [internationalization proposal](../docs/proposals/i18n.md) describes a placeholder for it.

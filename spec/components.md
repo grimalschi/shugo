@@ -1,22 +1,21 @@
 # Components
 
-Component is a reusable part of the template: a cap, a product card, a footer. It is a component of Svelte 5 in the `.svelte` file, like a page and a layout.
+A component is a reusable part of a template, such as a header, product card, or footer. Like pages and layouts, components are Svelte 5 components in `.svelte` files.
 
 ## Decisions
 
-- The term is called “component.”
-- The component is a `.svelte` file, like page and layout.
-- The components are written as in Svelte 5, with the same markup logic (the decision of the author of the project 21 November 2026 year): parameters - `$props()`, markup inside the component is transmitted by snippets, the styles of the component act only on it. This replaces the previous solutions "parameters are read in code, as in Astro" and `<g-slot>` slots.
-- The component can upload its data.
-- The calling pattern can transfer the markup inside the component.
-- Component call — block boundary: the block is stored and updated separately. As it is arranged — in [Blocks and point update](../docs/blocks.md). *With 22 November, 2026 compiles and renders the Svelte itself (the author's decision): a separate block remains the call of the common component, and the component that is rendered in place is included in HTML of the one who showed it.*
-- Functions and components are connected by explicit imports.
-- The component to which the object was transferred for example, a base line is calculated on each page where it is shown. Remember it by the content of the parameter is not necessary: so the page would depend on all columns of the line. Who needs a common unit, he transmits the key (solution 22 November 2026 year).
-- **What a common component.** A component that does not take `page` and `paginate` from `shugo` neither itself nor through its imports and receives only simple values strings, numbers, `true`, `false`, `null` or nothing all of these are stored once per page. Snippets passed inside are not considered parameters. No markings needed. The build warns when the common component shares almost nothing: it has many entries, and each shows one place on average (22 solution of November 2026 year). *C 22 November 2026 the Year Templates Compiles and Renders Himself Svelte (the author's decision): the general component does not take context SvelteIt doesn't call `$props.id()`It doesn’t show a snippet inside. `<select>`, does not receive `bind:` Snippets with parameters solutions [42](decisions.md#42-shared-components-do-not-use-context-or-propsid) and [43](decisions.md#43-render-shared-block-snippets-separately)Waiting for approval.*
+- Define components in `.svelte` files, just like pages and layouts.
+- Follow Svelte 5 conventions. Read props with `$props()`, pass markup with snippets, and scope styles to the component. This supersedes reading props through the framework and using `<g-slot>` (November 21, 2026).
+- Components can load their own data. A calling template can pass markup to a component.
+- A component call originally formed a block boundary, allowing each block to be stored and updated separately. Since Shugo adopted Svelte's compiler and renderer on November 22, 2026, only a shared component call creates a separate block. An in-place component contributes HTML to its caller. See [Blocks and incremental updates](../docs/blocks.md).
+- Import functions and components explicitly.
+- Passing an object, such as a database row, makes the component render on each page that uses it. Pass the row's key to share one block across pages. This also avoids making pages depend on every column in the row (November 22, 2026).
+- A component can become a shared block automatically when it receives only plain props and neither it nor its imports uses `page` or `paginate` from `shugo`. Each distinct set of props produces one record that all matching calls can reference. Snippets declared in the caller's tag do not count toward the props key. The build warns if a component produces many shared blocks that are rarely reused (November 22, 2026).
+- The Svelte renderer adds other conditions for sharing. A component must render in place when it uses Svelte context or `$props.id()`, renders a snippet inside `<select>`, receives a `bind:` directive, or receives a snippet with parameters. See [decision 42](decisions.md#42-shared-components-do-not-use-context-or-propsid) and [decision 43](decisions.md#43-render-shared-block-snippets-separately), pending approval.
 
 ## Implemented, pending approval
 
-### Connection and challenge
+### Importing and rendering
 
 ```svelte
 <script>
@@ -25,14 +24,14 @@ Component is a reusable part of the template: a cap, a product card, a footer. I
 </script>
 
 <Card title="Pitcher" price={2400} featured />
-<ui.Button href="/cart">To cart</ui.Button>
+<ui.Button href="/cart">Add to cart</ui.Button>
 ```
 
-The component is imported into `<script>`. The capital or dot tag is the component. The file can lie anywhere inside `src/`; the `src/components/` folder is an agreement.
+Import a component in `<script>`. A tag with an uppercase initial or a dot names a component. A component can live anywhere under `src/`. By convention, reusable components go in `src/components/`.
 
-The parameters are written as attributes: `title="text"` transmits a string, `featured` transmits `true`, `price={2400}` transmits an expression value, `{price}` transmits the same value as `price={price}`, and `{...props}` transmits all object fields.
+Pass props as attributes. `title="Pitcher"` passes a string, `featured` passes `true`, and `price={2400}` passes the value of an expression. `{price}` abbreviates `price={price}`. Use `{...props}` to pass all fields of an object.
 
-### Parameters
+### Props
 
 ```svelte
 <script lang="ts">
@@ -49,7 +48,7 @@ The parameters are written as attributes: `title="text"` transmits a string, `fe
 
 ### Snippets
 
-What is inside the component tag, the component gets the parameter `children`. Named pieces of markup are transmitted by snippets - also parameters.
+A component receives markup inside its tag through the `children` prop. The caller can also declare named snippets and pass them as props.
 
 ```svelte
 <!-- src/components/Card.svelte -->
@@ -58,21 +57,21 @@ What is inside the component tag, the component gets the parameter `children`. N
 </script>
 
 <section class="card">
-  {#if children}{@render children()}{:else} is shown if nothing was passed inside{/if}
+  {#if children}{@render children()}{:else}No content supplied{/if}
   {#if footer}<footer>{@render footer()}</footer>{/if}
 </section>
 
-<!-- usage -->
+<!-- At the call site -->
 <Card>
-  <p>this Children</p>
-  {#snippet footer()}<small>this footer</small>{/snippet}
+  <p>This is the card content</p>
+  {#snippet footer()}<small>This is the footer</small>{/snippet}
 </Card>
 ```
 
-- `{@render children()}` shows what is inside the component tag. `{@render children?.()}` shows nothing if the inside is empty.
-- `{#snippet name()}…{/snippet}` is right inside the component tag, the `name` parameter.
-- Snippet sees the variables of the template that wrote it, not the component.
-- The snippet can accept parameters: the component transmits them when shown.
+- `{@render children()}` renders the markup inside the component tag. Use `{@render children?.()}` when the caller may omit it.
+- A declaration like `{#snippet name()}…{/snippet}` inside the tag becomes a prop named `name`.
+- A snippet can access variables in the template that declares it.
+- Snippets can take parameters. The component supplies the arguments when it renders the snippet.
 
 ```svelte
 <!-- src/components/List.svelte -->
@@ -81,16 +80,16 @@ What is inside the component tag, the component gets the parameter `children`. N
 </script>
 <ul>{#each items as item}<li>{@render row(item)}</li>{/each}</ul>
 
-<!-- usage -->
+<!-- At the call site -->
 <List items={products}>
   {#snippet row(product)}<a href="/products/{product.slug}">{product.title}</a>{/snippet}
 </List>
 ```
 
-- The snippet can be declared anywhere in the template and passed as a normal parameter: `<List items={products} {row} />`.
-- The component can transmit the snippet further: `<Inner>{@render children?.()}</Inner>` or `<Inner {children} />`.
+- You can declare a snippet anywhere in the template and pass it as a prop, as in `<List items={products} {row} />`.
+- A component can forward a snippet with `<Inner>{@render children?.()}</Inner>` or `<Inner {children} />`.
 
-### Your data
+### Loading component data
 
 ```svelte
 <script>
@@ -102,37 +101,37 @@ What is inside the component tag, the component gets the parameter `children`. N
 <nav>{#each menu as item}<a href={item.href}>{item.title}</a>{/each}</nav>
 ```
 
-`<script>` component is executed at each display. For a component that is shown on 100,000 pages, this is 100,000 times — unless it is shared.
+A component's `<script>` runs each time it renders. An in-place component used on 100,000 pages runs 100,000 times. Matching calls to a shared component reuse the same rendered block.
 
-### Common components
+### Shared components
 
-The component is calculated and stored once, if it does not depend on the page or the place where it stands, and is called with simple parameters:
+Shugo can compute and store a component's output once for a given set of props if the component is independent of the page and its position in the template.
 
 ```svelte
-<Header />                      <!-- once for the entire site -->
+<Header />                      <!-- once for the site -->
 <ProductCard id={product.id} /> <!-- once per product -->
-<ProductCard item={product} />  <!-- once per page because the prop is an object -->
+<ProductCard item={product} />  <!-- each page passes an object -->
 ```
 
-- The component depends on the page, if it itself or the module it imports takes `page` or `paginate` from the `shugo` module: this is visible by imports, without starting the code. Such a component is calculated on each page anew.
-- The component depends on where it stands, if it is itself or what it imports and shows takes context Svelte — `getContext`, `setContext`, `hasContext`, `getAllContexts`, `createContext`is calling `$props.id()` or shows a snippet inside `<select>`. Such a component is also rendered where it stands: context gives the components around, number in `$props.id()` Considers components that were previously rendered on the page, and the value of `<select>` Marks `<option>` the Snippet[42](decisions.md#42-shared-components-do-not-use-context-or-propsid)). Component to which the transfer `bind:`And also, through him he writes to the one who showed it.
-- Simple parameters are strings, finite numbers, `true`, `false`, `null`.
-- Snippets without parameters, written inside the tag of the common component, do not prevent it from being common. Each such snippet is rendered separately, where written, along with everything it gives `<head>`, stored in the record of who wrote it and shown where the component shows it. If the snippet is not rendered separately falling or calling `$props.id()` the component is rendered in place. So the layout is stored separately from the pages: the page he receives snippet `children`, see. [Layouts](layouts.md#the-layout-is-kept-separate-from-the-pages).
-- Snippet with parameters - even if everyone has default values - the component shows with its arguments, so such a component is rendered in place. Snippet transmitted by attribute, `<List {row} />`, too.
+- Imports of `page` or `paginate` from `shugo`, either directly or through another module, make the component depend on the current page. The compiler detects this from the import graph and renders the component separately for each page.
+- A component depends on its position if it or something it imports and renders uses Svelte context (`getContext`, `setContext`, `hasContext`, `getAllContexts`, or `createContext`), calls `$props.id()`, or renders a snippet inside `<select>`. Context comes from surrounding components, the generated ID depends on components already rendered on the page, and a `<select>` chooses among `<option>` elements supplied by its snippet. A `bind:` also ties the component to its caller. These components render in place. See [decision 42](decisions.md#42-shared-components-do-not-use-context-or-propsid).
+- Shared props can be strings, finite numbers, booleans, or `null`. Props may also be absent.
+- A parameterless snippet declared inside a shared component's tag can render separately where it is declared, including any contributions to `<head>`. Shugo stores its output in the caller's record and inserts it where the shared component renders it. If the separate render fails or calls `$props.id()`, the component renders in place. This mechanism also lets [layouts store their records separately](layouts.md#layouts-are-stored-separately-from-pages) and receive a page as `children`.
+- A snippet with parameters renders with arguments supplied by the component, even if all parameters have defaults. Passing such a snippet, or passing a snippet as an attribute like `<List {row} />`, makes the component render in place.
 
-Hence the reception: it is better to give the card the number of goods, and she will find the goods herself. Then the card is considered once, and when changing the goods, one record changes, no matter how many pages it shows.
+For a product card, pass the product ID and let the card query the product. Updating the product then changes one shared block even if many pages render it.
 
-When the entire site is calculated after `shugo build` or code edits the build weighs the common components. If the component 100 has shared blocks or more and each is shown on average in less than one and a half places, it warns:
+After a full computation, such as `shugo build` or a code change, the build checks the reuse of shared components. It warns if a component produces at least 100 shared blocks and each block appears in fewer than 1.5 places on average.
 
-```
+```text
 warning: src/components/Price.svelte is kept apart as 9000 shared blocks, each shown in 1.0 places on average. …
 ```
 
-This happens with `<Price value={n} />`, when almost every page has its own number: there is no need to store such a block separately, and it is worth the extra search in the storage. The component to which the object was transferred, such as the string it shows, is calculated as part of the page. Layouts are not weighted: A layout that reads a page is stored for each page on purpose.
+This happens when nearly every page supplies a different value to `<Price value={n} />`. Storing each of those blocks separately adds a lookup to each page with little reuse. A component that receives a row object renders as part of its page. Layouts are excluded from this check because a URL-dependent layout intentionally uses a record per page.
 
-### Challenge yourself
+### Recursive components
 
-The component imports itself:
+A recursive component imports itself.
 
 ```svelte
 <!-- src/components/Tree.svelte -->
@@ -148,11 +147,11 @@ The component imports itself:
 </li>
 ```
 
-`<svelte:self>` works too, but Svelte warns that it is outdated.
+Svelte still accepts `<svelte:self>` and emits a deprecation warning.
 
-A common component that shows itself with the same parameters, directly or through other common components, is an assembly error with the names of these blocks. The component that renders in place falls with the error JavaScript `Maximum call stack size exceeded`, with no space in the file.
+When a shared component calls itself with the same props, directly or through other shared components, Shugo reports a build error with the block names. Unbounded in-place recursion can fail with JavaScript's `Maximum call stack size exceeded` without a source location.
 
-### Component of variable
+### Dynamic components
 
 ```svelte
 <script>
@@ -165,13 +164,12 @@ A common component that shows itself with the same parameters, directly or throu
 <View {items} />
 ```
 
-`<svelte:component this={View}>` works too, but Svelte warns that it is outdated.
+Svelte still accepts `<svelte:component this={View}>` and emits a deprecation warning.
 
-### Component Styles
+### Component styles
 
-`<style>` component is valid only on its elements. Details — in [Styles](styles.md).
+A component's `<style>` applies to its own elements. See [Styles](styles.md).
 
 ## Open questions
 
-- Checking the types of parameters during assembly: it is decided to do together with the `shugo check` command.
-
+- Build-time prop type checking is planned as part of `shugo check`.

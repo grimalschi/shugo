@@ -8,8 +8,10 @@ The document describes what folders and files are in the project on Shugo and wh
 - Project settings are the `shugo.json` file at the root.
 - Everything that framework writes is stored in the `_build` folder.
 - The site code is in the folder `src/` (the decision of the author of the project 21 November 2026 year).
-- The document around the pages — `<html>`, `<head>`, `<body>` — is written in `src/site.html` (22 decision of November 2026 year), see [Layouts](layouts.md#shell-srcsitehtml).
+- The document around the pages — `<html>`, `<head>`, `<body>` — is written in `src/site.html` (22 decision of November 2026 year), see [Layouts](layouts.md#site-shell).
 - `sitemap.xml`, `robots.txt` and other files not in HTML write `.ts` modules among pages (22 solution November 2026 years), see [Routing](routing.md#files-not-in-html).
+- Svelte is sewn into Shugo by one version - the compiler, server and browser parts: the project does not need to put the `svelte` package, neither for pages nor for islands (the decision of the author of the project 22 November 2026 year).
+- `.svelte` components from npm packages are not compiled yet: their import is an assembly error with a prompt to copy the component to `src/components/`. Compile them with Svelte sewn when component libraries are needed (22 project author’s decision of November 2026 year).
 
 ## Implemented, pending approval
 
@@ -29,12 +31,12 @@ _build/ result of the framework; git is not included
 ```
 
 - Only the `src/pages/` folder is required. Without `src/site.html`, the framework shell is taken.
-- Svelte for pages do not need to be set: compiler and server part Svelte 5.59.1 Shugo brings with you. Package `svelte` The same version is required in `node_modules` Islands only: Compile them Svelte project, and their browser code takes Svelte from there.
+- Svelte is not required: Svelte 5.59.1, a compiler, server and browser parts — Shugo brings with it, for pages and islands. Imports of `svelte` and `svelte/…` in the project code always take it even if `node_modules` contains another Svelte.
 - `src/components/`, `src/lib/` and `src/styles/` are agreements: framework finds files by import, not by folder names.
-- `.svelte` files are only searched in `src/`, except for `node_modules` and hidden folders. Importing a `.svelte` file on the way out of `src/` is an assembly error with a hint of where it belongs. The `.svelte` component from the npm package does not compile: on Bun, the page with it falls when calculating, on Node the calculation process itself falls, without a hint.
+- `.svelte` files are only searched in `src/`, except for `node_modules` and hidden folders. Importing a `.svelte` file on the way out of `src/` is an assembly error with a hint of where it belongs. The `.svelte` component of the npm package and the package of such components are a build error with a hint: the components of the Shugo packages do not compile yet, the component is copied to `src/components/`.
 - Islands can lie next to pages in `src/pages/`. The address is set by the page using the island. For ordinary components, the `_components/` folder will be suitable next to the page.
 - `@/` in import means folder `src/`: `import { price } from "@/lib/shop"`.
-- `public/`, `data/` and `shugo.json` lie at the root, as do `static/` and settings in SvelteKit and `public/` in Astro.
+- `public/`, `data/` and `shugo.json` lie at the root, like `static/` and the settings in SvelteKit.
 
 ### `shugo.json`
 
@@ -68,7 +70,7 @@ All fields are optional. Unknown field is an error.
 | `store.db` | storage |
 | `dist/` | site in files after `shugo export` |
 
-Packages from npm to `eval.mjs` are not sewn: they are taken from `node_modules` project at launch. Server part of Svelte is not a project package: its Shugo brings and sews into `eval.mjs`.
+Packages from npm to `eval.mjs` are not sewn: they are taken from the `node_modules` project at launch. Therefore, `package.json` and packet manager lock files — `bun.lock`, `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock` — are considered the sources of the project: after their change, `shugo update` collects the project again. The server part of Svelte is not a project package: its Shugo brings and sews into `eval.mjs`.
 
 ### Switching from `.shugo`
 

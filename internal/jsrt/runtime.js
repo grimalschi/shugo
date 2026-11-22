@@ -768,9 +768,9 @@ function paged(route, segment, params, rows, start, size, total, current) {
   };
 }
 
-// paginate is what getStaticPaths({ paginate }) receives: given how many
-// items there are, it says which pages a list cut into pages has. Every page
-// asks for its part itself: paginate(query, { pageSize }).
+// paginator is paginate in getStaticPaths: given how many items there are,
+// it says which pages a list cut into pages has. Every page asks for its
+// part itself: paginate(query, { pageSize }).
 function paginator(route) {
   return (total, { pageSize = 10, params = {} } = {}) => {
     if (typeof total !== "number" || !Number.isInteger(total) || total < 0) {

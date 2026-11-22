@@ -32,7 +32,7 @@ Documents are written together. Each of the three sections:
 
 - Shugo generates static sites. All pages and all data are known in advance; the project code is not executed at the request of the visitor.
 - **This is framework for agents.** Project code is written by agents, not people. Two solutions are chosen to make the agent make fewer mistakes. Therefore, expressions are written in JS, not something faster: agents know JS perfectly.
-- **Templates use syntax Svelte 5.** Ordinary pages, layouts and components are written in `.svelte`. The entry points for the browser-based Svelte are marked with the suffix `.island.svelte`. [Svelte islands](scripts.md#svelte-islands)
+- **Templates are written in Svelte 5.** Ordinary pages, layouts and components are written in `.svelte`. The entry points for the browser-based Svelte are marked with the suffix `.island.svelte`. [Svelte islands](scripts.md#svelte-islands)
 - The entire framework is written in Go: project compilation, start calculation, page assembly. *Since November 22 year 2026 templates compile and render itself Svelte (the author's decision): its compiler and server part are sewn into Shugo and run on Bun or Node running Go.*
 - In the source code of the project everywhere TypeScript. This is a rule and requirement.
 - The project is divided into stages. The result of each stage is the following, and the boundary between the stages is clear. Details - in [Assembly Sequences](../docs/build-pipeline.md).

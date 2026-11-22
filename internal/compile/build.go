@@ -209,8 +209,15 @@ type sources struct {
 // and the version of Svelte stay the same. Revision 2 adds the search build
 // protocol to the generated bundle, along with the current compiler input
 // tracking; 3 takes search from the module shugo and drops shugo:catalog; 4
-// has Svelte compile the templates.
-const sourcesRevision = 4
+// has Svelte compile the templates; 5 counts the files of the package
+// manager in every project.
+const sourcesRevision = 5
+
+// packageFiles tell which packages of npm the project has. The code of the
+// pages imports its packages from node_modules when it runs, and islands
+// take theirs in when they are bundled; neither is a file of the bundle.
+// When these files change, the packages may have changed too.
+var packageFiles = []string{"package.json", "bun.lock", "package-lock.json", "pnpm-lock.yaml", "yarn.lock"}
 
 // sources hashes the files of the project that the compiled result depends on.
 func (b *builder) sources(bundled []string) sources {
@@ -221,7 +228,7 @@ func (b *builder) sources(bundled []string) sources {
 		out.Files[unit.path] = digest([]byte(unit.source))
 	}
 	out.Files[project.Shell] = b.shell
-	for _, name := range append(bundled, project.Settings) {
+	for _, name := range slices.Concat(bundled, []string{project.Settings}, packageFiles) {
 		if _, read := out.Files[name]; !read {
 			out.Files[name] = hashFile(b.project.Path(filepath.FromSlash(name)))
 		}

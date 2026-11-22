@@ -2,7 +2,7 @@
 
 Here is written what is decided without direct confirmation of the author of the project: where the answer was “don’t know”, “decision” or question before. Every decision has a reason. After approval, the decision is transferred to the “Decision” section of its document, after refusal redone. The numbers don’t change so that the links don’t break; every decision above tells you what happened to it.
 
-Decisions 1–27 taken during the assembly of the first version, 28–35 when switching to syntax Svelte 21 November 2026 years, 36–38 — 22 November 2026 The year when the shell appeared `src/site.html` Files are not HTML, 39 When there is only one search, 40–48 — the same time when the templates began to compile and render themselves Svelte.
+Decisions 1–27 taken during the assembly of the first version, 28–35 when switching to syntax Svelte 21 November 2026 years, 36–38 — 22 November 2026 The year when the shell appeared `src/site.html` Files are not HTML, 39 When there is only one search, 40–48 — the same time when the templates began to compile and render themselves Svelte, 49–53 — then, according to the author's answers to questions about documents.
 
 ## 1. Data loading and expression are counted together, Go compares the result
 
@@ -93,7 +93,7 @@ The name of the shared block is composed of the file path and parameters: `compo
 **Changed to 21 on November 2026 of the year, pending approval.** Layout is a component of Svelte: the page it shows `{@render children()}`, the title and meta tags the page writes in `<svelte:head>`; this is the author's decision. The rest awaits approval:
 
 - `+layout.svelte` in the folder wraps all pages of this folder and nested; the nested layout turns out to be **inside** external, as in SvelteKit, Next.js and PocketPages. Replaces only Nuxt, where the page has one named layout.
-- The root layout was written by `<html>`, `<head>` and `<body>`. Replaced by the decision of the author 22 November 2026: the document is written in the shell `src/site.html`, the root layout is a normal component ([Layouts](layouts.md#shell-srcsitehtml), [36](#36-the-srcsitehtml-shell)).
+- The root layout was written by `<html>`, `<head>` and `<body>`. Replaced by the decision of the author 22 November 2026: the document is written in the shell `src/site.html`, the root layout is a normal component ([Layouts](layouts.md#site-shell), [36](#36-the-srcsitehtml-shell)).
 
 Reset Chain`+page@.svelte` the City of London SvelteKit) postponed. Resolved 22 November 2026 Year: The official name remains `+layout`, now `+layout.svelte`; data from layout to page, how `load` the City of London `+layout.ts` SvelteKit, no and will not; the layout is stored separately from the pages - one entry for the entire site or, if reading the address, with its entry for each page ([Blocks](../docs/blocks.md#layouts)).
 
@@ -216,13 +216,13 @@ Export follows the previous one: in the folder, it leaves a list of which storag
 
 **Why not.** Messages are read primarily by agents and searched for. Habits from Astro (`set:html`, `<slot>`, `Astro.props`, markup inside `{}`) the compiler recognizes and says what to write instead.
 
-*With the transition to Svelte 21 syntax on November 2026 and its compiler 22 November hint give not all these habits. `<slot>` and `---` at the beginning of the file is a build error with a hint, `Astro.props` is a prompt error when calculating. `set:html` for Svelte is a common attribute with the `attribute_illegal_colon` warning, the page is going to. Markup inside `{}` is a parsing error of Svelte `js_parse_error`, without a clue about `{#if}`.*
+*22 November 2026 The author of the project decided: everything that was for Astro has been removed. Tips for his records — `---`, `<Fragment>`, `set:html`, `class:list`, `Astro.props` No more: they are answered. Svelte and JavaScriptlike any other markup and code. Your tips Shugo Stay where the message doesn’t say what to fix: slots Svelte 4The first syntax Shugo, `runes={false}`, marking inside `{…}`Type imported without `type`, import layout, component from package npm A component that shows itself infinitely.*
 
 ## 23. Small
 
 **Waiting for approval**, except for calling himself.
 
-- **The component can call itself.** *Replaced by 21 November 2026 year:* as in Svelte 5 — the component imports itself; `<svelte:self>` works with a warning. An endless call with the same parameters is caught with an understandable error.
+- **The component can call itself.** *Replaced by 21 November 2026 year:* as in Svelte 5 — the component imports itself; `<svelte:self>` works with a warning. An endless call with the same parameters is caught with an understandable error. *With the 22 of November, the 2026 is year and the component that renders on-site ([51](#51-a-component-that-endlessly-shows-itself)).*
 - **Module path Go** — `shugo`. Before publication, it must be replaced with the present one.
 - **Author of commits** is the name of `itareo` and the owner's mail, specified only in this repository.
 - **Page queue.** Pages are calculated one by one, in a row: there is nothing to wait for ([Data loading](data-loading.md#decisions)). The JS process is one.
@@ -349,7 +349,7 @@ The *As it was before this day:* parsing errors were Svelte, and the rest was re
 
 **Left as is, the approval is delayed** is the author of the project 22 November 2026 year. Module `src/pages/sitemap.xml.ts` with `GET` — the author's decision. Details:
 
-- `GET` nothing gets and returns the line. `async`The promise, `Response` and the object is a bug with a hint: for the object - `JSON.stringify`, for `Response` — return the text itself. Astro recording `GET({ params })` Error with a hint about `page.params`.
+- `GET` gets nothing and returns a string. `async`, promise, `Response` and object are a prompt error: for an object, `JSON.stringify`, for `Response`, return the text itself. `GET({ params })` is a prompt error about `page.params`.
 - File type is an extension in the name before `.ts` or `.js`. Module without it (`data.ts`) - error: so in the page folder does not hide the code that does not give anything. A module whose name or folder starts with `_` is an import code; `.d.ts` is a type declaration, not a module.
 - `index` in the module name is a common name: `blog/index.xml.ts` gives `/blog/index.xml`, not `/blog.xml`.
 - Options and `getStaticPaths` are like a page; an address that has no name left before the extension is an error.
@@ -382,13 +382,17 @@ The *As it was before this day:* parsing errors were Svelte, and the rest was re
 
 ## 40. Server part of Svelte is sewn into Shugo
 
-**Waiting for approval.** Compiler Svelte 5.59.1 was sewn into Shugo and before. Now its server part is also nearby: modules `svelte`, `svelte/internal/server`, `svelte/server`, `svelte/store`, `svelte/reactivity`, `svelte/reactivity/window`, `svelte/easing`, `svelte/transition`, `svelte/animate`, `svelte/motion`, `svelte/events`, `svelte/attachments`. Each - one file, the common code - in the common pieces, 265 KB. They collect esbuild from package npm the same version of the script `internal/svelte/vendor/make.go`for the server and without code, which works only during development. The server part is sewn into `_build/eval.mjs`. Importing another module Sveltefor example `svelte/legacy`Error with the list of those that are available.
+**Approved by the author of the project 22 November 2026 years:** “Svelt built-in version”, and the browser part too. Details below — how it is done.
 
-**Why not.** The code that the compiler has issued only works with the server part of the same version. To take it from the `node_modules` project would be to require `npm install svelte@5.59.1` from each project, even without islands, and check the version. The islands package `svelte` of the same version in the project is still needed: their browser code takes the browser part of Svelte from there.
+Compiler Svelte 5.59.1 was sewn into Shugo and before. Now its server part is also nearby: modules `svelte`, `svelte/internal/server`, `svelte/server`, `svelte/store`, `svelte/reactivity`, `svelte/reactivity/window`, `svelte/easing`, `svelte/transition`, `svelte/animate`, `svelte/motion`, `svelte/events`, `svelte/attachments`. Each - one file, the common code - in the common pieces, 265 KB. They collect esbuild from package npm the same version of the script `internal/svelte/vendor/make.go`for the server and without code, which works only during development. The server part is sewn into `_build/eval.mjs`. Importing another module Sveltefor example `svelte/legacy`Error with the list of those that are available.
+
+**Why not.** The code that the compiler issued only works with the server part of the same version. Taking it from the `node_modules` project would mean requiring `npm install svelte@5.59.1` to each project, even without islands, and check the version. *C 22 November 2026 the Year of Stitching and Browser Part - Modules `svelte`, `svelte/internal/client` and the same ones that the server has, which make sense in the browser, 403 KB, - and the islands compiles the same sewn compiler: the project with the islands does not need to put anything. Nearby lies acorn 8.19.0Parser JavaScriptwhich he works SvelteNo change: them Shugo Read the server code of the island linked to the request.*
 
 ## 41. Rune-only templates
 
 **Waiting for approval.** Templates compile with `runes: true`: Svelte syntax 4 is `export let`, `$:`, `$$props` is a Svelte error. `<slot>` Svelte still accepts with a warning in this mode, and `slot="…"`, `let:` and `<svelte:fragment>` are silent; Shugo considers all this a mistake with a hint about snippets. `slot="…"` is a slot of Svelte 4 only when the item is directly in the component tag; elsewhere it is a common attribute, for example for a custom item.
+
+*22 November 2026 year author of the project decided: `<svelte:options runes={false} />`, which includes the syntax Svelte 4, is also a bug, with a hint. Islands compile on runes as well ([49](#49-islands-only-on-runes)).*
 
 **Why not.** One entry for all - fewer errors in the agent. Slots Svelte 4 Svelte transmits differently than the snippets, and the common block to which they were given could not show what was given to it.
 
@@ -430,11 +434,13 @@ The only difference from Svelte is that the layout context does not reach the pa
 
 **Waiting for approval.** `<script lang="ts">` compiles Svelte: it erases types, and `enum`, namespaces with values and other constructs that TypeScript converts into code, is a Svelte error. Previously, Shugo had been running the script through esbuild and `enum` was running. Instead of `enum`, it is a `as const` object and type from it. Import type without `type` Svelte leaves in the code, and assembly stops: `No matching export in "src/lib/types.ts" for import "Product"`. Therefore, type is imported via `import type`: `import type { Product } from "@/lib/types"`. Previously, such imports were removed by esbuild. The `.ts` modules are still being processed by the esbuild.
 
+*With 22 November 2026 year to this message Shugo adds a hint if the module declared a type or interface with the following name: `Product is a type, and a type is imported with type, import type { Product } from …`.*
+
 **Why not.** So in Svelte: SvelteKit by default also does not pass scripts through TypeScript. The agent who knows Svelte 5 knows this rule as well.
 
 ## 47. Posts by Svelte with reference
 
-**Waiting for approval.** Errors and warnings Svelte are displayed in its text, in one line, with reference to the explanation: `` `</div>` attempted to close an element that was not open https://svelte.dev/e/element_invalid_closing_tag ``. Shugo messages are still in English, without references ([22](#22-message-language)). Only one Svelte message is replaced by its own: about the `await` in the Shugo component explains that the page is computed without waiting. Svelte's warning about the colon in the attribute name of `request:…` is not displayed: this is a Shugo entry for the islands, and Shugo itself speaks about it.
+**Waiting for approval.** Errors and warnings Svelte are displayed in its text, in one line, with reference to the explanation: `` `</div>` attempted to close an element that was not open https://svelte.dev/e/element_invalid_closing_tag ``. Shugo messages are still in English, without references ([22](#22-message-language)). Two Svelte messages have been replaced by their own: about `await` in the Shugo component explains that the page is calculated without expectation, and about the markup inside `{…}` - what `{#if}` and `{#each}` are needed. The second is with the 22 of November 2026; it is recognized by the error of parsing JavaScript before `<` and by letter. Svelte's warning about the colon in the attribute name of `request:…` is not displayed: this is a Shugo entry for islands, and Shugo itself speaks about it.
 
 **Why not.** The agent finds a rule and example of correction in Svelte.
 
@@ -444,3 +450,34 @@ The only difference from Svelte is that the layout context does not reach the pa
 
 **Why not.** So in Svelte 5 write the state, which is divided by components, and the islands need it in the browser. Before that, `$state` in such a module fell when calculating a page with an unknown error.
 
+*22 November 2026 year the author of the project decided: such modules in `src/pages/` - code for import, not site files like `.d.ts` and files with `_`.*
+
+## 49. Islands only on runes
+
+**Waiting for approval.** Islands compiles sewn Svelte with `runes: true` as templates: `export let`, `$:` and `<svelte:options runes={false} />` in the island — errors. Previously, the island compiled the package of `svelte` project, and Svelte decided on file, on ru.
+
+**Why not.** One entry for all `.svelte` files is less error for the agent. A normal component that stands in both the page and the island, otherwise it would compile in them differently.
+
+## 50. Styles `css="injected"` — once per page
+
+**Waiting for approval.** Svelte gives `<style>` a component with `<svelte:options css="injected" />` in the head of the page. Shugo puts it in a block record with a hole of its kind, `s`, and the server writes each such `<style>` to the page head once, no matter how many blocks page, layouts, shared blocks it did not give.
+
+**Why not.** In one render, Svelte writes such a `<style>` once. The common block and layout are rendered separately from the page, and without this, the component shown on both the page and in the common block would give the head two identical `<style>`.
+
+## 51. A component that endlessly shows itself
+
+**Waiting for approval.** Components that are rendered on-site are considered: more 512 embedded in each other is a calculation error with a file chain, `src/components/Tree.svelte shows itself without end: src/components/Tree.svelte → src/components/Tree.svelte`. If there is no repetition in the chain, the error calls the deepest file.
+
+**Why not.** Otherwise, JavaScript falls off `Maximum call stack size exceeded`, without a file and string, although [23](#23-small) promises a clear error. 512 is deeper than any real tree and smaller than the stack of Bun and Node holds.
+
+## 52. How the assembly recognizes package components
+
+**Waiting for approval.** The author of the project decided that the component Svelte from the package npm is still a bug with a hint. The assembly recognizes it as follows: the import path ends on `.svelte` or `package.json` packet in `node_modules` calls the components of Svelte a `"svelte"` field or a `"svelte"` condition in `"exports"`. So the component packages declare themselves for SvelteKit and Vite. The package that gives both components and ordinary code is also a mistake: what exactly is taken from it, the assembly does not disassemble.
+
+**Why not.** The build package code does not compile, and such a component fell when calculating: on Bun - page, on Node - the whole process, without a hint.
+
+## 53. Files of the package manager — source of the project
+
+**Waiting for approval.** `package.json`, `bun.lock`, `package-lock.json`, `pnpm-lock.yaml` and `yarn.lock` are included in the source code of each project: after their change, `shugo update` collects the project again and calculates the site. They used to only enter when the project had islands. The build revision is 5, so the project assembled earlier is reassembling once.
+
+**Why not.** The page code takes packets from `node_modules` when calculating, and the assembler does not see them. Updating the package in the project without islands left pages old, and no one talked about it. Editing files inside `node_modules` hands it does not catch; how to deal with packages on — [questions 4 and 5](open-questions.md#4-who-puts-the-packages-of-npm).

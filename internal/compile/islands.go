@@ -141,8 +141,6 @@ func (b *builder) buildIslands() (*islandOutput, error) {
 		return nil, err
 	}
 	out.files = append(out.files, ssr.inputs()...)
-	// Packages an island imports come from node_modules.
-	out.files = append(out.files, "package.json", "bun.lock", "package-lock.json", "pnpm-lock.yaml", "yarn.lock")
 	slices.Sort(out.files)
 	out.files = slices.Compact(out.files)
 	return out, nil

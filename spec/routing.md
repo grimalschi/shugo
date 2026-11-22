@@ -10,6 +10,7 @@ The page addresses are specified by the location and file names in `src/pages/`.
 - The page is written in the same way as SvelteKit writes pages under the prerender: `/about` - `about.html`, `/` - `index.html` (21 solution November 2026 year). Details - in [Rantime](../docs/runtime.md).
 - The site can be published in the subfolder of the domain: `base` setting in `shugo.json` (21 solution November 2026 year). Not done yet.
 - The official name of the layout is `+layout`, as in SvelteKit: `+layout.svelte` (22 decision November 2026 year).
+- Rune modules, `*.svelte.ts` and `*.svelte.js`, in `src/pages/` are import code, not site files like `.d.ts` and files with `_` (the decision of the author of the project 22 November 2026 year).
 - Files not in HTML — `sitemap.xml`, `robots.txt`, RSS — writes a module on TypeScript among the pages: `src/pages/sitemap.xml.ts` with the function `GET`, which returns the text of the file. What he read from the database is tracked like a page; in the export folder it is written with the file `sitemap.xml` (the decision of 22 November 2026 year).
 
 ## Implemented, pending approval
@@ -50,6 +51,7 @@ The `.ts` or `.js` module in `src/pages/` gives the site file type which is in t
 | `src/pages/blog/rss.xml.ts` | `/blog/rss.xml` |
 | `src/pages/api/[slug].json.ts` | `/api/jug.json`, `/api/cup.json`: parameter as in page |
 | `src/pages/_feed.ts` | not file: code that others import |
+| `src/pages/shop/cart.svelte.ts` | not file: module with runes, it imported components and islands |
 
 ```ts
 // src/pages/sitemap.xml.ts
