@@ -9,7 +9,7 @@ Documents are maintained in the same way as the specification: in each of up to 
 | [Build pipeline](build-pipeline.md) | Stages: compilation, calculation, runtime; what everyone gets and what they give out |
 | [Blocks and incremental updates](blocks.md) | What is the page in the repository and how does the change of data reach only those parts of the site that show it |
 | [Change tracking](change-tracking.md) | How to find out what has changed, and only this is calculated; trial implementations and measurements |
-| [Storage](storage.md) | Tables, records, value tapes and what is deleted |
+| [Storage](storage.md) | Tables, entries from HTML pages and what is deleted |
 | [Runtime](runtime.md) | Server on Go: page from storage for each request, export to files, development mode |
 | [Shugo and Svelte](svelte.md) | How Shugo replicates HTML of the Svelte server and how it is checked; test by which template syntax was selected |
 

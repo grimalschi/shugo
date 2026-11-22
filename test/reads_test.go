@@ -26,7 +26,10 @@ const readSite = `
 -- src/lib/text.ts --
 export const shout = (row: { title: string }) => row.title.toUpperCase()
 -- src/components/Row.svelte --
-<li>{$props().row.title}</li>
+<script>
+let { row } = $props()
+</script>
+<li>{row.title}</li>
 -- src/components/Frame.svelte --
 <script>
 let { children } = $props()

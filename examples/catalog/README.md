@@ -38,26 +38,29 @@ Only the list of product URLs specifies columns. Each page depends on the column
 
 ## Results
 
-The November 21, 2026 benchmark used Bun on eight cores and an ext4 filesystem, with templates written in Svelte syntax. It included 100,000 products, 104,202 pages, and 100,009 shared blocks.
+The November 22, 2026 benchmark used Bun on eight cores and an ext4 filesystem. Svelte 5.59.1 compiled and rendered the templates. The run included 100,000 products, 104,202 pages, and 100,009 shared blocks.
 
-- The initial build took 14.5 s, including 0.8 s to create eight indexes automatically. The first export took 5.0 s.
-- Changing one price evaluated one page and one card and changed the HTML on seven pages. The update took 29 ms, the full command took 36 ms, and the export took 8 ms.
+- The initial build took 14.6 s, including 0.8 s to create eight indexes automatically. The first export took 3.5 s.
+- Changing one price evaluated one page and one card and changed the HTML on seven pages. The update took 31 ms, the full command took 39 ms, and the export took 7 ms.
 - Changing an unread column on 5,000 products or one variant's shelf location triggered no evaluations.
-- Updating the header evaluated one shared block record and took 0.12–0.13 s. Export rewrote all 104,202 files in 8.2–8.5 s. `shugo serve` displayed the change immediately.
-- Deleting a product took 0.40 s to update. Export wrote 88 pages and deleted one file in 36 ms.
+- Updating the header evaluated one shared block record and took 0.12–0.17 s. Export rewrote all 104,202 files in 4.4–4.6 s. `shugo serve` displayed the change immediately.
+- Deleting a product took 0.43 s to update. Export wrote 88 pages and deleted one file in 23 ms.
+- The store was 202 MB.
 
 | Change | Rows | Pages / shared blocks evaluated | Pages with changed HTML | Update (ms) | Export (ms) |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| No changes | 0 | 0 / 0 | 0 | 162 | 7 |
-| Unread column on every 20th product | 5,000 | 0 / 0 | 0 | 113 | 8 |
-| Price of one product | 1 | 1 / 1 | 7 | 29 | 8 |
-| Prices of 20 products | 20 | 20 / 20 | 70 | 34 | 17 |
-| Title of the featured product | 1 | 1 / 2 | 104,202 | 121 | 8,168 |
-| Footer phone number | 1 | 0 / 1 | 104,202 | 134 | 8,399 |
-| Move a product to another category | 1 | 168 / 1 | 104,202 | 262 | 8,512 |
-| Approved review text | 1 | 1 / 0 | 1 | 24 | 8 |
-| Stock of one variant | 1 | 1 / 0 | 1 | 24 | 9 |
-| Delete the last product | 15 | 89 / 0 | 88 | 404 | 36 |
-| Add a product | 5 | 86 / 2 | 104,202 | 479 | 8,305 |
+| No changes | 0 | 0 / 0 | 0 | 28 | 6 |
+| Unread column on every 20th product | 5,000 | 0 / 0 | 0 | 114 | 6 |
+| Price of one product | 1 | 1 / 1 | 7 | 31 | 7 |
+| Prices of 20 products | 20 | 20 / 20 | 70 | 37 | 14 |
+| Title of the featured product | 1 | 1 / 2 | 104,202 | 129 | 4,446 |
+| Footer phone number | 1 | 0 / 1 | 104,202 | 152 | 4,494 |
+| Move a product to another category | 1 | 168 / 1 | 104,202 | 268 | 4,562 |
+| Approved review text | 1 | 1 / 0 | 1 | 25 | 6 |
+| Stock of one variant | 1 | 1 / 0 | 1 | 26 | 6 |
+| Delete the last product | 15 | 89 / 0 | 88 | 427 | 23 |
+| Add a product | 5 | 86 / 2 | 104,202 | 493 | 4,528 |
 
-The first update after the build is the no-op row. It takes 0.16 s without evaluating anything, down from 0.4 s in the previous run. This run did not investigate the cause. For a change visible on all pages, export must rewrite every file.
+The November 21, 2026 run used Shugo's own template compiler and held values in the records. The first build took 14.5 s and the first export took 5.0 s. Changing a price took 29 ms. Updating the header took 0.12–0.13 s and exporting after it took 8.2–8.5 s. Deleting a product took 0.40 s to update. The store was 140 MB. Storing HTML gives similar update times, a twofold speedup for full-site exports, and a 44% larger store.
+
+For a change visible on all pages, export must rewrite every file.

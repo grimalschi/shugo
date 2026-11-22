@@ -31,12 +31,6 @@ type sourceFile struct {
 	Path, Source, Module string
 	Number               int // the number of the file in the skeleton; -1 for files that are not templates
 	Shared               bool
-	Parts                []partView
-}
-
-type partView struct {
-	Number int
-	Ops    []opLine
 }
 
 // stage is the state after a run of shugo, with the conversation of the run.
@@ -297,13 +291,9 @@ type blockView struct {
 	Use        bool
 	Shared     int64
 	SharedName string
-	File       string
-	Part       int
-	Values     []string
-	Children   []int
 	Snippets   []string
-	Walk       []walkStep
-	Error      string
+	Body, Head []piece
+	Title      string
 }
 
 type sharedView struct {
@@ -312,29 +302,18 @@ type sharedView struct {
 	Blocks []blockView
 }
 
-func blocks(c *compiled, s storeLook, rec *record.Record, shared bool) []blockView {
+func blocks(s storeLook, rec *record.Record) []blockView {
 	var out []blockView
 	for i := range rec.Blocks {
 		b := &rec.Blocks[i]
-		v := blockView{Index: i, Use: b.Use, Shared: b.Shared, Children: b.Children}
+		v := blockView{Index: i, Use: b.Use, Shared: b.Shared, Title: string(b.Title)}
 		for _, snippet := range b.Snippets {
 			v.Snippets = append(v.Snippets, fmt.Sprintf("%s = blocks %v", snippet.Name, snippet.Blocks))
-		}
-		if len(b.Head) > 0 {
-			v.Snippets = append(v.Snippets, fmt.Sprintf("template <svelte:head> = blocks %v", b.Head))
-		}
-		if len(b.Title) > 0 {
-			v.Snippets = append(v.Snippets, fmt.Sprintf("<title> from <svelte:head> = blocks %v", b.Title))
 		}
 		if b.Use {
 			v.SharedName = s.SharedName(b.Shared)
 		} else {
-			v.File, v.Part, v.Values = c.Site.Files[b.File].Path, b.Part, b.Values.Strings()
-			walked, err := walk(c.Site, rec, i, v.Values, shared && i == rec.Top)
-			v.Walk = walked
-			if err != nil {
-				v.Error = err.Error()
-			}
+			v.Body, v.Head = pieces(b.Body, rec), pieces(b.Head, rec)
 		}
 		out = append(out, v)
 	}
@@ -351,11 +330,11 @@ func story(c *compiled, l *look, path string) pageStory {
 	if st.Page == nil {
 		return st
 	}
-	st.Blocks = blocks(c, l.Store, st.Page.Record, false)
-	st.Bytes = annotate(st.Page.Raw, c.Site)
+	st.Blocks = blocks(l.Store, st.Page.Record)
+	st.Bytes = annotate(st.Page.Raw)
 	for _, id := range sharedOf(l.Store, st.Page.Record) {
 		b := l.Store.SharedRow(id)
-		st.Shared = append(st.Shared, sharedView{ID: id, Name: b.Name, Blocks: blocks(c, l.Store, b.Record, true)})
+		st.Shared = append(st.Shared, sharedView{ID: id, Name: b.Name, Blocks: blocks(l.Store, b.Record)})
 	}
 	return st
 }
@@ -557,7 +536,8 @@ func (r *report) render() ([]byte, error) {
 			}
 			return strings.Join(parts, ", ")
 		},
-		"join": strings.Join,
+		"join":     strings.Join,
+		"fragment": fragmentText,
 		"pad": func(depth int) template.CSS {
 			return template.CSS(fmt.Sprintf("padding-left: %.1fem", float64(depth)*1.4+0.3))
 		},

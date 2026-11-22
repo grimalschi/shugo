@@ -10,7 +10,6 @@ import (
 
 	"github.com/grimalschi/shugo/internal/data"
 	"github.com/grimalschi/shugo/internal/record"
-	"github.com/grimalschi/shugo/internal/skeleton"
 )
 
 func uvarint(b []byte) (uint64, int) { return binary.Uvarint(b) }
@@ -26,7 +25,7 @@ type byteRow struct {
 
 // annotate goes through a record as record.Decode does and tells what
 // every few bytes mean.
-func annotate(data []byte, site *skeleton.Site) []byteRow {
+func annotate(data []byte) []byteRow {
 	var out []byteRow
 	at := 0
 	take := func(n int, meaning string) {
@@ -43,43 +42,54 @@ func annotate(data []byte, site *skeleton.Site) []byteRow {
 		take(n, fmt.Sprintf(meaning, v))
 		return int(v)
 	}
-	list := func(meaning string) {
-		count := number("number of entries in «" + meaning + "»: %d")
-		for i := 0; i < count; i++ {
-			number("  block number: %d")
+	text := func(meaning string) {
+		size := number(meaning + ": %d bytes")
+		if size > 0 {
+			take(size, "  «"+visible(string(data[at:min(at+size, len(data))]))+"»")
 		}
+	}
+	fragment := func(what string) {
+		holes := number(what + ": holes in the HTML: %d")
+		for h := 0; h < holes && at < len(data); h++ {
+			text(fmt.Sprintf("  text %d", h+1))
+			switch kind := data[at]; kind {
+			case 'c':
+				take(1, fmt.Sprintf("  hole %d: c is a block in this record", h+1))
+				number("    block number: %d")
+			case 'g':
+				take(1, fmt.Sprintf("  hole %d: g is a snippet supplied at the call site", h+1))
+				text("    snippet name")
+			case 'i':
+				take(1, fmt.Sprintf("  hole %d: i is an island", h+1))
+				text("    island JSON")
+			default:
+				take(len(data)-at, "corrupt data")
+			}
+		}
+		text(fmt.Sprintf("  final text %d", holes+1))
 	}
 	number("record starts at block %d")
 	count := number("blocks in the record: %d")
 	for i := 0; i < count && at < len(data); i++ {
-		file, n := binary.Uvarint(data[at:])
-		if n <= 0 {
-			break
-		}
-		if file == 0 {
-			take(n, fmt.Sprintf("block %d: 0 is a reference to a shared block", i))
+		switch data[at] {
+		case 'u':
+			take(1, fmt.Sprintf("block %d: u is a reference to a shared block", i))
 			number("  shared block number: %d")
-		} else {
-			path := ""
-			if int(file)-1 < len(site.Files) {
-				path = site.Files[file-1].Path
+			snippets := number("  parameterless snippets supplied at the call site: %d")
+			for s := 0; s < snippets; s++ {
+				text("  snippet name")
+				blocks := number("  block count: %d")
+				for b := 0; b < blocks; b++ {
+					number("    block number: %d")
+				}
 			}
-			take(n, fmt.Sprintf("block %d: file %d + 1 is %s", i, file-1, path))
-			number("  template part: %d")
-			end := at + number("  value tape: %d bytes")
-			for k := 1; at < min(end, len(data)); k++ {
-				size := number(fmt.Sprintf("    value %d: %%d bytes", k))
-				take(size, "    «"+visible(string(data[at:min(at+size, len(data))]))+"»")
-			}
-			list("nested blocks")
-			list("<svelte:head> blocks from the template")
-			list("<title> blocks from <svelte:head>")
-		}
-		snippets := number("  parameterless snippets supplied by the caller: %d")
-		for s := 0; s < snippets; s++ {
-			size := number("  snippet name length: %d")
-			take(size, "  snippet name: "+string(data[at:min(at+size, len(data))]))
-			list("snippet blocks")
+		case 'b':
+			take(1, fmt.Sprintf("block %d: b is HTML", i))
+			fragment("  body")
+			fragment("  in <head>")
+			text("  <title>")
+		default:
+			take(len(data)-at, "corrupt data")
 		}
 	}
 	return out
@@ -93,265 +103,60 @@ func spaced(b []byte) string {
 	return strings.Join(parts, " ")
 }
 
-// walkStep is one operation of a template, with the value it took from the tape.
-type walkStep struct {
-	Depth int
-	Op    string
-	What  string
-	Value string
-	Place int    // the place of the value in the tape, from 1; 0 for none
-	Link  string // the block it leads to
-	Ref   string
+// piece is a text of HTML or a hole in it, as the stand shows it.
+type piece struct {
+	Hole bool
+	Text string // the HTML, or what fills the hole
+	Link string // where what fills the hole is told about
 }
 
-// walk goes through the template of a block as the renderer does and tells,
-// for every operation, which value of the tape it takes.
-func walk(site *skeleton.Site, rec *record.Record, at int, values []string, sharedOwner bool) ([]walkStep, error) {
-	b := &rec.Blocks[at]
-	ops, ok := site.Part(b.File, b.Part)
-	if !ok {
-		return nil, fmt.Errorf("no template %d, part %d", b.File, b.Part)
-	}
-	w := &walker{site: site, rec: rec, block: b, values: values, shared: sharedOwner}
-	err := w.ops(ops, 0)
-	if err == nil && w.next < len(values) {
-		err = fmt.Errorf("%d values are left over", len(values)-w.next)
-	}
-	return w.out, err
-}
-
-type walker struct {
-	site   *skeleton.Site
-	rec    *record.Record
-	block  *record.Block
-	values []string
-	next   int
-	child  int
-	shared bool
-	out    []walkStep
-}
-
-func (w *walker) take() (string, int, error) {
-	if w.next >= len(w.values) {
-		return "", 0, fmt.Errorf("the tape ends too early")
-	}
-	w.next++
-	return w.values[w.next-1], w.next, nil
-}
-
-func (w *walker) number() (int, int, error) {
-	value, place, err := w.take()
-	if err != nil {
-		return 0, 0, err
-	}
-	var n int
-	_, err = fmt.Sscan(value, &n)
-	return n, place, err
-}
-
-func (w *walker) add(depth int, op, what, value string, place int) {
-	w.out = append(w.out, walkStep{Depth: depth, Op: op, What: what, Value: value, Place: place})
-}
-
-func (w *walker) ops(ops []skeleton.Op, depth int) error {
-	for _, op := range ops {
-		switch op.Kind {
-		case skeleton.Markup:
-			w.add(depth, "r", "unchanged markup", op.Text, 0)
-		case skeleton.Text, skeleton.HTML, skeleton.Island:
-			value, place, err := w.take()
-			if err != nil {
-				return err
-			}
-			what := "text: escaped"
-			if op.Kind == skeleton.HTML {
-				what = "rendered HTML: inserted as-is"
-			}
-			if op.Kind == skeleton.Island {
-				what = "Svelte island: server-rendered markup and hydration data"
-			}
-			w.add(depth, string(rune(op.Kind)), what, value, place)
-		case skeleton.Attr:
-			value, place, err := w.take()
-			if err != nil {
-				return err
-			}
-			sign := map[byte]string{'=': "attribute with a value", '-': "no attribute", '+': "attribute name only"}[firstByte(value)]
-			w.add(depth, "a", fmt.Sprintf("attribute %s — %s", op.Text, sign), value, place)
-		case skeleton.Spread:
-			count, place, err := w.number()
-			if err != nil {
-				return err
-			}
-			w.add(depth, "s", "spread attributes: number of name–value pairs", fmt.Sprint(count), place)
-			for range count {
-				name, p1, err := w.take()
-				if err != nil {
-					return err
-				}
-				value, p2, err := w.take()
-				if err != nil {
-					return err
-				}
-				w.add(depth+1, "s", "name", name, p1)
-				w.add(depth+1, "s", "value", value, p2)
-			}
-		case skeleton.If:
-			taken, place, err := w.number()
-			if err != nil {
-				return err
-			}
-			w.add(depth, "i", fmt.Sprintf("conditional with %d branches: selected branch number, or 0 if none", len(op.Bodies)), fmt.Sprint(taken), place)
-			if taken > 0 {
-				if err := w.ops(op.Bodies[taken-1], depth+1); err != nil {
-					return err
-				}
-			}
-		case skeleton.For:
-			count, place, err := w.number()
-			if err != nil {
-				return err
-			}
-			w.add(depth, "f", "loop: iteration count", fmt.Sprint(count), place)
-			for i := 0; i < count; i++ {
-				w.add(depth+1, "", fmt.Sprintf("iteration %d", i+1), "", 0)
-				if err := w.ops(op.Bodies[0], depth+2); err != nil {
-					return err
-				}
-			}
-			if count == 0 && len(op.Bodies) == 2 {
-				w.add(depth+1, "", "{:else}: the list is empty", "", 0)
-				if err := w.ops(op.Bodies[1], depth+2); err != nil {
-					return err
-				}
-			}
-		case skeleton.Call:
-			child, err := w.nextChild()
-			if err != nil {
-				return err
-			}
-			w.add(depth, "c", "component: next nested block", "", 0)
-			w.link(child)
-		case skeleton.Render:
-			value, place, err := w.take()
-			if err != nil {
-				return err
-			}
-			switch firstByte(value) {
-			case '-':
-				w.add(depth, "n", "{@render}: no snippet, so nothing is rendered", value, place)
-			case 'c':
-				child, err := w.nextChild()
-				if err != nil {
-					return err
-				}
-				w.add(depth, "n", "{@render}: snippet with parameters, evaluated here in the next nested block", value, place)
-				w.link(child)
-			default:
-				levels, name, _ := strings.Cut(value[1:], ":")
-				where := fmt.Sprintf("its blocks are in the record of the component %s levels up", levels)
-				if levels == "0" {
-					switch blocks := w.block.Snippet(name); {
-					case len(blocks) > 0:
-						where = fmt.Sprintf("its blocks %v are in this record", blocks)
-					case w.shared:
-						where = "its blocks are in the record of the page that shows this shared block"
-					}
-				}
-				w.add(depth, "n", fmt.Sprintf("{@render %s()}: snippet supplied by the caller; %s", name, where), value, place)
-			}
-		case skeleton.Element:
-			tag, place, err := w.take()
-			if err != nil {
-				return err
-			}
-			if tag == "" {
-				w.add(depth, "e", "<svelte:element>: no tag, so nothing is rendered", tag, place)
-				continue
-			}
-			w.add(depth, "e", "<svelte:element>: tag name", tag, place)
-			if err := w.ops(op.Bodies[0], depth+1); err != nil {
-				return err
-			}
-			if !skeleton.IsVoid(tag) {
-				if err := w.ops(op.Bodies[1], depth+1); err != nil {
-					return err
-				}
-			}
+// pieces tells a fragment piece by piece. rec is the record it is in: a hole
+// for a block of it names the shared block that block stands for.
+func pieces(f record.Fragment, rec *record.Record) []piece {
+	var out []piece
+	for i, text := range f.Texts {
+		if len(text) > 0 {
+			out = append(out, piece{Text: string(text)})
 		}
-	}
-	return nil
-}
-
-// nextChild takes the next block the block shows.
-func (w *walker) nextChild() (int, error) {
-	if w.child >= len(w.block.Children) {
-		return 0, fmt.Errorf("fewer children than calls")
-	}
-	w.child++
-	return w.block.Children[w.child-1], nil
-}
-
-// link tells, at the last step, which block it leads to.
-func (w *walker) link(child int) {
-	last := &w.out[len(w.out)-1]
-	if c := &w.rec.Blocks[child]; c.Use {
-		last.What += fmt.Sprintf(" — block %d, a reference to shared block %d", child, c.Shared)
-		last.Link, last.Ref = fmt.Sprintf("shared-%d", c.Shared), fmt.Sprintf("shared block %d", c.Shared)
-	} else {
-		last.What += fmt.Sprintf(" — block %d: %s", child, w.site.Files[c.File].Path)
-	}
-}
-
-func firstByte(s string) byte {
-	if s == "" {
-		return 0
-	}
-	return s[0]
-}
-
-// opNames explains the operations of a skeleton.
-var opNames = map[string]string{
-	"r": "markup", "t": "text", "h": "rendered HTML", "a": "attribute",
-	"s": "spread attributes", "i": "conditional", "f": "loop", "c": "component", "n": "{@render}",
-	"e": "<svelte:element>", "d": "Svelte island",
-}
-
-// opLine is one operation of a skeleton as the report lists it.
-type opLine struct {
-	Depth int
-	Code  string
-	Name  string
-	Text  string
-	Takes int // how many values it takes from the tape, when that is known
-}
-
-// listOps writes out a part of a skeleton.
-func listOps(ops []skeleton.Op, depth int) []opLine {
-	var out []opLine
-	for _, op := range ops {
-		code := string(rune(op.Kind))
-		line := opLine{Depth: depth, Code: code, Name: opNames[code], Text: op.Text}
-		switch op.Kind {
-		case skeleton.Text, skeleton.HTML, skeleton.Island, skeleton.Attr, skeleton.If, skeleton.For, skeleton.Render, skeleton.Element:
-			line.Takes = 1
+		if i == len(f.Holes) {
+			break
 		}
-		out = append(out, line)
-		for i, body := range op.Bodies {
-			label := ""
-			switch op.Kind {
-			case skeleton.If:
-				label = fmt.Sprintf("branch %d", i+1)
-			case skeleton.For:
-				label = map[int]string{0: "loop body", 1: "{:else}: empty list fallback"}[i]
-			case skeleton.Element:
-				label = map[int]string{0: "attributes", 1: "content"}[i]
+		switch hole := f.Holes[i]; hole.Kind {
+		case record.Child:
+			p := piece{Hole: true, Text: fmt.Sprintf("block %d", hole.Block)}
+			if hole.Block < len(rec.Blocks) && rec.Blocks[hole.Block].Use {
+				shared := rec.Blocks[hole.Block].Shared
+				p.Text += fmt.Sprintf(": shared block %d", shared)
+				p.Link = fmt.Sprintf("shared-%d", shared)
 			}
-			out = append(out, opLine{Depth: depth + 1, Name: label})
-			out = append(out, listOps(body, depth+2)...)
+			out = append(out, p)
+		case record.Given:
+			out = append(out, piece{Hole: true, Text: "snippet " + string(hole.Text) + " from the call site"})
+		case record.Island:
+			out = append(out, piece{Hole: true, Text: "island " + string(hole.Text)})
 		}
 	}
 	return out
+}
+
+// fragmentText writes a fragment in one line, with its holes in brackets.
+func fragmentText(f record.Fragment) string {
+	var out strings.Builder
+	for i, text := range f.Texts {
+		out.Write(text)
+		if i == len(f.Holes) {
+			break
+		}
+		switch hole := f.Holes[i]; hole.Kind {
+		case record.Child:
+			fmt.Fprintf(&out, "⟨block %d⟩", hole.Block)
+		case record.Given:
+			fmt.Fprintf(&out, "⟨snippet %s⟩", hole.Text)
+		case record.Island:
+			out.WriteString("⟨island⟩")
+		}
+	}
+	return out.String()
 }
 
 // frame is one message of the conversation between shugo and the

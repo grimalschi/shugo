@@ -349,14 +349,12 @@ func (k *keeper) noted(changes *Changes, name string, known bool) {
 	}
 }
 
-// block reads one block: "b", its file, its part, its children, the blocks
-// of its <svelte:head> and of its <title>, the snippets its caller gave it
-// and its values; or "u", the name of a shared block and the snippets this
-// place gave it.
+// block reads one block: "b", its HTML, what it gives the head and its
+// <title>; or "u", the name of a shared block and the snippets this place
+// gave it.
 func (k *keeper) block(data []byte) (record.Block, error) {
-	fields := bytes.SplitN(data, []byte{2}, 8)
+	fields := bytes.SplitN(data, []byte{2}, 4)
 	var b record.Block
-	var snippets []byte
 	switch {
 	case len(fields) == 3 && string(fields[0]) == "u":
 		name := string(fields[1])
@@ -371,67 +369,85 @@ func (k *keeper) block(data []byte) (record.Block, error) {
 			k.asked[shown.id] = struct{}{}
 			k.next = append(k.next, name)
 		}
-		b.Use, b.Shared, snippets = true, shown.id, fields[2]
-	case len(fields) == 8 && string(fields[0]) == "b":
-		var err1, err2, err3, err4, err5 error
-		b.File, err1 = strconv.Atoi(string(fields[1]))
-		b.Part, err2 = strconv.Atoi(string(fields[2]))
-		b.Children, err3 = numbers(fields[3])
-		b.Head, err4 = numbers(fields[4])
-		b.Title, err5 = numbers(fields[5])
-		if err1 != nil || err2 != nil || err3 != nil || err4 != nil || err5 != nil {
+		b.Use, b.Shared = true, shown.id
+		// Snippets are written as name=1,2;other=3.
+		for snippets := fields[2]; len(snippets) > 0; {
+			var one []byte
+			one, snippets, _ = bytes.Cut(snippets, []byte{';'})
+			name, list, found := bytes.Cut(one, []byte{'='})
+			blocks, err := numbers(list)
+			if !found || len(name) == 0 || err != nil {
+				return b, errDamaged
+			}
+			b.Snippets = append(b.Snippets, record.Snippet{Name: string(name), Blocks: blocks})
+		}
+	case len(fields) == 4 && string(fields[0]) == "b":
+		var err1, err2, err3 error
+		b.Body, err1 = fragment(fields[1])
+		b.Head, err2 = fragment(fields[2])
+		b.Title, err3 = unescape(fields[3])
+		if err1 != nil || err2 != nil || err3 != nil {
 			return b, errDamaged
 		}
-		if _, ok := k.site.Part(b.File, b.Part); !ok {
-			return b, errorf("a block of template %d, part %d, which the site does not have", b.File, b.Part)
-		}
-		values, err := tape(fields[7])
-		if err != nil {
-			return b, err
-		}
-		snippets, b.Values = fields[6], values
 	default:
 		return b, errDamaged
-	}
-	// Snippets are written as name=1,2;other=3.
-	for len(snippets) > 0 {
-		var one []byte
-		one, snippets, _ = bytes.Cut(snippets, []byte{';'})
-		name, list, found := bytes.Cut(one, []byte{'='})
-		blocks, err := numbers(list)
-		if !found || len(name) == 0 || err != nil {
-			return b, errDamaged
-		}
-		b.Snippets = append(b.Snippets, record.Snippet{Name: string(name), Blocks: blocks})
 	}
 	return b, nil
 }
 
-// tape reads the values of a block as the project's code sends them: each
-// after a byte 0. The bytes 0 to 4 inside a value come escaped, as 4 and the
-// byte plus 0x40, for the bytes 0 to 3 split the message.
-func tape(data []byte) (record.Tape, error) {
-	if len(data) == 0 {
-		return nil, nil
+// fragment reads HTML with holes as the project's code sends it: texts and
+// holes split by a byte 0, a hole c3, gname, or i and an island in JSON.
+func fragment(data []byte) (record.Fragment, error) {
+	parts := bytes.Split(data, []byte{0})
+	if len(parts)%2 == 0 {
+		return record.Fragment{}, errDamaged
 	}
-	if data[0] != 0 {
-		return nil, errDamaged
-	}
-	var out record.Tape
-	var value []byte
-	for _, one := range bytes.Split(data[1:], []byte{0}) {
-		value = value[:0]
-		for i := 0; i < len(one); i++ {
-			if one[i] != 4 {
-				value = append(value, one[i])
-				continue
-			}
-			if i++; i == len(one) || one[i] < 0x40 || one[i] > 0x44 {
-				return nil, errDamaged
-			}
-			value = append(value, one[i]-0x40)
+	f := record.Fragment{Texts: make([][]byte, 0, len(parts)/2+1)}
+	for i, part := range parts {
+		value, err := unescape(part)
+		if err != nil {
+			return f, err
 		}
-		out = out.Append(value)
+		if i%2 == 0 {
+			f.Texts = append(f.Texts, value)
+			continue
+		}
+		if len(value) == 0 {
+			return f, errDamaged
+		}
+		hole := record.Hole{Kind: record.HoleKind(value[0])}
+		switch hole.Kind {
+		case record.Child:
+			if hole.Block, err = strconv.Atoi(string(value[1:])); err != nil || hole.Block < 0 {
+				return f, errDamaged
+			}
+		case record.Given, record.Island:
+			hole.Text = value[1:]
+		default:
+			return f, errDamaged
+		}
+		f.Holes = append(f.Holes, hole)
+	}
+	return f, nil
+}
+
+// unescape reads a text as the project's code sends it. The bytes 0 to 4
+// inside it come escaped, as 4 and the byte plus 0x40, for the bytes 0 to 3
+// split the message.
+func unescape(data []byte) ([]byte, error) {
+	if bytes.IndexByte(data, 4) < 0 {
+		return data, nil
+	}
+	out := make([]byte, 0, len(data))
+	for i := 0; i < len(data); i++ {
+		if data[i] != 4 {
+			out = append(out, data[i])
+			continue
+		}
+		if i++; i == len(data) || data[i] < 0x40 || data[i] > 0x44 {
+			return nil, errDamaged
+		}
+		out = append(out, data[i]-0x40)
 	}
 	return out, nil
 }

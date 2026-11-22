@@ -83,7 +83,7 @@ The nested layout is inside the external one, as in SvelteKit. The `/docs/start`
 <h1>About the store</h1>
 ```
 
-- `<svelte:head>` stands at the top of the page or layout as required by Svelte.
+- `<svelte:head>` stands at the top level of the component, as required by Svelte: pages, layout or any other component.
 - Its contents fall into the place of `%shugo.head%` shell.
 - Order is like in a Svelte document: first external layouts, then internal layouts, then pages.
 - `<title>` has one page like in Svelte: last in this order, and it stands after the rest. Therefore, the default title is written in `<svelte:head>` root layout, and the page replaces it with its own:
@@ -104,6 +104,8 @@ Page comes to the layout with a snippet `children` and is stored in its record, 
 - a layout that does not take `page` from the `shugo` module - neither itself nor through the modules that it imports - one entry per entire site; the menu has changed - one entry is calculated;
 - a layout that reads the address - for example, highlights the current menu item, `class:active={page.url.pathname === item.href}` with `import { page } from "shugo"` - its own entry for each page; the menu has changed - the layout for each page is calculated, and the pages themselves are not calculated;
 - the page has changed it is calculated alone, without a layout.
+
+Therefore, the layout is rendered separately from the page: the context it sets through `setContext` is seen by its components, but not by the page inside it. What the page needs, it takes through `query` or from the module in `src/lib/`.
 
 How it works in [Blocks](../docs/blocks.md).
 

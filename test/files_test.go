@@ -22,7 +22,7 @@ export function getStaticPaths() {
 }
 </script>
 <script>
-import { query, page } from "shugo"
+import { page } from "shugo"
 const product = query("products").where({ slug: page.params.slug }).first()
 console.log("page " + product.slug)
 </script>

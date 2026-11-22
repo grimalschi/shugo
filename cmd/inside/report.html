@@ -120,7 +120,7 @@
 <ol>
   <li><a href="#map">Architecture and terminology</a></li>
   <li><a href="#project">Project</a></li>
-  <li><a href="#compile">Compilation: JS and template skeletons</a></li>
+  <li><a href="#compile">Compilation: Svelte compiles templates into server JS</a></li>
   <li><a href="#data">Project data and journal</a></li>
   <li><a href="#talk">First build: the Go and JS exchange</a></li>
   <li><a href="#store">Store after the build</a></li>
@@ -135,27 +135,30 @@
  pages/*.svelte, components/*.svelte   tables + change journal (maintained by Shugo triggers)
         │                                         │
         ▼  shugo build: compilation (Go)         │
- _build/eval.mjs   — JS: data code and expressions  │
- _build/site.json  — skeleton: template markup     │
+ _build/eval.mjs   — JS: templates compiled         │
+                     by Svelte                   │
+ _build/site.json  — skeleton: files, routes,       │
+                     page shell                   │
         │                                         │
         ▼  computation: Go directs, JS computes  │
  Go ⇄ JS: “list pages”, “compute these” ◄───┘ JS reads data through query
-        │   JS returns records and reads
+        │   Svelte renders HTML, JS splits it into blocks
+        │   and returns records and reads
         ▼
- _build/store.db — store: page and shared block records with embedded value tapes,
+ _build/store.db — store: page and shared block records with their HTML,
         │          reads (which rows each reader selected), skeleton
         ▼  shugo serve: reads the page record and its shared blocks on each request
         ▼  shugo export: writes files for pages whose HTML changed since the previous export
- Page HTML: Go reads the template skeleton and inserts values from the tapes
+ Page HTML: Go joins HTML blocks and fills holes with shared blocks
 
  shugo update: journal → changed rows → affected readers → recompute those readers
 </pre>
 <dl class="terms card">
-  <dt>Template skeleton</dt><dd>A list of operations representing the template markup with placeholders for values. Each file has one, stored in <code>_build/site.json</code> and in the store.</dd>
-  <dt>File JS module</dt><dd>A function the compiler generates from the <code>.svelte</code>file. It runs the data code and writes each expression's value in order. The modules are bundled in <code>_build/eval.mjs</code>.</dd>
-  <dt>Block</dt><dd>One rendering of a template: a page, layout, component, or snippet.</dd>
-  <dt>Value tape</dt><dd>The expression values for a block, in order, stored with the block in its record.</dd>
-  <dt>Record</dt><dd>All the blocks for a page or shared block. Each records its template, value tape, nested blocks, and caller-supplied snippets.</dd>
+  <dt>Site skeleton</dt><dd>Files, routes, and the page shell, stored in <code>_build/site.json</code> and in the store.</dd>
+  <dt>File JS module</dt><dd>The function Svelte compiles from the <code>.svelte</code> file for the server. It runs the data code and renders HTML. Shugo wraps it in a function that decides whether to use a shared block. The modules are bundled in <code>_build/eval.mjs</code>.</dd>
+  <dt>Block</dt><dd>Part of a page record: HTML rendered in place by a component and its descendants, a snippet supplied to a shared block, or a reference to a shared block.</dd>
+  <dt>Hole</dt><dd>A position in a block's HTML filled when the page is served by a shared block, a snippet supplied at the call site, or an island.</dd>
+  <dt>Record</dt><dd>All the blocks for a page or shared block, including HTML with holes, the block's contribution to <code>&lt;head&gt;</code> and its <code>&lt;title&gt;</code>, and snippets supplied to the shared block at the call site.</dd>
   <dt>Shared block</dt><dd>A component called with plain props. It is computed once for the site and stored by name. Pages reference it by number.</dd>
   <dt>Reader</dt><dd>A page, shared block, or route page list that read project data.</dd>
   <dt>Read shape</dt><dd>A table, the columns used to look up rows, and the columns whose changes matter. For example, a lookup on variants by product that tracks position, stock, and title.</dd>
@@ -170,28 +173,21 @@
 {{end}}
 <details><summary>data/seed.sql — seed data</summary><pre>{{.Seed}}</pre></details>
 
-<h2 id="compile">2. Compilation: JS and template skeletons</h2>
-<p>For each <code>.svelte</code> file, the compiler produces two things. <b>The JS module</b> runs the data code and records each expression's value as it renders the template. Each call to <code>$$.text</code>, <code>$$.attr</code>, <code>$$.branch</code>, <code>$$.loop</code>/<code>$$.count</code>, <code>$$.render</code> adds a value to the block's tape. <b>Skeleton</b> represents the same markup, with each expression replaced by an operation that takes the next value from the tape. The compiler emits both in one pass, keeping them in the same order.</p>
-<p class="note">This JS comes from the built <code>_build/eval.mjs</code> ({{.Compiled.Bundle}} bytes). Imports have already been resolved, producing names like <code>ProductCard_default</code>.</p>
+<h2 id="compile">2. Compilation: Svelte compiles templates into server JS</h2>
+<p>Shugo compiles each <code>.svelte</code> file for the server using its bundled Svelte 5.59.1 compiler, the same compiler SvelteKit uses. The generated function runs the data code and renders HTML through <code>$$renderer.push</code>. Shugo adds one line: <code>component(fileNumber, render)</code>. The wrapper decides at each call whether to render the component in place or leave a hole for a shared block that is computed once.</p>
+<p class="note">This JS comes from the built <code>_build/eval.mjs</code> ({{.Compiled.Bundle}} bytes). Imports have already been resolved: <code>ProductCard_default</code> is the wrapper, and <code>ProductCard</code> is the Svelte function. Comments such as <code>&lt;!--[--&gt;</code> let Svelte hydrate the page in the browser. Shugo removes them from static output.</p>
 {{range .Files}}{{if ge .Number 0}}
 <div class="card" id="{{anchor "file" .Path}}">
   <h3>{{.Path}}</h3>
   <p><span class="pill">file {{.Number}}</span>{{if .Shared}}<span class="pill">eligible for a shared block</span>{{else}}<span class="pill">renders in place</span>{{end}}</p>
   <div class="grid">
     <div><h4>Source</h4><pre>{{.Source}}</pre></div>
-    <div><h4>JS that evaluates expressions</h4><pre>{{.Module}}</pre></div>
+    <div><h4>JS that renders HTML</h4><pre>{{.Module}}</pre></div>
   </div>
-  <h4>Skeleton</h4>
-  {{range .Parts}}
-  <p class="note">Part {{.Number}}{{if eq .Number 0}} — the template itself{{else}} — a snippet or <code>&lt;svelte:head&gt;</code> from this template{{end}}.</p>
-  <table><tr><th style="width:5em">Operation</th><th style="width:12em">Meaning</th><th>Text</th><th style="width:9em">Uses a tape value</th></tr>
-  {{range .Ops}}<tr><td style="{{pad .Depth}}"><span class="op">{{.Code}}</span></td><td>{{.Name}}</td><td class="mono pre">{{visible .Text}}</td><td>{{if .Takes}}one value{{end}}</td></tr>{{end}}
-  </table>
-  {{end}}
 </div>
 {{end}}{{end}}
 <h3>Page shell</h3>
-<p><code>src/site.html</code> stays in HTML. The compiler splits it at <code>%shugo.head%</code> and <code>%shugo.body%</code> into three pieces and puts them in the skeleton's <code>shell</code>. These pieces wrap every page.</p>
+<p><code>src/site.html</code> stays in HTML. The compiler splits it at <code>%shugo.head%</code> and <code>%shugo.body%</code> into three pieces and puts them in the site skeleton's <code>shell</code>. These pieces wrap every page.</p>
 <h3>Files without templates</h3>
 {{range .Files}}{{if and (lt .Number 0) (ne .Path "shugo.json") (ne .Path "src/site.html")}}<p><b>{{.Path}}</b> — regular TypeScript; bundled as:</p><pre>{{.Module}}</pre>{{end}}{{end}}
 <h3>Routes</h3>
@@ -229,7 +225,7 @@
 </ul>
 {{template "rounds" .Build.Rounds}}
 <details><summary>Full messages recorded by tap.sh</summary>
-<p class="note">Each message contains its length, a code, and a body. The labels show the separator bytes by code: <span class="sep">00</span> precedes each value on the tape, <span class="sep">01</span> separates blocks in a record, <span class="sep">02</span> separates fields, and <span class="sep">03</span> separates records. Each side is recorded in order. The sequence across both sides is unavailable.</p>
+<p class="note">Each message contains its length, a code, and a body. The labels show the separator bytes by code: <span class="sep">00</span> delimits a hole in the HTML, <span class="sep">01</span> separates blocks in a record, <span class="sep">02</span> separates fields, and <span class="sep">03</span> separates records. Each side is recorded in order. The sequence across both sides is unavailable.</p>
 <div class="grid">
 <div><h4>Go → JS</h4><table><tr><th>Code</th><th>Meaning</th><th>Body</th></tr>{{range .Build.Requests}}<tr><td class="mono">{{.Kind}}</td><td>{{sep .Meaning}}</td><td class="mono">{{sep .Body}}</td></tr>{{end}}</table></div>
 <div><h4>JS → Go</h4><table><tr><th>Code</th><th>Meaning</th><th>Body</th></tr>{{range .Build.Answers}}<tr><td class="mono">{{.Kind}}</td><td>{{sep .Meaning}}</td><td class="mono">{{if eq .Kind "R"}}Records: {{len .Records}}, {{.Size}} bytes — see below{{else}}{{sep .Body}}{{end}}</td></tr>{{end}}</table></div>
@@ -250,7 +246,7 @@
 <table><tr><th>Block</th><th>Fields</th></tr>
 {{range $i, $b := .Blocks}}<tr><td>{{$i}}</td><td class="mono">{{range $j, $f := $b}}{{if $j}} │ {{end}}{{sep $f}}{{end}}</td></tr>{{end}}
 </table>
-<p class="note">Block <code>b</code>: file │ part │ nested blocks │ snippets supplied by the caller │ value tape. Block <code>u</code>: shared block reference by name │ snippets. Go resolves the name to an ID, unescapes the value tape, and verifies that the tape matches the template skeleton.</p>
+<p class="note">Block <code>b</code>: HTML │ contribution to <code>&lt;head&gt;</code> │ <code>&lt;title&gt;</code>. The HTML uses markers <span class="sep">00</span> to delimit holes: <code>c3</code> is block 3 of this record, <code>gchildren</code> is a snippet supplied to a shared block at the call site, and <code>i{…}</code> is an island. Block <code>u</code>: shared block reference by name │ snippets supplied at the call site as name = block numbers. Go resolves the name to an ID, unescapes the data, and verifies that the blocks form one tree.</p>
 {{end}}{{end}}{{end}}
 
 <h2 id="store">5. Store after the build</h2>
@@ -263,11 +259,11 @@
 {{range .Build.Look.Store.Pages}}{{$p := .}}
 <div class="card" id="{{anchor "page" .Path}}">
 <h4>{{.Path}} <span class="n">route {{.Route}}, record {{len .Raw}} bytes, hash {{short .Hash}}, changed in version {{.Version}}</span></h4>
-<table><tr><th>Block</th><th>Template or shared block</th><th>Value tape</th><th>Nested blocks</th><th>Caller-supplied snippets</th></tr>
+<table><tr><th>Block</th><th>Meaning</th><th>HTML</th><th>Snippets supplied at the call site</th></tr>
 {{range $i, $b := .Record.Blocks}}<tr><td>{{$i}}{{if eq $i $p.Record.Top}} <span class="pill">root</span>{{end}}</td>
-<td>{{if $b.Use}}<a href="#shared-{{$b.Shared}}">shared block {{$b.Shared}}</a> <span class="n">{{$store.SharedName $b.Shared}}</span>{{else}}{{(index $.Compiled.Site.Files $b.File).Path}}, part {{$b.Part}}{{end}}</td>
-<td class="mono">{{if not $b.Use}}{{template "tape" $b.Values.Strings}}{{end}}</td>
-<td>{{range $b.Children}}{{.}} {{end}}</td><td>{{range $b.Snippets}}{{.Name}} = {{range .Blocks}}{{.}} {{end}}; {{end}}</td></tr>{{end}}
+<td>{{if $b.Use}}<a href="#shared-{{$b.Shared}}">shared block {{$b.Shared}}</a> <span class="n">{{$store.SharedName $b.Shared}}</span>{{else}}HTML{{end}}</td>
+<td class="mono pre">{{if not $b.Use}}{{fragment $b.Body}}{{if not $b.Head.Empty}}<br><span class="n">in &lt;head&gt;:</span> {{fragment $b.Head}}{{end}}{{if $b.Title}}<br><span class="n">&lt;title&gt;:</span> {{printf "%s" $b.Title}}{{end}}{{end}}</td>
+<td>{{range $b.Snippets}}{{.Name}} = {{range .Blocks}}{{.}} {{end}}; {{end}}</td></tr>{{end}}
 </table>
 <p><b>Reads:</b></p>
 <ul>{{range .Readings}}{{$sh := $store.Shape .Shape}}<li><a href="#shape-{{.Shape}}">shape {{.Shape}}</a>: rows in <b>{{$sh.Table}}</b>{{if $sh.By}}, where {{join $sh.By ", "}} = <span class="mono">{{key .Key}}</span>{{else}} — all rows{{end}}{{if $sh.Columns}}; relevant columns: {{join $sh.Columns ", "}}{{end}}. Matching rows now: {{range $.Build.Look.RowsOf $sh .Key}}<a href="#row-{{$sh.Table}}-{{.}}" class="mono">{{.}}</a> {{else}}none{{end}}</li>{{end}}</ul>
@@ -279,8 +275,8 @@
 <div class="card" id="shared-{{.ID}}">
 <h4>{{.ID}}: {{.Name}} <span class="n">record {{len .Raw}} bytes, changed in version {{.Version}}</span></h4>
 <p>Rendered by: {{range $store.Users .ID}}{{reader .}}; {{end}}</p>
-<table><tr><th>Block</th><th>Template or shared block</th><th>Value tape</th><th>Nested blocks</th></tr>
-{{range $i, $b := .Record.Blocks}}<tr><td>{{$i}}</td><td>{{if $b.Use}}<a href="#shared-{{$b.Shared}}">shared block {{$b.Shared}}</a>{{else}}{{(index $.Compiled.Site.Files $b.File).Path}}, part {{$b.Part}}{{end}}</td><td class="mono">{{if not $b.Use}}{{template "tape" $b.Values.Strings}}{{end}}</td><td>{{range $b.Children}}{{.}} {{end}}</td></tr>{{end}}
+<table><tr><th>Block</th><th>Meaning</th><th>HTML</th></tr>
+{{range $i, $b := .Record.Blocks}}<tr><td>{{$i}}</td><td>{{if $b.Use}}<a href="#shared-{{$b.Shared}}">shared block {{$b.Shared}}</a>{{else}}HTML{{end}}</td><td class="mono pre">{{if not $b.Use}}{{fragment $b.Body}}{{if not $b.Head.Empty}}<br><span class="n">in &lt;head&gt;:</span> {{fragment $b.Head}}{{end}}{{end}}</td></tr>{{end}}
 </table>
 <p><b>Reads:</b></p>
 <ul>{{range .Readings}}{{$sh := $store.Shape .Shape}}<li><a href="#shape-{{.Shape}}">shape {{.Shape}}</a>: rows in <b>{{$sh.Table}}</b>{{if $sh.By}}, where {{join $sh.By ", "}} = <span class="mono">{{key .Key}}</span>{{else}} — all rows{{end}}{{if $sh.Columns}}; relevant columns: {{join $sh.Columns ", "}}{{end}}. Matching rows now: {{range $.Build.Look.RowsOf $sh .Key}}<a href="#row-{{$sh.Table}}-{{.}}" class="mono">{{.}}</a> {{else}}none{{end}}</li>{{end}}</ul>
@@ -315,31 +311,26 @@
 </table>
 
 <h2 id="story">6. A page from record to HTML</h2>
-<p>Page <b>{{.Story.Path}}</b>. The server writes the opening of the shell from <code>src/site.html</code>, loads the page record, and starts at the root block. For each block, it follows the template skeleton, copying markup and taking the next value from the tape for each expression. The tables below show which operations consume which values.</p>
-<p>The server tracks the blocks contributed by templates to <code>&lt;svelte:head&gt;</code> and which <code>&lt;title&gt;</code> was last. After writing the page body and closing the shell, it renders those blocks, adds the stylesheet link, and inserts the result at <code>%shugo.head%</code>.</p>
+<p>Page <b>{{.Story.Path}}</b>. The server writes the opening of the shell from <code>src/site.html</code>, loads the page record, and starts at the root block. It copies each block's HTML and fills any holes. A shared block comes from its own record, a snippet comes from the call site's record, and an island contributes HTML and hydration data. The tables below show each block's pieces.</p>
+<p>The server tracks what blocks contribute to <code>&lt;head&gt;</code> and which <code>&lt;title&gt;</code> was last. After writing the page body and closing the shell, it writes that content, adds the stylesheet link, and inserts the result at <code>%shugo.head%</code>.</p>
 {{range .Story.Blocks}}
-<div class="card"><h4>Block {{.Index}}: {{if .Use}}reference to <a href="#shared-{{.Shared}}">shared block {{.Shared}}</a> {{.SharedName}}{{else}}{{.File}}, part {{.Part}}, value tape: {{counted (len .Values) "value" "values"}}{{end}}</h4>
-{{if .Snippets}}<p class="note">Caller-supplied snippets and head content from this template: {{join .Snippets "; "}}</p>{{end}}
-{{if .Walk}}<table><tr><th style="width:4em">Op.</th><th>What it does</th><th style="width:4em">Tape index</th><th>value</th></tr>
-{{range .Walk}}<tr><td style="{{pad .Depth}}"><span class="op">{{.Op}}</span></td><td>{{.What}}{{if .Link}} <a href="#{{.Link}}">→</a>{{end}}</td><td>{{if .Place}}{{.Place}}{{end}}</td><td class="mono pre">{{if .Place}}<span class="val">{{visible .Value}}</span>{{else}}{{visible .Value}}{{end}}</td></tr>{{end}}
-</table>{{end}}
-{{if .Error}}<p class="del">{{.Error}}</p>{{end}}
+<div class="card"><h4>Block {{.Index}}: {{if .Use}}reference to <a href="#shared-{{.Shared}}">shared block {{.Shared}}</a> {{.SharedName}}{{else}}HTML{{end}}</h4>
+{{if .Snippets}}<p class="note">Snippets supplied at the call site: {{join .Snippets "; "}}</p>{{end}}
+{{template "pieces" .}}
 </div>
 {{end}}
 <h3>Shared blocks rendered by this page</h3>
 {{range .Story.Shared}}
 <div class="card"><h4>Shared block {{.ID}}: {{.Name}}</h4>
 {{range .Blocks}}{{if not .Use}}
-<p class="note">Block {{.Index}}: {{.File}}, part {{.Part}}, value tape: {{counted (len .Values) "value" "values"}}</p>
-<table><tr><th style="width:4em">Op.</th><th>What it does</th><th style="width:4em">Tape index</th><th>value</th></tr>
-{{range .Walk}}<tr><td style="{{pad .Depth}}"><span class="op">{{.Op}}</span></td><td>{{.What}}{{if .Link}} <a href="#{{.Link}}">→</a>{{end}}</td><td>{{if .Place}}{{.Place}}{{end}}</td><td class="mono pre">{{if .Place}}<span class="val">{{visible .Value}}</span>{{else}}{{visible .Value}}{{end}}</td></tr>{{end}}
-</table>{{else}}<p class="note">Block {{.Index}}: reference to <a href="#shared-{{.Shared}}">shared block {{.Shared}}</a></p>{{end}}{{end}}
+<p class="note">Block {{.Index}}: HTML</p>
+{{template "pieces" .}}{{else}}<p class="note">Block {{.Index}}: reference to <a href="#shared-{{.Shared}}">shared block {{.Shared}}</a></p>{{end}}{{end}}
 </div>
 {{end}}
 <h3>Rendered HTML</h3>
 <pre>{{.Story.HTML}}</pre>
 <h3>Page record byte by byte</h3>
-<p class="note">The record is stored in <code>page.record</code>. Numbers use varints, so a small number takes one byte. Each block embeds its value tape, starting with the tape length and then each value's length and bytes.</p>
+<p class="note">The record is stored in <code>page.record</code>. Numbers use varints, so a small number takes one byte. Each block contains its HTML: a hole count, then alternating text and holes, with each text fragment prefixed by its byte length.</p>
 <table><tr><th style="width:4em">Offset</th><th style="width:30em">Bytes</th><th>Meaning</th></tr>
 {{range .Story.Bytes}}<tr><td>{{.Offset}}</td><td class="mono">{{.Hex}}</td><td>{{sep .Meaning}}</td></tr>{{end}}
 </table>
@@ -411,13 +402,17 @@
 {{end}}
 
 <h2 id="serving">8. Page request: what the server reads</h2>
-<p>The server reads the site from the store. For a request to <b>{{.Serving.Path}}</b> it uses one transaction to look up the page record and each shared block the page renders. Value tapes live inside the records, so each record needs one lookup. The transaction reads a single version of the store. An update that finishes during the transaction becomes visible to the next request.</p>
+<p>The server reads the site from the store. For a request to <b>{{.Serving.Path}}</b> it uses one transaction to look up the page record and each shared block the page renders. HTML lives inside the records, so each record needs one lookup. The transaction reads a single version of the store. An update that finishes during the transaction becomes visible to the next request.</p>
 <table><tr><th>Key lookup</th><th style="width:6em">bytes</th></tr>{{range .Serving.Lookups}}<tr><td class="mono">{{.What}}</td><td>{{.Bytes}}</td></tr>{{end}}
 <tr><td><b>{{counted (len .Serving.Lookups) "lookup" "lookups"}}</b></td><td><b>{{.Serving.Bytes}}</b></td></tr></table>
-<p class="note">The server keeps the template skeleton in memory and parses it once per project build. Data updates leave it unchanged.</p>
+<p class="note">The server keeps the site skeleton in memory: the page shell, routes, and island programs. It parses the skeleton once per project build. Data updates leave it unchanged.</p>
 
 </div>
-{{define "tape"}}{{range $i, $v := .}}<span class="n">{{add $i 1}}</span>&nbsp;<span class="val">{{visible $v}}</span> {{end}}{{end}}
+{{define "pieces"}}{{if .Body}}<table><tr><th style="width:6em">Piece</th><th>Contents</th></tr>
+{{range .Body}}<tr><td>{{if .Hole}}<span class="op">hole</span>{{else}}HTML{{end}}</td><td class="mono pre">{{if .Hole}}<span class="val">{{.Text}}</span>{{if .Link}} <a href="#{{.Link}}">→</a>{{end}}{{else}}{{.Text}}{{end}}</td></tr>{{end}}
+{{range .Head}}<tr><td>in &lt;head&gt;</td><td class="mono pre">{{.Text}}</td></tr>{{end}}
+{{if .Title}}<tr><td>&lt;title&gt;</td><td class="mono pre">{{.Title}}</td></tr>{{end}}
+</table>{{end}}{{end}}
 {{define "rounds"}}{{range $i, $r := .}}
 <div class="card round">
 <h4>{{if $r.Told}}At startup{{else}}Round {{$r.Number}}{{end}}. Go: {{$r.Ask}}</h4>

@@ -78,7 +78,7 @@ func TestCommandShowsTheMistake(t *testing.T) {
 	s := newSite(t, "-- src/pages/index.svelte --\n<main>\n  <p>café!</div>\n</main>")
 	s.store.Close()
 	_, errs, status := shugo(t, "build", s.root)
-	want := "error: src/pages/index.svelte:2:11: `</div>` attempted to close an element that was not open\n     1 | <main>\n     2 |   <p>café!</div>\n       |           ^\n"
+	want := "error: src/pages/index.svelte:2:11: `</div>` attempted to close an element that was not open https://svelte.dev/e/element_invalid_closing_tag\n     1 | <main>\n     2 |   <p>café!</div>\n       |           ^\n"
 	if status != 1 || errs != want {
 		t.Errorf("status %d\n got: %q\nwant: %q", status, errs, want)
 	}

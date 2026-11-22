@@ -60,8 +60,8 @@ All fields are optional. Unknown field is an error.
 | File | What is it |
 | --- | --- |
 | `eval.mjs`, `eval.mjs.map` | the entire JS project for the calculation stage and source map |
-| `site.json` | project framework: layout of templates with places for values and routes |
-| `sources.json` | from which files the project is assembled, with each hash, together with `src/site.html`, and versions of the frame and parser Svelte: according to it, `shugo update` understands that the project needs to be reassembled |
+| `site.json` | project framework: files, routes, island shell and programs |
+| `sources.json` | from which files the project is assembled, with each hash, together with `src/site.html`, and versions of the framework and Svelte: on it `shugo update` understands that the project needs to be reassembled |
 | `assets/` | collected island styles and browser modules; files of previous builds are not deleted so that the server that still shows their pages finds them |
 | `search-*.sqlite` | `search(…)` Search Indexes |
 | `store.db` | storage |

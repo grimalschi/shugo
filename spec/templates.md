@@ -1,6 +1,6 @@
 # Templates
 
-Normal file `.svelte` the Official Parser Svelte 5. From his tree Shugo builds a framework - markup with places for values - and a calculation code that marks data readings. The clean component can also enter the island graph, where Svelte compiles it for the browser. The entry point component for hydration has a suffix `.island.svelte`. [Svelte islands](scripts.md#svelte-islands)
+The regular `.svelte` file compiles and renders the Svelte 5.59.1 itself, sewn into the Shugo: the template works as it would on a SvelteKit server. Shugo adds blocks the common component is rendered once to the entire site and cuts out hydration comments. The clean component can also be included in the island graph, where Svelte compiles it for the browser. The entry point component for hydration has the suffix `.island.svelte`. [Svelte islands](scripts.md#svelte-islands)
 
 ## Decisions
 
@@ -17,6 +17,7 @@ Normal file `.svelte` the Official Parser Svelte 5. From his tree Shugo builds a
 - The values are screened when inserted into the page.
 - Addresses in `href`, `src` and similar attributes are displayed as is, as in Svelte: `javascript:` address replacement is canceled (22 November 2026 year solution).
 - Templates are `.svelte` files, the island is `.island.svelte`; their official parser Svelte 5.59.1 (22 solution November 2026 year). Prior to that, the files were called `.shugo`, and Shugo parsed them with its parser.
+- Templates compile and render Svelte itself, rather than its Shugo compiler; comments that Svelte writes for hydration are cut everywhere except islands (22 project author's decision November 2026 years).
 - An error in expression shows a row and column in the `.svelte` file.
 - Data and page address are taken by import from the module `shugo`: `import { query, paginate, page } from "shugo"`; `page` How to `page` the City of `$app/state` the City of London SvelteKitGlobal facility `Shugo` No, and the transition time with two records is also (decision 22 November 2026 years).
 - `search` for islands is also from the `shugo` module; recording `shugo:search` is a hint error (22 solution November 2026 year).
@@ -56,7 +57,7 @@ Normal file `.svelte` the Official Parser Svelte 5. From his tree Shugo builds a
 ```
 
 - `<script module>` is executed once when the module is loaded. It contains `getStaticPaths` and everything you need once: constants, functions, imports. Its names are visible to the rest of the file.
-- `<script>` is executed every time a file is shown: once for a page, once for each component call. Common blocks are an exception, see. [Components](components.md#common-components). Export from it can not: the compiler will prompt you to transfer exports to `<script module>`. `export let` — parameters Svelte 4 — also an error with a hint about `$props()`.
+- `<script>` is executed every time a file is shown: once for a page, once for each component call. Common blocks are an exception, see. [Components](components.md#common-components). `getStaticPaths` in it is an error with a prompt to transfer it to `<script module>`. `export let` - parameters Svelte 4 - error Svelte with a hint about `$props()`.
 - The component parameters are `let { … } = $props()`, as in Svelte 5.
 - What framework knows is imported from the `shugo` module, in any file page, layout, component, module from `src/lib/`:
 
@@ -72,8 +73,9 @@ Normal file `.svelte` the Official Parser Svelte 5. From his tree Shugo builds a
 
   The query belongs to what is being calculated: a page or a common component. Outside of computing for example, at the top level of a module it is an error with an explanation. The component that takes `page` or `paginate`, either by itself or through imported modules, is calculated for each page separately, see. [Components](components.md#common-components). Writing `Shugo.query` and `Astro.params` is an error with a hint of what to import.
 - `await` no: the page is calculated without waiting, because `query` responds immediately. What is expected and done once - for example, code highlighting - is expected at the top level of the module from `src/lib/`.
-- For TypeScript, write `<script lang="ts">` or `<script module lang="ts">`: the parser Svelte recognizes TypeScript by this attribute, as does Svelte itself.
+- For TypeScript Write `<script lang="ts">` or `<script module lang="ts">`: Svelte Finds out. TypeScript And it's the type that washs. `enum` and other structures which TypeScript Turns it into a code, Svelte does not accept: `enum` - Object `as const`.
 - `@/` in import path means folder `src/`.
+- Rune modules — `counter.svelte.ts`, `state.svelte.js` — compile Svelte, as in SvelteKit: imported as regular modules, `import { counter } from "@/lib/counter.svelte"`. On the server `$state` in them — just a value; on the island they work in the browser.
 - Runes Svelte work as on the server Svelte: `$state(x)` - just the value of `x`, `$derived(…)` is considered once, `$effect` is not executed. Page is static, in the browser its code does not work.
 - `return` at the top level `<script>` and `export default` are build errors.
 
@@ -155,7 +157,7 @@ In the curly brackets are written expressions JavaScript or TypeScript. To repea
 
 | Element | What does |
 | --- | --- |
-| `<svelte:head>` | markup for `<head>` pages: title, meta tags. It is written in the page and in the layout and gets to the place of `%shugo.head%` shell `src/site.html`, see [Layouts](layouts.md) |
+| `<svelte:head>` | markup for `<head>` pages: title, meta tags. It is written in any component and gets to the place of `%shugo.head%` shell `src/site.html`, see [Layouts](layouts.md) |
 | `<svelte:element this={tag}>` | element with a calculated name; empty name shows nothing |
 | `<svelte:boundary>` | shows its content |
 | `<svelte:window>`, `<svelte:document>`, `<svelte:body>`, `<svelte:options>` | they do nothing on the server. |
@@ -180,11 +182,9 @@ Svelte Rules:
 
 | What | Svelte | Shugo |
 | --- | --- | --- |
-| hydration tags `<!--[-->`, `<!--]-->` | sd | it does not say: static page they are not needed |
-| A class that limits styles to a component | only bet on items that selectors choose | is placed on all components; page view is the same |
-| `<svelte:head>` | in any component | only in page and layout |
-| Availability Warnings (`a11y_…`) | I have | none |
-| `$props()` in markup and other rune place errors | error | not checked |
+| hydration comments `<!--[-->`, `<!--]-->`, `<!---->` | sd | cuts: static page they are not needed. Remain at the islands and in HTML of `{@html}` |
+| Context specified in layout via `setContext` | reaches the page | not available: the layout is rendered separately from the page |
+| Warnings about what is changing in the browser (`state_referenced_locally` and neighboring) | I have | no: static page is rendered once |
 
 ### What is not and what the compiler answers
 
@@ -201,8 +201,8 @@ Svelte Rules:
 
 ## Open questions
 
-- The remaining deviations from Svelte are in the table [above](#how-shugo-differs-from-svelte). There is no separate proposal for compatibility anymore: the basis is Svelte itself, its parser parses out the templates, and checks are taken from it, and not transferred to Go (closed by 22 on November 2026 of the year).
+- The remaining deviations from Svelte are in the table of [above](#how-shugo-differs-from-svelte). There is no separate proposal for compatibility anymore: the basis is Svelte itself, it compiles and renders templates, and its checks are those that work (22 closed on November 2026 year).
 - Type check: it is decided to make a separate command `shugo check` together with verification of component parameters ([Command line](cli.md#decisions)). While the types are only erased.
 - Warning when an object is displayed in the text: it is almost always a mistake. In Svelte it is not.
 
-As Shugo achieves the same HTML as Svelte, and the test by which syntax was chosen is in [Shugo and Svelte](../docs/svelte.md).
+What Svelte does in templates, and what Shugo does, and the test that was chosen for syntax, is in [Shugo and Svelte](../docs/svelte.md).

@@ -1,6 +1,6 @@
 # Writing a Shugo site
 
-Shugo builds static sites with interactive islands. A page, a layout and a component are each a `.svelte` file, and a `.svelte` file is a **Svelte 5 component**: `<script>`, markup, `<style>`. The official parser of Svelte reads it, and Shugo renders it exactly as the server renderer of Svelte 5.59 does, so what you know of Svelte holds: `$props()`, `{#if}`, `{#each}`, snippets, `{@render}`, `{@html}`, scoped styles, the same whitespace rules. What is Shugo's own: data comes from the site's SQLite database through `query`, imported from the module `shugo`, and a page with a parameter in its name lists its pages with `getStaticPaths`. A component named `*.island.svelte` also runs in the browser: see [Islands](#islands). The section [Coming from Svelte and SvelteKit](#coming-from-svelte-and-sveltekit) lists what differs.
+Shugo builds static sites with interactive islands. A page, a layout and a component are each a `.svelte` file, and a `.svelte` file is a **Svelte 5 component**: `<script>`, markup, `<style>`. Svelte 5.59.1 itself compiles and renders it, as on the server of SvelteKit, so what you know of Svelte holds: `$props()`, `{#if}`, `{#each}`, snippets, `{@render}`, `{@html}`, context, scoped styles, the same whitespace rules, the same errors and warnings. Shugo takes out the comments Svelte writes for hydration: a static page has no use for them. What is Shugo's own: data comes from the site's SQLite database through `query`, imported from the module `shugo`, and a page with a parameter in its name lists its pages with `getStaticPaths`. A component named `*.island.svelte` also runs in the browser: see [Islands](#islands). The section [Coming from Svelte and SvelteKit](#coming-from-svelte-and-sveltekit) lists what differs.
 
 ## Project layout
 
@@ -81,9 +81,11 @@ Run `shugo build` after every change and read the errors and warnings: each name
 
 - The `<script>` is optional: a file may be markup alone.
 - `<script>` runs once for every page the file gives, and once for every place a component is shown. Everything it declares is visible in the markup.
-- `<script module>` runs once, when the module loads. `getStaticPaths` goes there, and so does any other export: an export from `<script>` is an error.
+- `<script module>` runs once, when the module loads. `getStaticPaths` goes there: in `<script>` it is an error. Names imported in `<script module>` are seen in `<script>` too; importing one again is an error of Svelte.
 - There is no `await`: a page is computed without waiting, since `query` answers at once. What takes time and needs doing once, such as making a highlighter, can be awaited at the top of a module in `src/lib/`. Top-level `return` is an error.
-- TypeScript: write `<script lang="ts">`, as in Svelte. Types are removed, not checked: a type error does not stop the build, and `post.titel` shows nothing.
+- TypeScript: write `<script lang="ts">`, as in Svelte. Types are removed, not checked: a type error does not stop the build, and `post.titel` shows nothing. As in Svelte, TypeScript that turns into code, such as `enum`, is an error: use an object `as const`.
+- Only runes: `export let`, `$:` and the slots of Svelte 4 (`<slot>`, `slot="…"` inside a component's tag) are errors; take props with `$props()` and markup with snippets.
+- Modules with runes, `counter.svelte.ts` or `state.svelte.js`, work as in SvelteKit: import them like any module. On the server `$state` is just its value; in an island they run in the browser.
 - Runes behave as on Svelte's server: `$state(x)` is just `x`, `$derived(…)` is computed once, `$effect` never runs. The page is static.
 
 ## Text and attributes
@@ -239,10 +241,10 @@ import { query, paginate, page, search } from "shugo"
   ```
 
   `%shugo.body%` is the page in its layouts, `%shugo.head%` what the templates give in `<svelte:head>` and then the link to the style sheet. Each stands once. The file is plain HTML, copied as it is: no expressions. Without it Shugo uses the one above, without `lang`. `<html>`, `<head>`, `<body>` or `<!doctype>` in a template is an error.
-- A page gives its title and meta tags with `<svelte:head>` at its top level. They go to `%shugo.head%`, in the order of the document: outer layouts first, the page last. A page has one `<title>`, the last one, as in Svelte, so the layout above gives a default and a page replaces it.
-- `<svelte:head>` works in pages and layouts, not in other components.
+- A page gives its title and meta tags with `<svelte:head>` at its top level; any component may. They go to `%shugo.head%`, in the order of the document: outer layouts first, the page last. A page has one `<title>`, the last one, as in Svelte, so the layout above gives a default and a page replaces it.
 - Pages do not import or call layouts.
 - A layout is kept apart from its pages: once for the whole site when it reads nothing of the page, once for every page when it imports `page` from `shugo`, for example to highlight the current menu item. A change of what the layout reads computes the layout and not the pages; a change of a page computes the page and not its layout.
+- So a layout is rendered apart from the page in it: a context the layout sets with `setContext` reaches its own components, not the page. Pass what the page needs through `query` or a module of `src/lib/`.
 
 ## Addresses
 
@@ -391,7 +393,7 @@ query("products")                             // a table
 ### Where to ask
 
 - **In the page**, for what the page shows.
-- **In a component called with an id**, for what many pages show: `<ProductCard id={row.id} />` with `let { id } = $props()` and `query("products").get(id)` inside. Such a component is computed once for every id and kept on its own, so when the product changes its card is computed, and none of the pages that show it. A component is computed once like this when neither it nor any module it imports takes `page` or `paginate` from `shugo`, and it is called with plain values (strings, numbers, booleans, `null`) or without props.
+- **In a component called with an id**, for what many pages show: `<ProductCard id={row.id} />` with `let { id } = $props()` and `query("products").get(id)` inside. Such a component is computed once for every id and kept on its own, so when the product changes its card is computed, and none of the pages that show it. A component is computed once like this when neither it nor any module it imports takes `page` or `paginate` from `shugo` or the context of Svelte (`getContext`, `setContext` and the like), calls `$props.id()` or shows a snippet inside a `<select>`, and it is called with plain values (strings, numbers, booleans, `null`), snippets without parameters written inside its tag, or without props (`bind:` is not a plain value). Otherwise it is rendered where it stands, as a part of the page: the HTML is the same either way.
 - **In a component without props**, for what every page shows: `<Header />` reads the menu itself.
 - A build warns of a component kept apart for nothing: 100 shared blocks or more, each shown in fewer than 1.5 places on average, as `<Price value={n} />` with a number of its own on nearly every page. Give such a component an object, such as the row it shows, and it is computed as a part of the page.
 - In a function of `src/lib/` that a page or a component calls: the query belongs to whoever is computed when it runs. Not at the top of a module: nothing is computed there, so it is an error. A module of `src/lib/` that imports `page` makes every component that imports it depend on the page.
@@ -450,7 +452,8 @@ A component named `*.island.svelte` is an island: the page shows its HTML, and i
 | `src/app.html` with `%sveltekit.head%`, `%sveltekit.body%` | `src/site.html` with `%shugo.head%`, `%shugo.body%` |
 | `+error.svelte` | `src/pages/404.svelte` |
 | `+server.ts` with `GET` and `prerender` | `src/pages/sitemap.xml.ts` with `GET` that returns a string |
-| `<svelte:head>` in any component | in pages and layouts |
-| TypeScript with `lang="ts"` | the same parser and syntax |
+| hydration comments `<!--[-->`, `<!--]-->` in the HTML | none, but in islands and in what `{@html}` gives |
+| a context set in `+layout.svelte` reaches the page | it does not: the layout is rendered apart |
+| TypeScript with `lang="ts"` | the same: Svelte compiles it |
 | hydration, `$state` that changes, events | only in `*.island.svelte`; the rest of the page is static |
 | `<svelte:self>`, `<svelte:component>` | work, with the warnings of Svelte 5 |

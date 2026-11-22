@@ -115,8 +115,9 @@ The component is calculated and stored once, if it is independent of the page an
 ```
 
 - The component depends on the page, if it itself or the module it imports takes `page` or `paginate` from the `shugo` module: this is visible by imports, without starting the code. Such a component is calculated on each page anew.
+- The component depends on where it stands, if it is itself or what it imports and shows takes context Svelte — `getContext`, `setContext`, `hasContext`, `getAllContexts`, `createContext`is calling `$props.id()` or shows a snippet inside `<select>`. Such a component is also rendered where it stands: context gives the components around, number in `$props.id()` Considers components that were previously rendered on the page, and the value of `<select>` Marks `<option>` the Snippet[42](decisions.md#42-shared-components-do-not-use-context-or-propsid)). Component to which the transfer `bind:`And also, through him he writes to the one who showed it.
 - Simple parameters are strings, numbers, `true`, `false`, `null`.
-- Snippets transferred to a common component do not prevent it from being shared: their markup is counted in the template that wrote them and stored with it. Therefore, the layout is usually shared: the page it receives with the snippet `children`.
+- Snippets without parameters, written inside the tag of the common component, do not prevent it from being common: their markup is rendered in the template that wrote them, and stored with it. Therefore, the layout is usually common: he receives a snippet `children`. A snippet with parameters even if everyone has default values the component shows up with its arguments, so such a component is rendered in place. A non-parameter snippet is rendered separately, along with everything it gives `<head>`, and shown where the component shows it; if it drops or calls `$props.id()`, the component is rendered on-site.
 
 Hence the reception: it is better to give the card the number of goods, and she will find the goods herself. Then the card is considered once, and when changing the goods, one record changes, no matter how many pages it shows.
 

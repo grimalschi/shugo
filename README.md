@@ -1,26 +1,26 @@
 # Shugo
 
-Shugo is a framework for static sites with interactive islands. Pages, mock-ups and components are `.svelte` files, each of which is a component of Svelte 5: `<script>`, Markup, `<style>`. It's taking out their official Svelte parser, and Shugo releases the same HTML that Svelte 559 server. The `*.island.svelte` component is an island: it is hydrated by Svelte in a browser, and HTML is collected by Go without JavaScript on the server for the search filter address. The document around the pages — `<html>`, `<head>`, `<body>` — is written once in the `src/site.html` shell; the files are not in HTML, such as `sitemap.xml`, and provide modules on TypeScript among the pages. The site's data are in the SQLite database of the project, and only read through `query` from the `shugo` module. The project code is executed when the pages are released; the visitor is given a server on Go, which collects HTML from the finished values and does not compute anything.
+Shugo - framework for static sites with interactive islands. Pages, layouts and components are `.svelte` files, and each is a component of Svelte 5: `<script>`, markup, `<style>`. Compiles and renders them Svelte 5.59.1 itself, sewn into Shugo, so HTML is the same as the Svelte server, only without hydration comments. The `*.island.svelte` component is an island: Svelte hydrates it in the browser, and HTML collects Go for the search filter address, without JavaScript on the server. The document around the pages — `<html>`, `<head>`, `<body>` — is written once, in the `src/site.html` shell; files not in HTML, such as `sitemap.xml`, give modules on TypeScript among the pages. The data of the site is in the database of the SQLite project, and the pages read them only through `query` from the `shugo` module. Project code is executed when pages are calculated; the visitor page is given a server on Go, which collects it from ready-made pieces of HTML and does not calculate anything.
 
 How to collect and run projects that are finally decided, and what awaits approval, in [specifications](spec/README.md). As Shugo arranged inside - in [docs](docs/README.md), offers - in [docs/proposals](docs/proposals/README.md).
 
 ## How it works
 
 ```
-source files ── compilation (Svelte + Go) ─┬─ eval.mjs: code pages and components
-                                      └─ site.json: markup templates with places for values
+source files ── compilation (Svelte + Go) ─┬─ eval.mjs: pages and components compiled by Svelte
+                                      └─ site.json: routes and page shell
 
 project Database ──► calculation (Bun or Node): eval.mjs reads strings via query
-  (Triggers are          │  records of pages and common blocks, and what each has read
+  (Triggers are          │  HTML pages and shared blocks, and what everyone has read
    journal of Changes)       ▼
                        storage (SQLite) ──► server (Go): HTML for each request
                                          └──► export: pages files that have changed
 ```
 
-1. **Compilation.** The official parser of Svelte parses the templates; it is sewn into Shugo and runs on Bun or Node without the `svelte` package in the project. From each template, two things are obtained: JS, which counts the values of expressions, and the framework - markup with places for these values, according to the rules of Svelte: spaces, nesting elements, component styles. Svelte compiles the islands for the browser and server, and from the server version of Shugo makes the program SSR, which then performs Go.
-2. **Calculation.** JS executes the code of pages without waiting: the request to the database responds immediately. Each line that the request returned remembers which columns it read — in the page code, in the template, in functions, in components. Go compares the result to the storage and records only differences. A component called with simple parameters is calculated once and stored in a separate record: pages link to it.
+1. **Compilation.** Compiler Svelte compiles templates for the server; it is sewn into Shugo along with the server part of Svelte and runs on Bun or Node without the `svelte` package in the project. Shugo wraps each component with its own function, which decides whether to render it on-site or as a shared block. Svelte compiles the islands for the browser and server, and from the server version of Shugo makes the program SSR, which then performs Go.
+2. **Calculation.** Svelte renders pages without waiting: the database request responds immediately. Each line that the request returned remembers which columns it read — in the page code, in the template, in functions, in components. A component called with simple parameters is rendered once and stored separately: the page stores a hole in its place. JS cuts HTML pages into such blocks and removes hydration comments; Go compares the result to storage and records only differences.
 3. **Update.** Triggers in the database write each changed line to the journal. `shugo update` reads the journal, finds who has read the changed columns of these lines, and calculates only them.
-4. **Server.** For each query, Go reads a page record and records its shared blocks from a single storage state and collects HTML. For an island that is tied to a search through `request:`, it takes a version of the search index from the same state and substitutes the issue at the request address into the pre-assembled SSR program.
+4. **Server.** For each query, Go reads the page record and records its shared blocks from a single storage state and sews them together with HTML. For an island that is tied to a search through `request:`, it takes a version of the search index from the same state and substitutes the issue at the request address into the pre-assembled SSR program.
 5. **Exports.** `shugo export` writes the site to files. After the first time, only pages whose HTML has changed are deleted.
 
 ## Try it
@@ -53,7 +53,7 @@ bin/shugo export examples/basic       # site to files: examples/basic/_build/dis
 | [examples/tailwind](examples/tailwind) | styles through Tailwind |
 | `cmd/shugo` | `shugo` |
 | `cmd/inside` | booth program «Shugo inside» |
-| `internal/` | framework, by package per stage: `syntax`, `compile`, `jsrt`, `data`, `evaluate`, `store`, `record`, `render`, `server` |
+| `internal/` | framework, by package per stage: `svelte` (Sweet) Svelte), `compile`, `jsrt`, `data`, `evaluate`, `store`, `record`, `render`, `server` |
 | `test/` | tests that run entire sites through all stages; `test/svelte` are standards from the real Svelte |
 
 ## Tests
@@ -71,14 +71,14 @@ Store on 100,000 products, 104,202 pages and 100,009 common blocks, Bun, 8 cores
 
 | What | Time |
 | --- | ---: |
-| First build, with eight indexes that Shugo builds itself | 14.5 s |
-| Update after price change of one product: page and card calculated, HTML changed to 7 pages | 29 ms, the whole team of 36 ms |
+| First build, with eight indexes that Shugo builds itself | 14.6 s |
+| Update after price change of one product: page and card calculated, HTML changed to 7 pages | 31 ms, the whole team of 39 ms |
 | Update after changing column that no one reads, 5,000 products | 0.11 s, nothing calculated |
-| Update after changing the cap that is on all pages | 0.12–0.13 s: One record of the common block |
-| First export to files | 5.0 s |
-| Export after the price change of one product | 8 ms: built by 7 pages |
-| Export after changing the header | 8.2–8.5 s: all files rewritten |
-| Assembly of the product page by the server from the storage | 58–67 µs |
-| Request to server as a whole, 8 clients in the same process | 16–18 thousand per second |
+| Update after changing the cap that is on all pages | 0.12–0.17 s: One record of the common block |
+| First export to files | 3.5 s |
+| Export after the price change of one product | 7 ms: built by 7 pages |
+| Export after changing the header | 4.4–4.6 s: all files rewritten |
+| Assembly of the product page by the server from the storage | 64 µs |
+| Request to server as a whole, 8 clients in the same process | about 16 thousand per second |
 
 After 21 changes the data, the site updated and exported in steps, matches the file to the file with the build from scratch. Details are in [README booth](examples/catalog/README.md).

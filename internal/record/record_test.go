@@ -5,32 +5,54 @@ import (
 	"testing"
 )
 
+func html(texts ...string) [][]byte {
+	out := make([][]byte, len(texts))
+	for i, text := range texts {
+		out[i] = []byte(text)
+	}
+	return out
+}
+
+// sample is a page in a layout: the page shows a shared card, which it gives
+// a snippet with another shared block in it, and an island.
 func sample() *Record {
 	return &Record{Top: 3, Blocks: []Block{
-		{File: 5, Part: 0, Values: Tape(nil).Append([]byte("page")), Children: []int{1}, Head: []int{5}, Title: []int{6}},
-		{File: 0, Part: 0, Values: Tape(nil).Append([]byte("card")), Snippets: []Snippet{{"children", []int{2}}}},
-		{File: 5, Part: 2, Values: nil},
-		{Use: true, Shared: 7, Snippets: []Snippet{{"children", []int{0}}, {"foot", []int{4}}}},
-		{File: 5, Part: 1, Values: Tape(nil).Append([]byte("title")).Append([]byte("x\x00y"))},
-		{File: 5, Part: 3, Values: Tape(nil).Append([]byte("=description"))},
-		{File: 5, Part: 4, Values: Tape(nil).Append([]byte("Jug"))},
+		{Use: true, Shared: 9},
+		{Body: Fragment{Texts: html("<li>", "</li>"), Holes: []Hole{{Kind: Child, Block: 0}}}},
+		{Use: true, Shared: 8, Snippets: []Snippet{{"children", []int{1}}}},
+		{Use: true, Shared: 7, Snippets: []Snippet{{"children", []int{4}}}},
+		{
+			Body: Fragment{
+				Texts: html("<h1>Jug</h1>", "", "x\x00y"),
+				Holes: []Hole{{Kind: Child, Block: 2}, {Kind: Island, Text: []byte(`{"id":"src/c.island.svelte"}`)}},
+			},
+			Head:  Fragment{Texts: html(`<meta name="description" content="d">`)},
+			Title: []byte("<title>Jug</title>"),
+		},
 	}}
 }
 
 func TestRoundTrip(t *testing.T) {
 	r := sample()
-	back, err := Decode(r.Encode())
+	data := r.Encode()
+	back, err := Decode(data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(back, r) {
-		t.Errorf("\n got %+v\nwant %+v", back, r)
+	// What has no texts comes back with one empty text: compare what is
+	// written.
+	if again := back.Encode(); string(again) != string(data) {
+		t.Errorf("not the same after a round trip:\n got %+v\nwant %+v", back, r)
 	}
 	if err := back.Check(); err != nil {
 		t.Error(err)
 	}
-	if got := back.Blocks[3].Snippet("foot"); !reflect.DeepEqual(got, []int{4}) {
-		t.Errorf("snippet foot: %v", got)
+	page := back.Blocks[4]
+	if string(page.Title) != "<title>Jug</title>" || string(page.Body.Texts[2]) != "x\x00y" || page.Body.Holes[1].Kind != Island || !back.Blocks[1].Head.Empty() {
+		t.Errorf("the page: %+v", page)
+	}
+	if got := back.Blocks[2].Snippet([]byte("children")); !reflect.DeepEqual(got, []int{1}) {
+		t.Errorf("snippet children: %v", got)
 	}
 }
 
@@ -56,12 +78,12 @@ func TestDecodeDamaged(t *testing.T) {
 
 func TestCheck(t *testing.T) {
 	cases := map[string]func(r *Record){
-		"shown at two places": func(r *Record) { r.Blocks[0].Children = []int{1, 1} },
-		"shown nowhere":       func(r *Record) { r.Blocks[3].Snippets = r.Blocks[3].Snippets[:1] },
-		"a circle":            func(r *Record) { r.Blocks[2].Children = []int{0} },
-		"no such block":       func(r *Record) { r.Blocks[0].Children = []int{9} },
+		"shown at two places": func(r *Record) { r.Blocks[1].Body.Holes[0].Block = 2 },
+		"shown nowhere":       func(r *Record) { r.Blocks[3].Snippets = nil },
+		"a circle":            func(r *Record) { r.Blocks[1].Body.Holes[0].Block = 4 },
+		"no such block":       func(r *Record) { r.Blocks[4].Body.Holes[0].Block = 9 },
 		"no top":              func(r *Record) { r.Top = 9 },
-		"a head shown twice":  func(r *Record) { r.Blocks[0].Title = []int{5} },
+		"texts and holes":     func(r *Record) { r.Blocks[4].Body.Texts = r.Blocks[4].Body.Texts[:1] },
 	}
 	for name, damage := range cases {
 		r := sample()

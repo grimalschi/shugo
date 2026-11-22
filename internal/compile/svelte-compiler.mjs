@@ -1,7 +1,7 @@
 import { createInterface } from 'node:readline';
 import { createRequire } from 'node:module';
 
-const { compile, VERSION } = await import('svelte/compiler').catch((error) => {
+const { compile, compileModule, VERSION } = await import('svelte/compiler').catch((error) => {
   throw new Error(`install svelte@${wanted} in this Shugo project to compile .island.svelte files`, { cause: error });
 });
 if (VERSION !== wanted) throw new Error(`Shugo islands use Svelte ${wanted}: this project has ${VERSION}`);
@@ -15,11 +15,16 @@ const parseGenerated = (source) => requireFromSvelte('acorn').parse(source, {
 const serverMaps = new Map();
 
 for await (const line of createInterface({ input: process.stdin })) {
-  const { filename, source, lower } = JSON.parse(line);
+  const { filename, source, lower, module } = JSON.parse(line);
   let result;
   try {
     if (lower) {
       result = { program: lowerIsland(source, parseGenerated) };
+    } else if (module) {
+      // A module with runes, .svelte.js, or .svelte.ts without its types.
+      const client = compileModule(source, { filename, generate: 'client' });
+      const server = compileModule(source, { filename, generate: 'server' });
+      result = { client: client.js.code, server: server.js.code, css: '', warnings: client.warnings.map(diagnostic) };
     } else {
       const options = { filename, css: 'external' };
       const client = compile(source, { ...options, generate: 'client' });

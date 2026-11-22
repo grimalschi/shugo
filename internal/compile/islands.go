@@ -18,7 +18,7 @@ import (
 	"github.com/grimalschi/shugo/internal/project"
 	"github.com/grimalschi/shugo/internal/skeleton"
 	"github.com/grimalschi/shugo/internal/sourcemap"
-	"github.com/grimalschi/shugo/internal/syntax"
+	"github.com/grimalschi/shugo/internal/svelte"
 )
 
 //go:embed svelte-compiler.mjs
@@ -58,7 +58,7 @@ func startSvelte(p *project.Project) (*svelteProcess, error) {
 	if p.Runtime() != "bun" {
 		args = append(args, "--input-type=module")
 	}
-	code := fmt.Sprintf("const wanted = %q;\n", syntax.SvelteVersion) + islandCompiler + "\n" + svelteCompiler
+	code := fmt.Sprintf("const wanted = %q;\n", svelte.Version) + islandCompiler + "\n" + svelteCompiler
 	args = append(args, "--eval", code)
 	s := &svelteProcess{cmd: exec.Command(p.Runtime(), args...), modules: map[string]svelteModule{}}
 	s.cmd.Dir = p.Root
@@ -89,7 +89,9 @@ func (s *svelteProcess) close() {
 	}
 }
 
-func (s *svelteProcess) compile(path, source string) (svelteModule, error) {
+// compile compiles a component, or a module with runes when module is set,
+// for the browser and for the server.
+func (s *svelteProcess) compile(path, source string, module bool) (svelteModule, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.failed != nil {
@@ -98,20 +100,21 @@ func (s *svelteProcess) compile(path, source string) (svelteModule, error) {
 	if result, known := s.modules[path]; known {
 		return result, nil
 	}
-	result, err := s.ask(path, source, false)
+	result, err := s.ask(path, source, false, module)
 	if err == nil {
 		s.modules[path] = result
 	}
 	return result, err
 }
 
-func (s *svelteProcess) ask(path, source string, lower bool) (svelteModule, error) {
+func (s *svelteProcess) ask(path, source string, lower, module bool) (svelteModule, error) {
 	var result svelteModule
 	err := s.request.Encode(struct {
 		Filename string `json:"filename"`
 		Source   string `json:"source"`
-		Lower    bool   `json:"lower"`
-	}{path, source, lower})
+		Lower    bool   `json:"lower,omitempty"`
+		Module   bool   `json:"module,omitempty"`
+	}{path, source, lower, module})
 	if err == nil {
 		err = s.response.Decode(&result)
 	}
@@ -142,25 +145,28 @@ type islandOutput struct {
 func (b *builder) buildIslands() (*islandOutput, error) {
 	roots := map[string]bool{}
 	for _, u := range b.units {
-		for _, binding := range u.islands {
-			name := binding.path
+		for _, island := range u.Facts.Islands {
+			name := island.Source
+			errorf := func(format string, arguments ...any) error {
+				return Errors{{Path: u.path, Line: 1, Column: 1, Message: fmt.Sprintf(format, arguments...)}}
+			}
 			var path string
 			switch {
 			case strings.HasPrefix(name, "@/"):
 				path = b.project.Path(project.Source, filepath.FromSlash(name[2:]))
 			case strings.HasPrefix(name, "./"), strings.HasPrefix(name, "../"):
-				path = b.project.Path(filepath.Dir(u.file.Path), filepath.FromSlash(name))
+				path = b.project.Path(filepath.Dir(u.path), filepath.FromSlash(name))
 			default:
-				return nil, u.file.Errorf(0, "import the island %q using a relative path or @/ from src/", name)
+				return nil, errorf("import the island %q using a relative path or @/ from src/", name)
 			}
 			rel := b.relative(path)
 			if !strings.HasPrefix(rel, project.Source+"/") {
-				return nil, u.file.Errorf(0, "the island %q must be inside src/", name)
+				return nil, errorf("the island %q must be inside src/", name)
 			}
 			if _, err := os.Stat(path); err != nil {
-				return nil, u.file.Errorf(0, "the island %q could not be read: %v", name, err)
+				return nil, errorf("the island %q could not be read: %v", name, err)
 			}
-			roots[rel] = roots[rel] || binding.request
+			roots[rel] = roots[rel] || island.Request
 		}
 	}
 	if len(roots) == 0 {
@@ -279,6 +285,9 @@ func (b *builder) sveltePlugin(compiler *svelteProcess, entries map[string]strin
 		build.OnLoad(api.OnLoadOptions{Filter: `\.svelte$`, Namespace: "file"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
 			return b.svelteLoad(compiler, args.Path, client)
 		})
+		build.OnLoad(api.OnLoadOptions{Filter: `\.svelte\.(js|ts)$`, Namespace: "file"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
+			return b.svelteLoad(compiler, args.Path, client)
+		})
 		if !client {
 			build.OnLoad(api.OnLoadOptions{Filter: `\.css$`, Namespace: "file"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
 				empty := ""
@@ -298,7 +307,17 @@ func (b *builder) svelteLoad(compiler *svelteProcess, path string, client bool) 
 		return api.OnLoadResult{}, err
 	}
 	source := string(data)
-	compiled, err := compiler.compile(rel, source)
+	// A module with runes: Svelte reads JavaScript alone, so a .svelte.ts
+	// file loses its types first.
+	module := !strings.HasSuffix(path, ".svelte")
+	if strings.HasSuffix(path, ".svelte.ts") {
+		stripped := api.Transform(source, api.TransformOptions{Loader: api.LoaderTS, Target: api.ESNext, Sourcefile: rel, LogLevel: api.LogLevelSilent})
+		if len(stripped.Errors) > 0 {
+			return api.OnLoadResult{Errors: stripped.Errors}, nil
+		}
+		source = string(stripped.Code)
+	}
+	compiled, err := compiler.compile(rel, source, module)
 	if err != nil {
 		return api.OnLoadResult{}, err
 	}
@@ -376,7 +395,7 @@ func islandWarnings(messages []api.Message) []string {
 			warnings = append(warnings, m.Text)
 		} else {
 			at := m.Location
-			warnings = append(warnings, (&syntax.Error{Path: at.File, Line: at.Line, Column: at.Column + 1, Message: m.Text}).Error())
+			warnings = append(warnings, (&Error{Path: at.File, Line: at.Line, Column: at.Column + 1, Message: m.Text}).Error())
 		}
 	}
 	return warnings
@@ -428,7 +447,7 @@ func (b *builder) islandPrograms(compiler *svelteProcess, paths []string, reques
 		if !ok {
 			return fmt.Errorf("%s: request-time island component was not compiled by Svelte", path)
 		}
-		lowered, err := compiler.ask(path, source.Server, true)
+		lowered, err := compiler.ask(path, source.Server, true, false)
 		if err != nil {
 			return err
 		}
@@ -438,7 +457,7 @@ func (b *builder) islandPrograms(compiler *svelteProcess, paths []string, reques
 				if origin, err := sourcemap.Parse(lowered.SourceMap); err == nil {
 					_, line, column, found := origin.Find(diagnostic.Line-1, diagnostic.Column)
 					if found {
-						return Errors{&syntax.Error{
+						return Errors{&Error{
 							Path: path, Line: line + 1, Column: column + 1,
 							Message: "request-time island: " + diagnostic.Message,
 						}}

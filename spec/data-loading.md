@@ -21,7 +21,7 @@ Pages, layouts, components, `getStaticPaths` and `GET` modules functions among p
 
 Each answer line remembers which columns are read in the page code, in the template, in the functions to which it was passed, in the components. It depends on what is calculated after changing the line: [Change tracking](../docs/change-tracking.md).
 
-Data code and template expressions are executed in one process. Therefore, everything that is in the code is available in the template: functions, dates, `Map`, classes. In Go, only ready-made expression values are left - text.
+The data code and template expressions are executed in one process. Therefore, everything that is in the code is available in the template: functions, dates, `Map`, classes. In Go, only the finished HTML, which was rendered by Svelte, is left.
 
 ### Where to ask
 

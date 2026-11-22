@@ -16,12 +16,11 @@ import (
 	"github.com/grimalschi/shugo/internal/store"
 )
 
-// A site of two templates: a page with text and a component, and a leaf
-// with text.
+// A site of two templates: a page, and a leaf that the page shows.
 var site = &skeleton.Site{
 	Files: []skeleton.File{
-		{Path: "page.svelte", Parts: [][]skeleton.Op{{{Kind: skeleton.Text}, {Kind: skeleton.Call}}}},
-		{Path: "leaf.svelte", Parts: [][]skeleton.Op{{{Kind: skeleton.Text}}}},
+		{Path: "page.svelte"},
+		{Path: "leaf.svelte", Shared: true},
 	},
 	Routes: []skeleton.Route{
 		{File: 0, Pattern: "/special", Segments: []skeleton.Segment{{Text: "special"}}},
@@ -36,28 +35,28 @@ func frame(kind byte, body string) []byte {
 	return append(append(out, kind), body...)
 }
 
-// What the JavaScript side sends for a page with a leaf inside it.
+// What the JavaScript side sends for a page with a leaf inside it: one
+// block of HTML, with no head and no title.
 func pageRecord(path, text string) string {
 	return "p\x02" + path + "\x021\x020\x02" +
-		"\x01b\x020\x020\x021\x02\x02\x02\x02\x00" + text +
-		"\x01b\x021\x020\x02\x02\x02\x02\x02\x00leaf"
+		"\x01b\x02" + text + "<leaf>\x02\x02"
 }
 
-// The same page showing a shared block in place of its own leaf.
+// The same page showing a shared block in place of its own leaf: a hole
+// for block 1, which is the use of the shared block.
 func pageWith(path, text, shared string) string {
 	return "p\x02" + path + "\x021\x020\x02" +
-		"\x01b\x020\x020\x021\x02\x02\x02\x02\x00" + text +
+		"\x01b\x02" + text + "\x00c1\x00\x02\x02" +
 		"\x01u\x02" + shared + "\x02"
 }
 
-// A shared block: a leaf, or a page of the first template that shows
-// another shared block.
+// A shared block: a leaf, or a block that shows another shared block.
 func leafRecord(name, text string) string {
-	return "s\x02" + name + "\x020\x020\x02\x01b\x021\x020\x02\x02\x02\x02\x02\x00" + text
+	return "s\x02" + name + "\x020\x020\x02\x01b\x02" + text + "\x02\x02"
 }
 
 func wrapRecord(name, text, shared string) string {
-	return "s\x02" + name + "\x020\x020\x02\x01b\x020\x020\x021\x02\x02\x02\x02\x00" + text + "\x01u\x02" + shared + "\x02"
+	return "s\x02" + name + "\x020\x020\x02\x01b\x02" + text + "\x00c1\x00\x02\x02\x01u\x02" + shared + "\x02"
 }
 
 // A lab is a store with updates run against it by hand.
@@ -224,7 +223,7 @@ func TestCompute(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Computed.Pages != 2 || report.Pages.Added != 2 || report.Pages.Total != 2 || report.Blocks != 4 || report.Render != 2 {
+	if report.Computed.Pages != 2 || report.Pages.Added != 2 || report.Pages.Total != 2 || report.Blocks != 2 || report.Render != 2 {
 		t.Errorf("report: %+v", report)
 	}
 }
@@ -233,6 +232,7 @@ func TestCompute(t *testing.T) {
 // result is an error and nothing else.
 func TestComputeRejects(t *testing.T) {
 	good := pageRecord("/", "home")
+	withShared := pageWith("/", "home", "leaf{}")
 	done := string(frame('D', ""))
 	cases := map[string][]byte{
 		"a cut header":                     frame('R', good)[:3],
@@ -247,19 +247,18 @@ func TestComputeRejects(t *testing.T) {
 		"an address without /":             frame('R', pageRecord("about", "x")),
 		"an address with ..":               frame('R', pageRecord("/a/../b", "x")),
 		"a page twice":                     frame('R', good+"\x03"+good),
-		"an unknown template":              frame('R', strings.Replace(good, "b\x021\x020", "b\x027\x020", 1)),
-		"an unknown part":                  frame('R', strings.Replace(good, "b\x021\x020", "b\x021\x025", 1)),
-		"a child that is not":              frame('R', strings.Replace(good, "\x021\x02\x02\x02\x02\x00home", "\x024\x02\x02\x02\x02\x00home", 1)),
-		"a child twice":                    frame('R', strings.Replace(good, "\x021\x02\x02\x02\x02\x00home", "\x021,1\x02\x02\x02\x02\x00home", 1)),
-		"a block shown nowhere":            frame('R', good+"\x01b\x021\x020\x02\x02\x02\x02\x02\x00orphan"),
-		"values that do not fit":           frame('R', strings.Replace(good, "\x00home", "\x00home\x00more", 1)),
-		"no values":                        frame('R', strings.Replace(good, "\x00home", "", 1)),
-		"values without their mark":        frame('R', strings.Replace(good, "\x00home", "home", 1)),
-		"a damaged escape":                 frame('R', strings.Replace(good, "\x00home", "\x00ho\x04Ze", 1)),
-		"an escape cut short":              frame('R', strings.Replace(good, "\x00home", "\x00home\x04", 1)),
-		"a negative child":                 frame('R', strings.Replace(good, "\x021\x02\x02\x02\x02\x00home", "\x02-1\x02\x02\x02\x02\x00home", 1)),
-		"damaged snippets":                 frame('R', strings.Replace(good, "\x021\x02\x02\x02\x02\x00home", "\x021\x02\x02\x02=\x02\x00home", 1)),
-		"damaged heads":                    frame('R', strings.Replace(good, "\x021\x02\x02\x02\x02\x00home", "\x021\x02x\x02\x02\x02\x00home", 1)),
+		"a child that is not":              frame('R', strings.Replace(withShared, "\x00c1\x00", "\x00c4\x00", 1)),
+		"a child twice":                    frame('R', strings.Replace(withShared, "\x00c1\x00", "\x00c1\x00and\x00c1\x00", 1)),
+		"a negative child":                 frame('R', strings.Replace(withShared, "\x00c1\x00", "\x00c-1\x00", 1)),
+		"a block shown nowhere":            frame('R', good+"\x01b\x02orphan\x02\x02"),
+		"a hole of no kind":                frame('R', strings.Replace(withShared, "\x00c1\x00", "\x00x1\x00", 1)),
+		"an empty hole":                    frame('R', strings.Replace(withShared, "\x00c1\x00", "\x00\x00", 1)),
+		"a hole without its text after":    frame('R', strings.Replace(withShared, "\x00c1\x00", "\x00c1", 1)),
+		"a block without its title":        frame('R', strings.Replace(good, "<leaf>\x02\x02", "<leaf>\x02", 1)),
+		"a damaged escape":                 frame('R', strings.Replace(good, "home", "ho\x04Ze", 1)),
+		"an escape cut short":              frame('R', strings.Replace(good, "home", "home\x04", 1)),
+		"damaged snippets":                 frame('R', withShared+"="),
+		"a snippet of no block":            frame('R', withShared+"children=9"),
 		"a shared block of a use":          frame('R', "s\x02name\x020\x020\x02\x01u\x02other\x02"),
 		"a damaged error":                  frame('E', "{"),
 		"a message of a gigabyte+":         {0xff, 0xff, 0xff, 0x7f, 'R'},

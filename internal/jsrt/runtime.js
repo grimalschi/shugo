@@ -1,8 +1,8 @@
-// The JavaScript side of Shugo. The code generated from templates calls this
-// library while it computes pages: it runs the scripts of pages and
-// components, collects the value of every expression in the order of the
-// template, and hands the result to the Go side, which keeps it and builds
-// HTML from it. No markup is produced here.
+// The JavaScript side of Shugo. Svelte renders the pages: the code its
+// compiler made of the templates runs here, on the server runtime of Svelte
+// that Shugo ships. This side cuts what Svelte renders into blocks, so that
+// what many pages show is computed and kept once, and hands the blocks to the
+// Go side, which keeps them and puts the pages together.
 //
 // The Go side leads. It asks which pages the project has, then names the
 // pages and the shared blocks to compute; this side answers each request and
@@ -12,11 +12,17 @@
 
 import { readFileSync } from "node:fs";
 
+import { getAllContexts } from "svelte";
+import { render } from "svelte/server";
+
 import { during, open, Query, Reads } from "shugo:query";
 import { buildChannel } from "shugo:wire";
 
 // The data database of the project, once it is open; null if it has none.
 let data = null;
+
+// The skeleton of the site: its files and its routes.
+let site = null;
 
 // Search results are ordinary view data. Keep their source out of the JSON
 // so the same result can be used in a static template or a request binding.
@@ -28,11 +34,58 @@ export function requestSource(value, source) {
 }
 
 // ---------------------------------------------------------------------------
+// Marks
+//
+// Svelte renders a page as one text. Where a shared block stands in it is
+// marked in the text, and so is the raw HTML of {@html}: with marks that no
+// page can write, a byte 0, a word chosen at random for the run, what the
+// mark says and a byte 0 again.
+//
+//   c3      use 3 of the record stands here: a shared block, see use
+//   gname   what the place that shows this shared block gave it as name
+//   i2      island 2 of the record
+//   [ ]     the HTML of {@html} starts, and ends
+//   h       what goes into the <head> ends; the <title> follows
+//
+// The word comes from the crypto of the web, which Bun and Node both have at
+// hand; node:crypto takes Bun milliseconds to load.
+const word = Buffer.from(crypto.getRandomValues(new Uint8Array(12))).toString("base64url");
+const mark = (what) => "\0" + word + what + "\0";
+const marks = new RegExp("\0" + word + "([^\0]*)\0");
+const headEnd = mark("h");
+
+// The comments Svelte writes for the browser, to hydrate the page with: a
+// static page has no use for them. Svelte 5.59 writes <!----> between texts
+// and around {@html}; <!--[-->, <!--[!-->, <!--[1-->, <!--[-1--> and
+// <!--]--> around blocks; <!--$s1--> for $props.id(); the hash of a
+// component around what it gives the head; and <!> at the end of a <select>
+// or an <option> whose content is more than text. A comment the page writes
+// itself, with {@html}, stays.
+const comments = /<!--(?:\[(?:!|-?\d+)?|\]|\$[\w-]*|[a-z0-9]*)-->|<!>/g;
+
+// rendered renders with Svelte what show writes, and returns its HTML, what
+// it gives the head and the <title> among that, each as Svelte wrote it,
+// marks and all.
+function rendered(show, options) {
+  const { head, body } = render(Rendered, { props: { show }, ...options });
+  const end = head.lastIndexOf(headEnd);
+  return { body, head: head.slice(0, end), title: head.slice(end + headEnd.length) };
+}
+
+// Rendered is what every render starts from: what it is to show, then a
+// mark where what that gave the head ends. Svelte writes the <title> after
+// the head.
+function Rendered($$renderer, { show }) {
+  show($$renderer);
+  $$renderer.head(($$renderer) => $$renderer.push(headEnd));
+}
+
+// ---------------------------------------------------------------------------
 // What is computed
 
 // A record is everything computed for one page, or for one shared block: its
-// blocks in the order they were started. Blocks of a record name each other
-// by their place in it.
+// blocks, made as what Svelte rendered is read. Blocks of a record name each
+// other by their place in it.
 class Record {
   constructor(kind, key, route) {
     this.kind = kind; // "p" for a page, "s" for a shared block
@@ -40,72 +93,233 @@ class Record {
     this.route = route; // the route of a page, by its place among the routes
     this.blocks = [];
     this.top = 0;
+    // The shared blocks marked while Svelte renders, { name, snippets }, and
+    // the islands, in JSON. A render that Svelte does again, as it does
+    // for bind:, leaves some of them unmarked: only what is marked in the
+    // end becomes a block.
+    this.uses = [];
+    this.islands = [];
     // What was asked of the data database on the way. The rows it gave note
     // what is read of them until the record is complete: see encode.
     this.reads = new Reads();
   }
 
-  // A block is one template being shown: a page, a layout, a component, or
-  // a snippet (a part of the template it is written in). A block of a
-  // template keeps the blocks of what its <svelte:head> gives the head of
-  // the page, and of the <title> in it.
-  block(file, part) {
-    const block = { index: this.blocks.length, file, part, values: [], children: [], head: [], title: [], snippets: null, shared: null };
+  // A block is what Svelte rendered: HTML, what it gives the head of the
+  // page and the <title> among that; or a use, which stands for a shared
+  // block. HTML is a fragment, see fragment.
+  block() {
+    const block = { index: this.blocks.length, shared: null, snippets: null, body: [""], head: [""], title: "" };
     this.blocks.push(block);
     return block;
   }
 
-  // A use stands where a shared block is shown, and names it. The shared
-  // block is kept once; the snippets this place gave it are kept here.
-  use(shared, snippets) {
-    const block = this.block(-1, 0);
-    block.shared = shared;
-    block.snippets = snippets;
-    return block;
+  // render renders show with Svelte and keeps what it rendered as a block.
+  // idPrefix starts the ids of $props.id().
+  render(show, idPrefix) {
+    const { body, head, title } = rendered(show, { idPrefix });
+    const block = this.block();
+    block.body = this.fragment(body);
+    block.head = this.fragment(head);
+    block.title = title;
+    return block.index;
+  }
+
+  // use makes the block that stands where a shared block is shown, and
+  // names it. The shared block is kept once; the snippets this place gave
+  // it are kept here, a block each.
+  use({ name, snippets }) {
+    const use = this.block();
+    use.shared = name;
+    use.snippets = new Map();
+    for (const snippet of snippets) {
+      const block = this.block();
+      block.body = this.fragment(snippet.body);
+      block.head = this.fragment(snippet.head);
+      block.title = snippet.title;
+      use.snippets.set(snippet.name, [block.index]);
+    }
+    return use;
+  }
+
+  // fragment reads what Svelte rendered: HTML with marks. It takes the
+  // comments of Svelte out of the HTML, outside {@html}, and makes the
+  // blocks of the shared blocks marked in it. A fragment is texts with holes
+  // between them, [text, hole, text, …, text]; a hole is c and the number
+  // of a block, gname or i2.
+  fragment(text) {
+    const parts = text.split(marks);
+    const out = [];
+    let html = "";
+    let raw = false;
+    for (let at = 0; at < parts.length; at++) {
+      const part = parts[at];
+      if (at % 2 === 0) {
+        html += raw ? part : part.replace(comments, "");
+        continue;
+      }
+      switch (part[0]) {
+        case "[":
+          raw = true;
+          break;
+        case "]":
+          raw = false;
+          break;
+        case "c":
+          out.push(html, "c" + this.use(this.uses[Number(part.slice(1))]).index);
+          html = "";
+          break;
+        default:
+          out.push(html, part);
+          html = "";
+      }
+    }
+    out.push(html);
+    return out;
+  }
+
+  // island keeps an island and returns its mark.
+  island(json) {
+    return mark("i" + (this.islands.push(json) - 1));
   }
 }
 
-// A scope is what a template can see around itself.
-//   page      the page being computed: { params, url }; null inside a shared block
-//   snippets  the snippets without parameters the caller gave, computed:
-//             Map of name → blocks; null for none
-//   reads     where the queries to the data database leave their readings
-//   frame     the component being shown: { outer, block } — the frame of its
-//             caller and the block of its template
-//   props     what $props() gives: the parameters and the snippets
+// ---------------------------------------------------------------------------
+// Components
 
-// Writer is "$$" in generated code: it writes the values of one block.
-class Writer {
-  constructor(run, record, block, scope) {
-    this.run = run;
-    this.record = record;
-    this.block = block;
-    this.scope = scope;
-  }
+// The components Svelte compiled from the templates, by their files.
+const components = new Map();
 
-  // $props()
-  props() {
-    return this.scope.props;
-  }
+// component is what a template exports in the bundle: the component Svelte
+// compiled from it, in a function that sees where it is shown. A component
+// that shows the same wherever it stands, for the props it is given, is
+// computed once, as a shared block, and only marked where it stands.
+export function component(file, compiled) {
+  components.set(file, compiled);
+  return function shown($$renderer, props) {
+    const shared = present?.record ? share(file, props) : null;
+    const snippets = shared && apart(shared.given, props);
+    if (!snippets) return compiled($$renderer, props);
+    $$renderer.push(mark("c" + (present.record.uses.push({ name: shared.name, snippets }) - 1)));
+  };
+}
 
-  // {expression}
-  text(value) {
-    this.block.values.push(escape(stringify(value)));
-  }
-
-  // {@html expression}
-  html(value) {
-    this.block.values.push(escape(String(value ?? "")));
-  }
-
-  island(target, props, bound = []) {
-    const request = [];
-    for (const [prop, value] of bound) {
-      const source = requestSources.get(value);
-      if (!source) throw new TypeError(`request:${prop} binds the prop to the results of a search: request:${prop}={search("products", { … })}, with import { search } from "shugo"`);
-      request.push([prop, source]);
+// share tells whether a component is shown as a shared block: its file reads
+// nothing of the page and of the place it stands at, and it is given plain
+// values and snippets without parameters, written inside its tag. The name
+// of the block is its file and those values, and the names of the snippets
+// after "|": components/Card.svelte{"id":"p7"|children}. null: it is not.
+// A prop of bind: is read and written through the component: it is not a
+// value.
+function share(file, props) {
+  const { path, shared } = site.files[file];
+  if (!shared) return null;
+  const slots = props.$$slots;
+  const values = [];
+  const given = [];
+  for (const name of Object.keys(props)) {
+    if (name === "$$slots") continue;
+    const property = Object.getOwnPropertyDescriptor(props, name);
+    if (property.get || property.set) return null;
+    const value = property.value;
+    if (value === undefined) continue;
+    if (typeof value === "function" && slots?.[name === "children" ? "default" : name]) {
+      // A snippet with parameters is rendered where it is shown.
+      if (takesParameters(value)) return null;
+      given.push(name);
+      continue;
     }
-    if (request.length) props = { ...props, ...Object.fromEntries(bound) };
+    const type = typeof value;
+    if (value !== null && type !== "string" && type !== "boolean" && !(type === "number" && Number.isFinite(value))) return null;
+    values.push(name);
+  }
+  return { name: nameOf(path, props, values, given), given };
+}
+
+// takesParameters tells whether a snippet compiled by Svelte takes
+// parameters besides the renderer: function row($$renderer, item = 1).
+// Parameters with default values do not count in the length of a function,
+// so its source is read.
+function takesParameters(snippet) {
+  if (snippet.length > 1) return true;
+  const source = Function.prototype.toString.call(snippet);
+  const open = source.indexOf("(");
+  const arrow = source.indexOf("=>");
+  if (open < 0 || (arrow >= 0 && arrow < open)) return false; // $$renderer => …
+  return /^\s*[\w$]+\s*,/.test(source.slice(open + 1));
+}
+
+// apart renders the snippets a place gives a shared block, each as a render
+// of its own: a snippet without parameters shows the same wherever the
+// shared block shows it. It sees the context of the place. null when one
+// cannot be rendered apart: it fails where the shared block would not show
+// it, or it calls $props.id(), whose ids count what was rendered before them
+// on the page. Then the component is rendered in place, with its snippets,
+// as Svelte renders them.
+function apart(names, props) {
+  const out = [];
+  for (const name of names) {
+    let snippet;
+    try {
+      snippet = rendered(($$renderer) => props[name]($$renderer), { context: getAllContexts() });
+    } catch {
+      return null;
+    }
+    if (snippet.body.includes("<!--$") || snippet.head.includes("<!--$")) return null;
+    out.push({ name, ...snippet });
+  }
+  return out;
+}
+
+// nameOf names a shared block. Props in another order are the same props.
+// JSON writes every control character as an escape, so a name never holds
+// one of the separators of the wire.
+function nameOf(path, props, values, given) {
+  const key = values.sort().map((name) => JSON.stringify(name) + ":" + JSON.stringify(props[name])).join(",");
+  return path + "{" + key + (given.length > 0 ? "|" + given.sort().join(",") : "") + "}";
+}
+
+// unnamed reads a name that nameOf wrote. The names of the snippets follow
+// the last "|" and are names of JavaScript; a "|" inside a prop is followed
+// by the quote that closes its text at the least.
+function unnamed(name) {
+  const start = name.indexOf("{");
+  let inside = name.slice(start + 1, -1);
+  let given = [];
+  const bar = inside.lastIndexOf("|");
+  if (bar >= 0 && /^[\p{ID_Continue}$,]*$/u.test(inside.slice(bar + 1))) {
+    given = inside.slice(bar + 1).split(",").filter((one) => one !== "");
+    inside = inside.slice(0, bar);
+  }
+  return { path: name.slice(0, start), props: JSON.parse("{" + inside + "}"), given };
+}
+
+// givenBy stands, inside a shared block, for a snippet that the place that
+// shows the block gave it: the place rendered the snippet, and the Go side
+// puts it here. The snippet takes no parameters, so what the shared block
+// passes it changes nothing, as in Svelte.
+function givenBy(name) {
+  return ($$renderer) => $$renderer.push(mark("g" + name));
+}
+
+// island is what a template imports of an island: a component that renders
+// the island with the Svelte of the project and marks it in the page. The Go
+// side writes it with what hydrates it in the browser.
+export function island(target) {
+  return function shown($$renderer, given) {
+    const props = {};
+    const request = {};
+    for (const name in given) {
+      if (name === "$$slots") continue;
+      if (!name.startsWith("request:")) {
+        props[name] = given[name];
+        continue;
+      }
+      const prop = name.slice("request:".length);
+      const source = requestSources.get(given[name]);
+      if (!source) throw new TypeError(`request:${prop} binds the prop to the results of a search: request:${prop}={search("products", { … })}, with import { search } from "shugo"`);
+      request[prop] = source;
+      props[prop] = given[name];
+    }
     // Normalize before SSR so the browser hydrates with the same values.
     const serial = JSON.stringify(props, (_, value) => {
       if (typeof value === "function" || typeof value === "symbol") {
@@ -113,191 +327,20 @@ class Writer {
       }
       return value;
     });
-    const normalized = JSON.parse(serial);
-    const { body, head } = target.render(normalized);
+    const { body, head } = target.render(JSON.parse(serial));
     if (head) throw new Error("Put the island’s head elements in its Shugo page");
-    this.block.values.push(escape(JSON.stringify({
+    $$renderer.push(present.record.island(JSON.stringify({
       id: target.id, url: target.url, css: target.css,
-      request: request.length ? Object.fromEntries(request) : undefined,
+      request: Object.keys(request).length > 0 ? request : undefined,
       props: JSON.parse(serial), body,
     })));
-  }
-
-  // "text {expression}": an expression inside the value of an attribute.
-  str(value) {
-    return stringify(value);
-  }
-
-  // name={expression}: "-" for no attribute, "+" for one written without a
-  // value, "=" and the value.
-  attr(name, value, boolean) {
-    this.block.values.push(attributeOf(name, value, boolean));
-  }
-
-  // class={…} with class: directives and the class that scopes the styles
-  // of the component.
-  cls(value, hash, directives) {
-    return to_class(clsx(value), hash || null, directives);
-  }
-
-  // style={…} with style: directives, [normal, !important].
-  sty(value, directives) {
-    return to_style(value, directives);
-  }
-
-  // Every attribute of an element with {...attributes}: their number, then
-  // the name and the value of each. For a <select>, value is not written: it
-  // is returned, to choose an option.
-  spread(attributes, hash, classes, styles, preserve, select) {
-    let chosen;
-    if (select) {
-      chosen = attributes.value;
-      delete attributes.value;
-    }
-    const pairs = spreadOf(attributes, hash || null, classes, styles, preserve);
-    this.block.values.push(pairs.length / 2, ...pairs);
-    return chosen;
-  }
-
-  // Which branch of {#if} … {:else} was taken, from 1; 0 for none.
-  branch(number) {
-    this.block.values.push(number);
-  }
-
-  // {#each}: the number of items goes before the items, and is known after them.
-  loop() {
-    return this.block.values.push(0) - 1;
-  }
-
-  count(at, items) {
-    this.block.values[at] = items;
-  }
-
-  items(list) {
-    return ensure_array_like(list);
-  }
-
-  // {#await value}: a promise is not waited for on a server.
-  pending(value) {
-    return typeof value?.then === "function";
-  }
-
-  // <svelte:element this={tag}>: "" shows nothing.
-  tag(name) {
-    if (!name) {
-      this.block.values.push("");
-      return "";
-    }
-    const tag = String(name);
-    if (!/^[a-zA-Z][a-zA-Z0-9:._-]*$/.test(tag)) throw new TypeError(`<svelte:element this={…}> needs the name of a tag, got ${describe(name)}`);
-    this.block.values.push(tag);
-    return tag;
-  }
-
-  void(tag) {
-    return VOID.has(tag.toLowerCase());
-  }
-
-  // Whether an <option> is the one its <select> has as its value.
-  selected(value, chosen) {
-    return Array.isArray(chosen) ? chosen.includes(value) : value === chosen;
-  }
-
-  // <Component prop={…}>children{#snippet name()}…{/snippet}</Component>.
-  // The snippets without parameters written inside the tag come as [name,
-  // part, body].
-  call(target, props, given) {
-    if (typeof target?.id === "string" && typeof target.url === "string" && typeof target.render === "function") {
-      throw new TypeError("a Svelte island must be rendered by its imported tag");
-    }
-    if (target === null || typeof target !== "object" || typeof target.render !== "function") {
-      throw new TypeError(`this tag is not a component: it is ${describe(target)}. Import a Svelte component, for example import Card from "./Card.svelte"`);
-    }
-    // What stands inside the tag is computed here, in the template that
-    // wrote it, whether or not the component shows it.
-    let snippets = null;
-    if (given.length > 0) {
-      snippets = new Map();
-      for (const [name, part, body] of given) {
-        const block = this.record.block(this.block.file, part);
-        body(new Writer(this.run, this.record, block, this.scope));
-        snippets.set(name, [block.index]);
-      }
-    }
-    this.block.children.push(this.run.show(this.record, target, props, snippets, this.scope));
-  }
-
-  // {#snippet name(parameters)}: a snippet that is computed where it is rendered.
-  snippet(part, body) {
-    return snippetOf({ kind: "live", file: this.block.file, part, body, scope: this.scope });
-  }
-
-  // {@render snippet(…)}
-  render(snippet, args, optional) {
-    const values = this.block.values;
-    if (snippet == null && optional) {
-      values.push("-");
-      return;
-    }
-    if (optional) args = args();
-    const info = snippet?.[SNIPPET];
-    if (info === undefined) throw new TypeError(`{@render …} shows a snippet, and this is ${describe(snippet)}`);
-    if (info.kind === "given") {
-      // What a caller gave stays with the caller: the Go side shows it
-      // from there.
-      if (args.length > 0) throw new TypeError(`the snippet ${info.name} takes no parameters`);
-      values.push(`f${depth(this.scope.frame, info.frame)}:${info.name}`);
-      return;
-    }
-    const block = this.record.block(info.file, info.part);
-    info.body(new Writer(this.run, this.record, block, info.scope), ...args);
-    this.block.children.push(block.index);
-    values.push(`c${depth(this.scope.frame, info.scope.frame)}`);
-  }
-
-  // <svelte:head> of a page or a layout, under "head", and a <title> in it,
-  // under "title": markup for the <head> of the page. It stays with the
-  // block of the template; the Go side puts the head of the page together.
-  provide(name, part, body) {
-    const block = this.record.block(this.block.file, part);
-    body(new Writer(this.run, this.record, block, this.scope));
-    this.scope.frame.block[name].push(block.index);
-  }
-}
-
-// depth counts the components between two frames: how many levels out from
-// the first the second is.
-function depth(from, to) {
-  let levels = 0;
-  for (let frame = from; frame !== to; frame = frame.outer) {
-    if (frame === null) throw new Error("a snippet is shown outside of the component it belongs to. This should not happen: please report it");
-    levels++;
-  }
-  return levels;
-}
-
-// A snippet is a function, as in Svelte, that can only be shown with
-// {@render}. What it is lies under SNIPPET: { kind: "given", name, frame }
-// for a snippet without parameters that a caller gave a component, computed
-// already and kept in the caller's record; { kind: "live", file, part, body,
-// scope } for one that is computed where it is rendered.
-const SNIPPET = Symbol("snippet");
-
-function snippetOf(info) {
-  const snippet = () => {
-    throw new TypeError("a snippet is shown with {@render snippet()}, not called");
   };
-  snippet[SNIPPET] = info;
-  return snippet;
 }
 
-// propsOf gives a component its parameters with the snippets its caller
-// wrote inside its tag.
-function propsOf(props, snippets, frame) {
-  if (snippets === null) return props;
-  const out = { ...props };
-  for (const name of snippets.keys()) out[name] = snippetOf({ kind: "given", name, frame });
-  return out;
+// html is {@html …} of Svelte for the templates of the project: the markup
+// as it is, between marks, so that the comments in it stay.
+export function html(value) {
+  return mark("[") + String(value ?? "") + mark("]");
 }
 
 // ---------------------------------------------------------------------------
@@ -308,10 +351,11 @@ function propsOf(props, snippets, frame) {
 // What they answer depends on what is being computed: present is the page or
 // shared block being computed, or the list of pages of a route. Nothing
 // waits, so one computation runs at a time.
-//   reads  where its queries leave their readings
-//   page   the page: { params, path, route, origin, url }; null in a block
-//          kept once for all pages, and while a list of pages is made
-//   route  the route whose list of pages is made; null otherwise
+//   reads   where its queries leave their readings
+//   page    the page: { params, path, route, origin, url }; null in a block
+//           kept once for all pages, and while a list of pages is made
+//   route   the route whose list of pages is made; null otherwise
+//   record  the record of the page or of the shared block; null otherwise
 let present = null;
 
 // computing runs compute as the given computation.
@@ -382,253 +426,6 @@ function pageNow(what) {
   throw new Error(`${what} is read while nothing is computed: read it in a page or a component, or in a function they call`);
 }
 
-// The runes of Svelte as a server sees them: state is the value it starts
-// with, derived values are computed once, effects never run.
-export function $state(value) {
-  return value;
-}
-$state.raw = (value) => value;
-$state.snapshot = (value) => value;
-export function $derived(value) {
-  return value;
-}
-$derived.by = (compute) => compute();
-export function $effect() {}
-$effect.pre = () => {};
-$effect.root = () => () => {};
-$effect.tracking = () => false;
-$effect.pending = () => 0;
-export function $bindable(fallback) {
-  return fallback;
-}
-export function $inspect() {
-  return { with() {} };
-}
-$inspect.trace = () => {};
-export function $host() {
-  throw new Error("$host() works in custom elements, which a static site does not have");
-}
-
-// ---------------------------------------------------------------------------
-// Values
-//
-// What a value gives in the page is decided by the rules of the server
-// renderer of Svelte 5.59, taken as they are: stringify, attr, clsx, to_class,
-// to_style, attributes and ensure_array_like come from Svelte (MIT license,
-// © Svelte contributors), clsx from Luke Edwards' clsx (MIT license). The Go
-// side escapes what these give.
-
-// The Go side splits what it receives by the characters 0 to 3. Inside a
-// value they come escaped, as 4 and the character plus 0x40, and so does 4.
-const special = /[\x00-\x04]/;
-const everySpecial = /[\x00-\x04]/g;
-
-function escape(text) {
-  return special.test(text) ? text.replace(everySpecial, (c) => "\x04" + String.fromCharCode(0x40 + c.charCodeAt(0))) : text;
-}
-
-function stringify(value) {
-  return typeof value === "string" ? value : value == null ? "" : value + "";
-}
-
-const VOID = new Set(["area", "base", "br", "col", "command", "embed", "hr", "img", "input", "keygen", "link", "meta", "param", "source", "track", "wbr"]);
-
-// The attributes of HTML that are there or not.
-const BOOLEAN = new Set([
-  "allowfullscreen", "async", "autofocus", "autoplay", "checked", "controls", "default", "disabled",
-  "formnovalidate", "indeterminate", "inert", "ismap", "loop", "multiple", "muted", "nomodule",
-  "novalidate", "open", "playsinline", "readonly", "required", "reversed", "seamless", "selected",
-  "webkitdirectory", "defer", "disablepictureinpicture", "disableremoteplayback",
-]);
-
-// translate={false} is translate="no", as in Svelte.
-const replacements = { translate: new Map([[true, "yes"], [false, "no"]]) };
-
-// attributeOf is attr() of Svelte, giving the sign and the value instead of
-// the escaped text.
-function attributeOf(name, value, boolean = false) {
-  if (name === "hidden" && value !== "until-found") boolean = true;
-  if (value == null || (boolean && !value && value !== "")) return "-";
-  if (boolean) return "+";
-  const normalized = (Object.hasOwn(replacements, name) && replacements[name].get(value)) || value;
-  return "=" + escape(String(normalized));
-}
-
-function clsxValue(value) {
-  let out = "";
-  if (typeof value === "string" || typeof value === "number") out += value;
-  else if (typeof value === "object") {
-    if (Array.isArray(value)) {
-      for (let i = 0; i < value.length; i++) {
-        let part;
-        if (value[i] && (part = clsxValue(value[i]))) {
-          if (out) out += " ";
-          out += part;
-        }
-      }
-    } else {
-      for (const key in value) {
-        if (value[key]) {
-          if (out) out += " ";
-          out += key;
-        }
-      }
-    }
-  }
-  return out;
-}
-
-function clsx(value) {
-  if (typeof value === "object") return value ? clsxValue(value) : "";
-  return value ?? "";
-}
-
-const whitespace = [..." \t\n\r\f \u000b﻿"];
-
-function to_class(value, hash, directives) {
-  let classname = value == null ? "" : "" + value;
-  if (hash) classname = classname ? classname + " " + hash : hash;
-  if (directives) {
-    for (const key of Object.keys(directives)) {
-      if (directives[key]) {
-        classname = classname ? classname + " " + key : key;
-      } else if (classname.length) {
-        const len = key.length;
-        let a = 0;
-        while ((a = classname.indexOf(key, a)) >= 0) {
-          const b = a + len;
-          if ((a === 0 || whitespace.includes(classname[a - 1])) && (b === classname.length || whitespace.includes(classname[b]))) {
-            classname = (a === 0 ? "" : classname.substring(0, a)) + classname.substring(b + 1);
-          } else {
-            a = b;
-          }
-        }
-      }
-    }
-  }
-  return classname === "" ? null : classname;
-}
-
-function append_styles(styles, important = false) {
-  const separator = important ? " !important;" : ";";
-  let css = "";
-  for (const key of Object.keys(styles)) {
-    const value = styles[key];
-    if (value != null && value !== "") css += " " + key + ": " + value + separator;
-  }
-  return css;
-}
-
-function to_css_name(name) {
-  if (name[0] !== "-" || name[1] !== "-") return name.toLowerCase();
-  return name;
-}
-
-function to_style(value, styles) {
-  if (styles) {
-    let new_style = "";
-    let normal_styles;
-    let important_styles;
-    if (Array.isArray(styles)) {
-      normal_styles = styles[0];
-      important_styles = styles[1];
-    } else {
-      normal_styles = styles;
-    }
-    if (value) {
-      value = String(value).replaceAll(/\/\*.*?\*\//g, "").trim();
-      let in_str = false;
-      let in_apo = 0;
-      let in_comment = false;
-      const reserved_names = [];
-      if (normal_styles) reserved_names.push(...Object.keys(normal_styles).map(to_css_name));
-      if (important_styles) reserved_names.push(...Object.keys(important_styles).map(to_css_name));
-      let start_index = 0;
-      let name_index = -1;
-      const len = value.length;
-      for (let i = 0; i < len; i++) {
-        const c = value[i];
-        if (in_comment) {
-          if (c === "/" && value[i - 1] === "*") in_comment = false;
-        } else if (in_str) {
-          if (in_str === c) in_str = false;
-        } else if (c === "/" && value[i + 1] === "*") {
-          in_comment = true;
-        } else if (c === '"' || c === "'") {
-          in_str = c;
-        } else if (c === "(") {
-          in_apo++;
-        } else if (c === ")") {
-          in_apo--;
-        }
-        if (!in_comment && in_str === false && in_apo === 0) {
-          if (c === ":" && name_index === -1) {
-            name_index = i;
-          } else if (c === ";" || i === len - 1) {
-            if (name_index !== -1) {
-              const name = to_css_name(value.substring(start_index, name_index).trim());
-              if (!reserved_names.includes(name)) {
-                if (c !== ";") i++;
-                const property = value.substring(start_index, i).trim();
-                new_style += " " + property + ";";
-              }
-            }
-            start_index = i + 1;
-            name_index = -1;
-          }
-        }
-      }
-    }
-    if (normal_styles) new_style += append_styles(normal_styles);
-    if (important_styles) new_style += append_styles(important_styles, true);
-    new_style = new_style.trim();
-    return new_style === "" ? null : new_style;
-  }
-  return value == null ? null : String(value);
-}
-
-// Names that cannot be attributes: Svelte leaves them out of a spread.
-const INVALID_ATTR_NAME_CHAR_REGEX = /[\s'">/=\u{FDD0}-\u{FDEF}\u{FFFE}\u{FFFF}\u{1FFFE}\u{1FFFF}\u{2FFFE}\u{2FFFF}\u{3FFFE}\u{3FFFF}\u{4FFFE}\u{4FFFF}\u{5FFFE}\u{5FFFF}\u{6FFFE}\u{6FFFF}\u{7FFFE}\u{7FFFF}\u{8FFFE}\u{8FFFF}\u{9FFFE}\u{9FFFF}\u{AFFFE}\u{AFFFF}\u{BFFFE}\u{BFFFF}\u{CFFFE}\u{CFFFF}\u{DFFFE}\u{DFFFF}\u{EFFFE}\u{EFFFF}\u{FFFFE}\u{FFFFF}\u{10FFFE}\u{10FFFF}]/u;
-
-// spreadOf is attributes() of Svelte: every attribute of an element with a
-// spread, in order, giving the names and the signed values.
-function spreadOf(attrs, css_hash, classes, styles, preserve) {
-  const hasStyles = styles && (Object.keys(styles[0]).length > 0 || Object.keys(styles[1]).length > 0);
-  if (hasStyles) attrs.style = to_style(attrs.style, styles);
-  if (attrs.class) attrs.class = clsx(attrs.class);
-  const hasClasses = classes && Object.keys(classes).length > 0;
-  if (css_hash || hasClasses) attrs.class = to_class(attrs.class, css_hash, hasClasses ? classes : undefined);
-  const out = [];
-  const names = Object.keys(attrs);
-  outer: for (let i = 0; i < names.length; i++) {
-    let name = names[i];
-    if (typeof attrs[name] === "function") continue;
-    if (name[0] === "$" && name[1] === "$") continue;
-    if (name === "" || INVALID_ATTR_NAME_CHAR_REGEX.test(name)) continue;
-    const value = attrs[name];
-    const lower = name.toLowerCase();
-    if (!preserve) name = lower;
-    if (lower.length > 2 && lower.startsWith("on")) continue;
-    if (name === "defaultvalue" || name === "defaultchecked") {
-      name = name === "defaultvalue" ? "value" : "checked";
-      if (name in attrs) continue;
-      for (let j = 0; j < names.length; j++) {
-        if (names[j].toLowerCase() === name) continue outer;
-      }
-    }
-    const sign = attributeOf(name, value, !preserve && BOOLEAN.has(name));
-    if (sign !== "-") out.push(escape(name), sign);
-  }
-  return out;
-}
-
-function ensure_array_like(array_like_or_iterator) {
-  if (array_like_or_iterator) {
-    return array_like_or_iterator.length !== undefined ? array_like_or_iterator : Array.from(array_like_or_iterator);
-  }
-  return [];
-}
-
 
 function describe(value) {
   if (value === null) return "null";
@@ -638,17 +435,12 @@ function describe(value) {
   return typeof value === "undefined" ? "undefined" : `${typeof value} ${String(value)}`;
 }
 
+
 // ---------------------------------------------------------------------------
 // The run
 
-// component is what a regular .svelte file exports in the evaluation bundle.
-export function component(file, render) {
-  return { file, render };
-}
-
 class Run {
-  constructor(site, modules, send) {
-    this.site = site;
+  constructor(modules, send) {
     this.modules = modules; // Map of file number → module
     this.send = send;
     this.files = new Map(site.files.map((file, number) => [file.path, number]));
@@ -663,16 +455,16 @@ class Run {
   // comes earlier and takes it. An address a route gives twice is one page,
   // as in SvelteKit: the page is computed from its address alone.
   list(wanted) {
-    const routes = wanted.length > 0 ? wanted : this.site.routes.map((_, index) => index);
+    const routes = wanted.length > 0 ? wanted : site.routes.map((_, index) => index);
     for (const [path, index] of this.pages) if (routes.includes(index)) this.pages.delete(path);
     let shadowed = 0;
     let lines = [];
     for (const index of routes) {
-      const route = this.site.routes[index];
+      const route = site.routes[index];
       if (route === undefined) throw new Error(`the shugo command asked for the pages of route ${index}, which this project's compiled code does not have: build the project again`);
       const reads = new Reads();
       try {
-        for (const entry of computing({ reads, page: null, route }, () => entries(route, this.modules.get(route.file)))) {
+        for (const entry of computing({ reads, page: null, route, record: null }, () => entries(route, this.modules.get(route.file)))) {
           const path = address(route, entry.params);
           const taken = this.pages.get(path);
           if (taken === index) continue;
@@ -687,7 +479,7 @@ class Run {
           }
         }
       } catch (error) {
-        throw placed(error, `getStaticPaths of ${this.site.files[route.file].path}`);
+        throw placed(error, `getStaticPaths of ${site.files[route.file].path}`);
       }
       this.send("G", index + "\x02" + reads.text());
     }
@@ -716,61 +508,53 @@ class Run {
       try {
         this.page(name, Number(route));
       } catch (error) {
-        throw placed(error, `the page ${name} (${this.site.files[this.site.routes[Number(route)]?.file]?.path})`);
+        throw placed(error, `the page ${name} (${site.files[site.routes[Number(route)]?.file]?.path})`);
       }
     }
     this.flush();
   }
 
-  // show computes a component at one place of a record and returns the block
-  // that stands for it there. Where the component gives a shared block, that
-  // block only gets named: the Go side knows whether it has to be computed.
-  show(record, target, props, snippets, scope) {
-    const name = this.site.files[target.file].shared ? sharedName(this.site.files[target.file].path, props, snippets) : null;
-    if (name !== null) return record.use(name, snippets).index;
-    const block = record.block(target.file, 0);
-    block.snippets = snippets;
-    const frame = { outer: scope.frame, block };
-    const inner = { page: scope.page, snippets, reads: scope.reads, frame, props: propsOf(props, snippets, frame) };
-    target.render(new Writer(this, record, block, inner));
-    return block.index;
-  }
-
   // block computes a shared block from its name alone: the name holds the
-  // file, the parameters and the names of the snippets the caller gave, and,
-  // for a layout kept for one page, that page.
+  // file, the props and the names of the snippets the place gave it, and,
+  // for a layout kept for one page, that page. The ids of $props.id() in a
+  // block computed apart from the page start with the number of its file.
   block(name) {
-    const { path, props, snippets } = unnamed(name);
-    const target = this.modules.get(this.files.get(path))?.default;
-    if (target === undefined) throw new Error(`there is no file ${path} to compute the shared block from`);
+    const { path, props, given } = unnamed(name);
+    const file = this.files.get(path);
+    const compiled = components.get(file);
+    if (compiled === undefined) throw new Error(`there is no file ${path} to compute the shared block from`);
     const page = this.pageOf(props);
+    if (given.length > 0) {
+      props.$$slots = {};
+      for (const snippet of given) {
+        props[snippet] = givenBy(snippet);
+        props.$$slots[snippet === "children" ? "default" : snippet] = true;
+      }
+    }
     const record = new Record("s", name, 0);
-    const block = record.block(target.file, 0);
-    // Inside a shared block only the names of the snippets the caller gave
-    // matter: what they show belongs to the place the block is used at.
-    const frame = { outer: null, block };
-    const inner = { page, snippets, reads: record.reads, frame, props: propsOf(props, snippets, frame) };
-    computing({ reads: record.reads, page, route: null }, () => target.render(new Writer(this, record, block, inner)));
+    computing({ reads: record.reads, page, route: null, record }, () => {
+      record.top = record.render(($$renderer) => compiled($$renderer, props), "b" + file);
+    });
     this.emit(record);
   }
 
   // page computes one page of a route from its address alone: a page of
-  // templates, then every layout around it, from the innermost; or the file
-  // that a module gives. The parameters are read from the address: what
-  // getStaticPaths wrote as a number is a text there.
+  // templates and every layout around it, or the file that a module gives.
+  // The parameters are read from the address: what getStaticPaths wrote as a
+  // number is a text there.
   page(path, index) {
-    const route = this.site.routes[index];
+    const route = site.routes[index];
     if (route === undefined) throw new Error(`the page ${path} was asked for under route ${index}, which this project's compiled code does not have: build the project again`);
     const record = new Record("p", path, index);
-    const scope = { page: this.pageOf({ "@route": index, "@path": path }), snippets: null, reads: record.reads, frame: null, props: {} };
-    computing({ reads: record.reads, page: scope.page, route: null }, () => (route.extension === undefined ? this.around(record, index, scope) : this.file(record, route)));
+    const page = this.pageOf({ "@route": index, "@path": path });
+    computing({ reads: record.reads, page, route: null, record }, () => (route.extension === undefined ? this.around(record, index) : this.file(record, route)));
     this.emit(record);
   }
 
   // file computes a file that a module among the pages gives: the text its
-  // function GET returns, the one value of the one block of the record.
+  // function GET returns, the one block of the record.
   file(record, route) {
-    const path = this.site.files[route.file].path;
+    const path = site.files[route.file].path;
     const { GET } = this.modules.get(route.file);
     if (typeof GET !== "function") throw new Error(`${path} gives the file ${record.key}, so it must export the function GET, which returns the text of the file: export function GET() { return "…" }`);
     const text = GET(noArguments("GET", 'import { query, page } from "shugo" at the top of the module, and read page.params and page.url'));
@@ -779,25 +563,25 @@ class Run {
       const hint = typeof Response === "function" && text instanceof Response ? ": a Response is read by waiting, so return the text itself" : typeof text === "object" && text !== null ? ": JSON.stringify(…) makes one of data" : "";
       throw new Error(`GET of ${path} must return the text of the file, and returned ${describe(text)}${hint}`);
     }
-    const block = record.block(route.file, 0);
-    block.values.push(escape(text));
+    const block = record.block();
+    block.body = [text];
     record.top = block.index;
   }
 
   // pageOf returns the page a shared block is kept for: the route and the
   // address its name holds as "@route" and "@path", which it takes out of
-  // the parameters. null for a block kept once for all pages. Its
-  // parameters are read from the address: what getStaticPaths wrote as a
-  // number is a text there.
+  // the props. null for a block kept once for all pages. Its parameters are
+  // read from the address: what getStaticPaths wrote as a number is a text
+  // there.
   pageOf(props) {
     if (!Object.hasOwn(props, "@route")) return null;
     const index = props["@route"];
     const path = props["@path"];
     delete props["@route"];
     delete props["@path"];
-    const route = this.site.routes[index];
+    const route = site.routes[index];
     if (route === undefined || typeof path !== "string") throw new Error(`a block of the page ${path} under route ${index}, which this project's compiled code does not have: build the project again`);
-    return { params: Object.freeze(parameters(route, path)), path, route, origin: this.site.origin, url: undefined };
+    return { params: Object.freeze(parameters(route, path)), path, route, origin: site.origin, url: undefined };
   }
 
   // around computes a page into the record, and names its layouts. A layout
@@ -805,14 +589,17 @@ class Run {
   // whole site, or, when it reads the page it is around, once for every
   // page. Then a change of what the layout reads computes the layout and
   // not the pages, and a change of a page computes the page alone.
-  around(record, index, scope) {
-    const route = this.site.routes[index];
-    let top = this.show(record, this.modules.get(route.file).default, {}, null, scope);
+  around(record, index) {
+    const route = site.routes[index];
+    const compiled = components.get(route.file);
+    let top = record.render(($$renderer) => compiled($$renderer, {}), "");
     for (let i = route.layouts.length - 1; i >= 0; i--) {
-      const file = this.site.files[route.layouts[i]];
-      const page = file.shared ? {} : { "@route": index, "@path": scope.page.path };
-      const snippets = new Map([["children", [top]]]);
-      top = record.use(sharedName(file.path, page, snippets), snippets).index;
+      const file = site.files[route.layouts[i]];
+      const props = file.shared ? {} : { "@route": index, "@path": record.key };
+      const use = record.block();
+      use.shared = nameOf(file.path, props, Object.keys(props), ["children"]);
+      use.snippets = new Map([["children", [top]]]);
+      top = use.index;
     }
     record.top = top;
   }
@@ -833,72 +620,46 @@ class Run {
   }
 }
 
-// A component that depends on nothing of the page and is called with plain
-// values shows the same wherever it stands, so it is computed once under a
-// name made of its file and those values: components/Card.svelte{"id":"p7"}.
-// null means: not shared. JSON writes every control character as an escape,
-// so a name never holds one of the separators.
-function sharedName(path, props, snippets) {
-  let key = "";
-  let count = 0;
-  for (const name in props) {
-    const value = props[name];
-    if (value === undefined) continue;
-    const type = typeof value;
-    if (value !== null && type !== "string" && type !== "boolean" && !(type === "number" && Number.isFinite(value))) return null;
-    key += (count++ === 0 ? "" : ",") + JSON.stringify(name) + ":" + JSON.stringify(value);
-  }
-  // Parameters in another order are the same parameters.
-  if (count > 1) {
-    key = Object.keys(props).filter((name) => props[name] !== undefined).sort()
-      .map((name) => JSON.stringify(name) + ":" + JSON.stringify(props[name])).join(",");
-  }
-  if (snippets !== null) key += "|" + [...snippets.keys()].sort().join(",");
-  return path + "{" + key + "}";
-}
-
-// unnamed reads a name that sharedName wrote. The names of the snippets
-// follow the last "|" and are made of letters, digits, "-" and "_"; a "|"
-// inside a parameter is followed by the quote that closes its text at the
-// least.
-function unnamed(name) {
-  const start = name.indexOf("{");
-  let inside = name.slice(start + 1, -1);
-  let snippets = null;
-  const bar = inside.lastIndexOf("|");
-  if (bar >= 0 && /^[\w,-]*$/.test(inside.slice(bar + 1))) {
-    snippets = new Map(inside.slice(bar + 1).split(",").filter((one) => one !== "").map((one) => [one, []]));
-    inside = inside.slice(0, bar);
-  }
-  return { path: name.slice(0, start), props: JSON.parse("{" + inside + "}"), snippets };
-}
-
 // On the wire a record is its header and its blocks, split by \x01; fields
-// are split by \x02, and every value of a block follows a \x00. The header
-// ends with what the record read from the data database. A block that stands
-// for a shared block carries its name.
+// are split by \x02. The header ends with what the record read from the data
+// database. A use is "u", the name of the shared block and the snippets the
+// place gave it, name=1,2;other=3. A block of HTML is "b", its HTML, what it
+// gives the head and its <title>; HTML is texts and holes split by \x00, a
+// hole c3, gname, or i and the island in JSON.
 function encode(record) {
   const lines = [record.kind + "\x02" + record.key + "\x02" + record.route + "\x02" + record.top + "\x02" + record.reads.text()];
   for (const block of record.blocks) {
     lines.push(
       block.shared !== null
         ? "u\x02" + block.shared + "\x02" + snippetsOf(block.snippets)
-        : "b\x02" + block.file + "\x02" + block.part + "\x02" + block.children.join(",") + "\x02" + block.head.join(",") + "\x02" + block.title.join(",") + "\x02" + snippetsOf(block.snippets) + "\x02" + valuesOf(block.values),
+        : "b\x02" + fragmentOf(record, block.body) + "\x02" + fragmentOf(record, block.head) + "\x02" + escape(block.title),
     );
   }
   return lines.join("\x01");
 }
 
-// Every value is written after \x00, so that no values and one empty value differ.
-function valuesOf(values) {
-  return values.length === 0 ? "" : "\x00" + values.join("\x00");
+function fragmentOf(record, parts) {
+  let out = escape(parts[0]);
+  for (let i = 1; i < parts.length; i += 2) {
+    const hole = parts[i][0] === "i" ? "i" + record.islands[Number(parts[i].slice(1))] : parts[i];
+    out += "\x00" + escape(hole) + "\x00" + escape(parts[i + 1]);
+  }
+  return out;
 }
 
 function snippetsOf(snippets) {
-  if (snippets === null) return "";
   let out = "";
   for (const [name, blocks] of snippets) out += (out ? ";" : "") + name + "=" + blocks.join(",");
   return out;
+}
+
+// The Go side splits what it receives by the characters 0 to 3. Inside a
+// text they come escaped, as 4 and the character plus 0x40, and so does 4.
+const special = /[\x00-\x04]/;
+const everySpecial = /[\x00-\x04]/g;
+
+function escape(text) {
+  return special.test(text) ? text.replace(everySpecial, (c) => "\x04" + String.fromCharCode(0x40 + c.charCodeAt(0))) : text;
 }
 
 // ---------------------------------------------------------------------------
@@ -1037,7 +798,7 @@ export async function run(modules) {
   const { send, receive } = wire;
 
   try {
-    const site = JSON.parse(readFileSync(new URL("./site.json", import.meta.url), "utf8"));
+    site = JSON.parse(readFileSync(new URL("./site.json", import.meta.url), "utf8"));
     if (process.env.SHUGO_DATA) {
       data = await open(process.env.SHUGO_DATA, {
         declare: (number, spec) => send("S", number + "\x02" + spec),
@@ -1051,7 +812,7 @@ export async function run(modules) {
         },
       });
     }
-    const run = new Run(site, new Map(modules), send);
+    const run = new Run(new Map(modules), send);
     if (process.env.SHUGO_SEARCH === "1") send("A", "");
     for (let request = receive(); request !== null && request.kind !== "Q"; request = receive()) {
       switch (request.kind) {
