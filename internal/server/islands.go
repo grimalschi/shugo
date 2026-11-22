@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,17 +23,23 @@ const (
 
 // Catalog reads the catalog snapshot named by the page store.
 type Catalog struct {
-	dir       string
-	mu        sync.Mutex
-	indexName string
-	index     *catalog.Index
+	dir     string
+	mu      sync.Mutex
+	current *catalogSnapshot
+	closed  bool
+}
+
+type catalogSnapshot struct {
+	name    string
+	index   *catalog.Index
+	readers int
 }
 
 func NewCatalog(dir string) *Catalog {
 	return &Catalog{dir: dir}
 }
 
-func (i *Catalog) search(v *store.View, target *url.URL) (catalog.Result, error) {
+func (i *Catalog) search(ctx context.Context, v *store.View, target *url.URL) (catalog.Result, error) {
 	name, err := v.Catalog()
 	if err != nil {
 		return catalog.Result{}, err
@@ -43,30 +50,62 @@ func (i *Catalog) search(v *store.View, target *url.URL) (catalog.Result, error)
 	if len(target.RawQuery) > maxSearchQuery {
 		return catalog.Result{}, errSearchTooLong
 	}
-	index, err := i.snapshot(name)
+	snapshot, err := i.snapshot(name)
 	if err != nil {
 		return catalog.Result{}, err
 	}
-	return index.Search(target.Query()), nil
+	defer i.release(snapshot)
+	return snapshot.index.Search(ctx, target.Query())
 }
 
 var errNoCatalog = errors.New("the store has no catalog index")
 var errSearchTooLong = errors.New("catalog query is too long")
 
-func (i *Catalog) snapshot(name string) (*catalog.Index, error) {
+func (i *Catalog) snapshot(name string) (*catalogSnapshot, error) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	if i.indexName != name {
-		if filepath.Base(name) != name {
+	if i.closed {
+		return nil, errors.New("catalog reader is closed")
+	}
+	if i.current == nil || i.current.name != name {
+		if filepath.Base(name) != name || !filepath.IsLocal(name) {
 			return nil, errors.New("invalid catalog index name")
 		}
 		index, err := catalog.Open(filepath.Join(i.dir, name))
 		if err != nil {
 			return nil, err
 		}
-		i.index, i.indexName = index, name
+		old := i.current
+		i.current = &catalogSnapshot{name: name, index: index}
+		if old != nil && old.readers == 0 {
+			old.index.Close()
+		}
 	}
-	return i.index, nil
+	i.current.readers++
+	return i.current, nil
+}
+
+func (i *Catalog) release(snapshot *catalogSnapshot) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	snapshot.readers--
+	if snapshot != i.current && snapshot.readers == 0 {
+		snapshot.index.Close()
+	}
+}
+
+// Close releases the current index. Active searches release their snapshots
+// when they finish.
+func (i *Catalog) Close() error {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.closed = true
+	old := i.current
+	i.current = nil
+	if old != nil && old.readers == 0 {
+		return old.index.Close()
+	}
+	return nil
 }
 
 // Without a published index the path remains available to the site itself.
@@ -74,7 +113,7 @@ func (s *Server) searchCatalog(w http.ResponseWriter, r *http.Request) bool {
 	var result catalog.Result
 	err := s.Pages.store.View(func(v *store.View) error {
 		var err error
-		result, err = s.Catalog.search(v, r.URL)
+		result, err = s.Catalog.search(r.Context(), v, r.URL)
 		return err
 	})
 	if errors.Is(err, errNoCatalog) {
@@ -115,7 +154,7 @@ func usesSearch(query url.Values) bool {
 
 type replaceIsland func(*store.View, *program.Site, *render.Island) error
 
-func (i *Catalog) forRequest(target *url.URL, rendered *bool) replaceIsland {
+func (i *Catalog) forRequest(ctx context.Context, target *url.URL, rendered *bool) replaceIsland {
 	var checked bool
 	var initial json.RawMessage
 	return func(v *store.View, site *program.Site, island *render.Island) error {
@@ -127,7 +166,7 @@ func (i *Catalog) forRequest(target *url.URL, rendered *bool) replaceIsland {
 			if !usesSearch(target.Query()) {
 				return nil
 			}
-			result, err := i.search(v, target)
+			result, err := i.search(ctx, v, target)
 			if err != nil {
 				return err
 			}

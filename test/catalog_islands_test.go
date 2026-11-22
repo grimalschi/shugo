@@ -5,6 +5,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -44,6 +47,7 @@ INSERT INTO variants VALUES ('sku', 'p1', 'large', 1, 1);
 `)
 	s.build()
 	extension := server.NewCatalog(s.project().Path(project.Output))
+	t.Cleanup(func() { extension.Close() })
 	ts := httptest.NewServer(&server.Server{Pages: s.pages, Catalog: extension})
 	defer ts.Close()
 
@@ -61,6 +65,25 @@ INSERT INTO variants VALUES ('sku', 'p1', 'large', 1, 1);
 	query("", "Item 1")
 	query("?page=2", "Item 25")
 	expect(t, s.page("/"), "<h1>Item 1</h1>")
+	output := s.project().Path(project.Output)
+	var firstSnapshot string
+	if err := s.store.View(func(v *store.View) error {
+		name, err := v.Catalog()
+		firstSnapshot = name
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	dbFile, err := os.Open(filepath.Join(output, firstSnapshot))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var header [16]byte
+	_, err = io.ReadFull(dbFile, header[:])
+	dbFile.Close()
+	if err != nil || filepath.Ext(firstSnapshot) != ".sqlite" || string(header[:]) != "SQLite format 3\x00" {
+		t.Fatalf("unexpected published catalog %q: header %q, error %v", firstSnapshot, header, err)
+	}
 	response, err := http.Head(ts.URL + "/_islands/catalog")
 	if err != nil {
 		t.Fatal(err)
@@ -70,12 +93,13 @@ INSERT INTO variants VALUES ('sku', 'p1', 'large', 1, 1);
 		t.Fatalf("HEAD: %d, length %d, body %q, error %v", response.StatusCode, response.ContentLength, body, err)
 	}
 
-	s.sql(`UPDATE products SET title = 'Changed late' WHERE id = 'p25'`)
+	s.sql(`UPDATE products SET title = 'Flax Cup' WHERE id = 'p25'`)
 	query("?page=2", "Item 25") // the advertised snapshot doesn't read the source directly
 	if report := s.update(); report.Computed.Pages != 0 || report.CatalogRecomputed {
 		t.Fatalf("change outside the initial result: %+v", report)
 	}
-	query("?page=2", "Changed late")
+	query("?page=2", "Flax Cup")
+	query("?q="+url.QueryEscape("cups"), "Flax Cup")
 	expect(t, s.page("/"), "<h1>Item 1</h1>")
 
 	s.sql(`UPDATE products SET title = 'Changed first' WHERE id = 'p1'`)

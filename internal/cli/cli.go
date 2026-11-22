@@ -293,6 +293,7 @@ func (c *command) serve() error {
 // listen answers requests until the process is stopped.
 func (c *command) listen(s *server.Server) error {
 	s.Catalog = server.NewCatalog(c.project.Path(project.Output))
+	defer s.Catalog.Close()
 	s.Public = c.project.Path(project.Public)
 	s.Assets = c.project.Path(project.Output, compile.Assets)
 	s.Failed = func(err error) { fmt.Fprintln(c.stderr, "error:", err) }

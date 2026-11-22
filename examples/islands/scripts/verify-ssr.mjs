@@ -102,7 +102,7 @@ try {
   const config = JSON.parse(readFileSync(join(project, "shugo.json"), "utf8"));
   writeFileSync(join(deployment, "shugo.json"), JSON.stringify({ ...config, runtime: missingRuntime }));
   for (const name of readdirSync(join(project, "_build"))) {
-    if (name === "assets" || name === "store.db" || /^catalog-[a-f0-9]+\.json$/.test(name)) {
+    if (name === "assets" || name === "store.db" || /^catalog-[a-f0-9]+\.sqlite$/.test(name)) {
       cpSync(join(project, "_build", name), join(deployment, "_build", name), { recursive: true });
     }
   }

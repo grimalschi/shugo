@@ -71,7 +71,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var replace replaceIsland
 	filtered := false
 	if s.Catalog != nil && r.URL.RawQuery != "" {
-		replace = s.Catalog.forRequest(r.URL, &filtered)
+		replace = s.Catalog.forRequest(r.Context(), r.URL, &filtered)
 	}
 	page, err := s.Pages.render((*buffer)[:0], address, replace)
 	if errors.Is(err, errSearchTooLong) {

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/grimalschi/shugo/internal/catalog"
 	"github.com/grimalschi/shugo/internal/project"
@@ -21,23 +22,44 @@ func (w *worker) prepareCatalog(u *store.Update, refresh bool) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if !refresh && len(old) > 0 {
+	published, err := u.Catalog()
+	if err != nil {
+		return false, err
+	}
+	if !refresh && len(old) > 0 && filepath.Ext(published) == ".sqlite" {
 		w.catalog = old
 		return false, nil
 	}
 
-	temp, err := os.CreateTemp(w.project.Path(project.Output), "catalog-*.tmp")
+	dir := w.project.Path(project.Output)
+	output, err := os.Open(dir)
+	if err != nil {
+		return false, err
+	}
+	defer output.Close()
+	temp, err := os.CreateTemp(dir, "catalog-*.tmp")
 	if err != nil {
 		return false, err
 	}
 	path := temp.Name()
-	temp.Close()
 	defer os.Remove(path)
-	index, err := catalog.Build(context.Background(), w.project.Data(), path)
+	if err := temp.Close(); err != nil {
+		return false, err
+	}
+	ctx := context.Background()
+	index, err := catalog.Build(ctx, w.project.Data(), path)
 	if err != nil {
 		return false, fmt.Errorf("catalog projection: %w", err)
 	}
-	w.catalog, err = json.Marshal(index.Search(nil))
+	result, err := index.Search(ctx, nil)
+	closeErr := index.Close()
+	if err != nil {
+		return false, fmt.Errorf("read new catalog projection: %w", err)
+	}
+	if closeErr != nil {
+		return false, closeErr
+	}
+	w.catalog, err = json.Marshal(result)
 	if err != nil {
 		return false, err
 	}
@@ -51,8 +73,11 @@ func (w *worker) prepareCatalog(u *store.Update, refresh bool) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	name := fmt.Sprintf("catalog-%x.json", hash.Sum(nil)[:16])
-	if err := os.Rename(path, w.project.Path(project.Output, name)); err != nil {
+	name := fmt.Sprintf("catalog-%x.sqlite", hash.Sum(nil)[:16])
+	if err := os.Rename(path, filepath.Join(dir, name)); err != nil {
+		return false, err
+	}
+	if err := output.Sync(); err != nil {
 		return false, err
 	}
 	return !bytes.Equal(old, w.catalog), u.SetCatalog(name, w.catalog)

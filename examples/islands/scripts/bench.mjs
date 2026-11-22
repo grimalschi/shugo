@@ -209,7 +209,7 @@ const hitIDs = (html) => [...html.toString().matchAll(/data-product-id="([^"]+)"
 async function measure(folder, variant, size) {
   const build = measureCommand(shugoCommand("build", folder));
   const buildFolder = join(folder, "_build");
-  const indexName = readdirSync(buildFolder).find((name) => /^catalog-[a-f\d]+\.json$/.test(name));
+  const indexName = readdirSync(buildFolder).find((name) => /^catalog-[a-f\d]+\.(?:sqlite|json)$/.test(name));
   if (!indexName) throw new Error("Catalog build did not produce an index");
   const index = weight(readFileSync(join(buildFolder, indexName)));
   const assets = assetWeights(buildFolder);

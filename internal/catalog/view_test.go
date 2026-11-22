@@ -8,7 +8,7 @@ import (
 
 func TestSearchView(t *testing.T) {
 	index, _, _, _ := testShop(t)
-	result := index.Search(url.Values{"sort": {"cheap"}})
+	result := searchTestIndex(t, index, url.Values{"sort": {"cheap"}})
 	if !result.HasHits || result.HasPages || result.HasPrev || result.HasNext ||
 		result.TotalLabel != "Products: 4" || result.PageLinks == nil || len(result.PageLinks) != 0 {
 		t.Fatalf("initial view: %+v", result)
@@ -28,7 +28,7 @@ func TestSearchView(t *testing.T) {
 	if got := money(-1234567); got != "-$1,234,567" {
 		t.Fatalf("price label %q", got)
 	}
-	empty := index.Search(url.Values{"q": {"nonexistent product"}})
+	empty := searchTestIndex(t, index, url.Values{"q": {"nonexistent product"}})
 	if empty.HasHits || empty.HasPages || empty.TotalLabel != "Products: 0" || empty.PrevHref != "" || empty.NextHref != "" {
 		t.Fatalf("empty view: %+v", empty)
 	}

@@ -1,5 +1,5 @@
 // Package catalog is the search backend for the experimental catalog island.
-// It reads a projection of the example shop into an immutable snapshot.
+// It reads a projection of the example shop into an immutable SQLite snapshot.
 package catalog
 
 import (
@@ -14,7 +14,10 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode"
 
+	"github.com/blevesearch/snowballstem"
+	"github.com/blevesearch/snowballstem/english"
 	_ "modernc.org/sqlite"
 )
 
@@ -52,11 +55,9 @@ type snapshot struct {
 
 // Index answers requests against a single published snapshot.
 type Index struct {
-	data       snapshot
-	categories map[string]int
+	db         *sql.DB
+	categories []option
 	sizes      []option
-	sizeIDs    map[string]int
-	orders     map[string][]int
 }
 
 // Build reads the shop's categories, products and variants in one read
@@ -69,11 +70,8 @@ func Build(ctx context.Context, sourceDB, indexFile string) (*Index, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read catalog data: %w", err)
 	}
-	index, err := prepare(data)
+	index, err := publish(ctx, indexFile, data)
 	if err != nil {
-		return nil, err
-	}
-	if err := publish(indexFile, data); err != nil {
 		return nil, fmt.Errorf("write catalog index: %w", err)
 	}
 	return index, nil
@@ -82,8 +80,7 @@ func Build(ctx context.Context, sourceDB, indexFile string) (*Index, error) {
 func readShop(ctx context.Context, name string) (snapshot, error) {
 	var data snapshot
 	settings := url.Values{"mode": {"ro"}, "_pragma": {"busy_timeout(10000)"}}
-	address := url.URL{Scheme: "file", Path: name, RawQuery: settings.Encode()}
-	db, err := sql.Open("sqlite", address.String())
+	db, err := openFile(name, settings)
 	if err != nil {
 		return data, err
 	}
@@ -145,7 +142,7 @@ ORDER BY position, id`)
 		if discount != 0 {
 			p.Price = int64(math.Floor(float64(p.OriginalPrice)*(100-float64(discount))/100 + 0.5))
 		}
-		p.Text = fold(p.Title + " " + description)
+		p.Text = p.Title + " " + description
 		p.Sizes = []string{}
 		products = append(products, p)
 	}
@@ -174,32 +171,32 @@ func readSizes(ctx context.Context, tx *sql.Tx, products []entry) error {
 	return rows.Err()
 }
 
-func publish(name string, data snapshot) error {
-	f, err := os.CreateTemp(filepath.Dir(name), ".catalog-*")
-	if err != nil {
-		return err
+// Open reads the metadata of a published SQLite snapshot. Its path must remain
+// immutable for the lifetime of the index.
+func Open(name string) (*Index, error) {
+	ctx := context.Background()
+	if filepath.Ext(name) == ".json" {
+		file, err := os.Open(name)
+		if err != nil {
+			return nil, err
+		}
+		defer file.Close()
+		// Earlier builds used .json. Support those generations and SQLite
+		// files created by Build callers that retained the old extension.
+		var header [16]byte
+		if _, err := file.ReadAt(header[:], 0); err != nil && err != io.EOF {
+			return nil, err
+		}
+		if string(header[:]) != "SQLite format 3\x00" {
+			return decode(file)
+		}
 	}
-	defer os.Remove(f.Name())
-	defer f.Close()
-	encoder := json.NewEncoder(f)
-	encoder.SetEscapeHTML(false)
-	if err := encoder.Encode(data); err != nil {
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	return os.Rename(f.Name(), name)
+	return openIndex(ctx, name, 4)
 }
 
-// Open reads and prepares a build-produced catalog snapshot.
-func Open(name string) (*Index, error) {
-	file, err := os.Open(name)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	return decode(file)
+// Close releases the snapshot's SQLite connections.
+func (i *Index) Close() error {
+	return i.db.Close()
 }
 
 func decode(source io.Reader) (*Index, error) {
@@ -215,25 +212,29 @@ func decode(source io.Reader) (*Index, error) {
 }
 
 func prepare(data snapshot) (*Index, error) {
-	if data.Version != indexVersion {
-		return nil, fmt.Errorf("unsupported catalog index version %d", data.Version)
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		return nil, err
 	}
-	i := &Index{data: data, categories: map[string]int{}, sizeIDs: map[string]int{}, orders: map[string][]int{}}
-	for id, category := range data.Categories {
-		i.categories[category.Value] = id
+	db.SetMaxOpenConns(1)
+	if err := writeIndex(ctx, db, data); err != nil {
+		db.Close()
+		return nil, err
 	}
-	sizes := map[string]bool{}
-	for _, p := range data.Products {
-		if _, ok := i.categories[p.Category]; !ok {
-			return nil, fmt.Errorf("catalog product %q has unknown category %q", p.ID, p.Category)
-		}
+	return loadIndex(ctx, db)
+}
+
+func sizeNames(products []entry) []string {
+	sizes := map[string]struct{}{}
+	for _, p := range products {
 		for _, size := range p.Sizes {
-			sizes[size] = true
+			sizes[size] = struct{}{}
 		}
 	}
 	var orderedSizes []string
 	for _, size := range []string{"small", "medium", "large"} {
-		if sizes[size] {
+		if _, exists := sizes[size]; exists {
 			orderedSizes = append(orderedSizes, size)
 			delete(sizes, size)
 		}
@@ -243,12 +244,32 @@ func prepare(data snapshot) (*Index, error) {
 		extraSizes = append(extraSizes, size)
 	}
 	slices.Sort(extraSizes)
-	for id, size := range append(orderedSizes, extraSizes...) {
-		i.sizes = append(i.sizes, option{Value: size, Label: size})
-		i.sizeIDs[size] = id
-	}
-	i.orderProducts()
-	return i, nil
+	return append(orderedSizes, extraSizes...)
 }
 
 func fold(value string) string { return strings.ToLower(value) }
+
+func searchWords(value string) []string {
+	return stemWords(value, nil)
+}
+
+func stemWords(value string, cache map[string]string) []string {
+	words := strings.FieldsFunc(fold(value), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
+	})
+	for at, word := range words {
+		stem, found := cache[word]
+		if !found {
+			env := snowballstem.NewEnv(word)
+			english.Stem(env)
+			stem = env.Current()
+			// Repeated words benefit from a build-local cache. Bound the
+			// memory used by product IDs and other one-off tokens.
+			if cache != nil && len(cache) < 32768 {
+				cache[word] = stem
+			}
+		}
+		words[at] = stem
+	}
+	return words
+}
