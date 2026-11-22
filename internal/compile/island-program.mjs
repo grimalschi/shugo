@@ -12,8 +12,6 @@ export function lowerIsland(code, parse) {
       for (const name of node.specifiers) imports.set(name.local.name, [node.source.value, name.imported?.name ?? name.type]);
     } else if (node.type === 'ExportDefaultDeclaration') {
       component = node.declaration;
-    } else if (node.type === 'ExportNamedDeclaration' && isFlag(node.declaration)) {
-      scope.set('shugoSSR', { const: true });
     } else {
       reject(node, 'module code runs outside the island; move request-time data into props');
     }
@@ -249,12 +247,6 @@ function staticKey(node) {
   if (node.type === 'Identifier') return node.name;
   if (node.type === 'Literal' && typeof node.value === 'string') return node.value;
   reject(node, 'expected a named field');
-}
-
-function isFlag(node) {
-  if (node?.type !== 'VariableDeclaration' || node.kind !== 'const' || node.declarations.length !== 1) return false;
-  const [flag] = node.declarations;
-  return flag.id.type === 'Identifier' && flag.id.name === 'shugoSSR' && flag.init?.type === 'Literal' && flag.init.value === true;
 }
 
 function isConstant(value) {

@@ -50,9 +50,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case s.Live != nil && address == livePath:
 		s.Live.serve(w, r)
 		return
-	case s.Catalog != nil && address == catalogPath:
-		s.searchCatalog(w, r)
-		return
 	case len(address) > 1 && strings.HasSuffix(address, "/"):
 		// A page has one address, the one without a slash at the end.
 		target := strings.TrimRight(address, "/")
@@ -63,6 +60,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			target += "?" + r.URL.RawQuery
 		}
 		http.Redirect(w, r, target, http.StatusPermanentRedirect)
+		return
+	}
+	if s.Catalog != nil && address == catalogPath && s.searchCatalog(w, r) {
 		return
 	}
 

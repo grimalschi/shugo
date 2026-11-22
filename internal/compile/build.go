@@ -37,6 +37,8 @@ const (
 // AssetsURL is where the files of the Assets folder are published.
 const AssetsURL = "/_assets/"
 
+const catalogModule = "shugo:catalog"
+
 // Result is a compiled project.
 type Result struct {
 	Site *program.Site
@@ -70,7 +72,7 @@ func Build(p *project.Project) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	site := &program.Site{Origin: p.Config.Site, Redirects: p.Config.Redirects, Routes: routes, Assets: []string{}}
+	site := &program.Site{Origin: p.Config.Site, Redirects: p.Config.Redirects, Routes: routes, Assets: []string{}, CatalogSearch: bundled.catalogSearch}
 	if site.Origin == "" {
 		site.Origin = "http://localhost"
 	}
@@ -386,11 +388,12 @@ func (b *builder) provided(page *unit, layouts []int) Errors {
 
 // bundled is what the bundler made of the modules of all files.
 type bundled struct {
-	code, smap []byte
-	files      []string        // the files of the project that went into the bundle
-	shared     map[string]bool // which files can be computed once for all pages
-	styles     []style         // the style sheets in the order they apply
-	warnings   []string
+	code, smap    []byte
+	files         []string        // the files of the project that went into the bundle
+	shared        map[string]bool // which files can be computed once for all pages
+	styles        []style         // the style sheets in the order they apply
+	warnings      []string
+	catalogSearch bool
 }
 
 // bundle links the modules of all files, the code they import and the
@@ -435,7 +438,7 @@ func (b *builder) bundle(routes []program.Route, islands *islandOutput) (*bundle
 				contents = entry.String()
 			case "shugo:query":
 				contents = jsrt.Query
-			case "shugo:catalog":
+			case catalogModule:
 				contents = jsrt.Catalog
 			case "shugo:island-eval":
 				if islands == nil {
@@ -575,9 +578,18 @@ func (b *builder) graph(metafile string, out *bundled) error {
 				Path string `json:"path"`
 			} `json:"imports"`
 		} `json:"inputs"`
+		Outputs map[string]struct {
+			Inputs map[string]struct {
+				Bytes int `json:"bytesInOutput"`
+			} `json:"inputs"`
+		} `json:"outputs"`
 	}
 	if err := json.Unmarshal([]byte(metafile), &meta); err != nil {
 		return err
+	}
+	// Esbuild's output graph excludes unused imports and tree-shaken code.
+	for _, file := range meta.Outputs {
+		out.catalogSearch = out.catalogSearch || file.Inputs["shugo:"+catalogModule].Bytes > 0
 	}
 	names := make([]string, 0, len(meta.Inputs))
 	for name := range meta.Inputs {

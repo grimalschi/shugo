@@ -97,8 +97,9 @@ type (
 		snippets []snipp
 	}
 	island struct {
-		target code
-		props  []prop
+		target  code
+		props   []prop
+		request []prop
 	}
 	// piece is named markup computed in the template that writes it: a
 	// snippet without parameters given to a component, or <svelte:head>.
@@ -514,6 +515,13 @@ func (l *lowerer) render(n *syntax.Tag) []node {
 
 // element lowers a tag: an element of HTML, a component or one of svelte:.
 func (l *lowerer) element(e *syntax.Element, ctx context) []node {
+	if l.islands[e.Name].path == "" {
+		for _, a := range e.Attrs {
+			if a.Directive == "request" {
+				l.errorf(a.Start, "request:%s binds a prop on a .svelte island", a.Name)
+			}
+		}
+	}
 	if hint, old := oldTags[e.Name]; old {
 		l.errorf(e.Start, "there is no <%s>: write %s", e.Name, hint)
 		return nil
@@ -565,27 +573,42 @@ func (l *lowerer) island(e *syntax.Element, ctx context) node {
 		l.errorf(e.Start, "the Svelte island <%s> takes JSON props; its tag cannot pass children or snippets", e.Name)
 	}
 	out := island{target: code{e.Name, e.Start + 1}}
-	explicitSearch, request := false, false
+	bound := map[string]bool{}
 	for _, a := range e.Attrs {
 		switch a.Kind {
 		case syntax.Spread:
 			c, _ := a.Expr()
 			out.props = append(out.props, prop{spread: &code{c.Text, c.Start}})
-			// A spread can override an explicitly supplied shugoSearch value.
-			request = request || explicitSearch
 		case syntax.Plain, syntax.Shorthand:
-			v := l.value(a)
-			out.props = append(out.props, prop{name: a.Name, value: v})
 			if a.Name == "shugoSearch" {
-				explicitSearch = true
-				expr, single := v.single()
-				request = !single || strings.TrimSpace(expr.text) != "false"
+				l.errorf(a.Start, "use request:initial={search()} with search imported from \"shugo:catalog\"")
 			}
+			out.props = append(out.props, prop{name: a.Name, value: l.value(a)})
+		case syntax.Directive:
+			if a.Directive != "request" {
+				l.errorf(a.Start, "pass a JSON prop to the Svelte island <%s>; directives belong inside its .svelte file", e.Name)
+				continue
+			}
+			if _, ok := a.Expr(); !ok || len(a.Modifiers) != 0 {
+				l.errorf(a.Start, "request:%s needs one source expression, as in request:%s={search()}", a.Name, a.Name)
+				continue
+			}
+			if bound[a.Name] {
+				l.errorf(a.Start, "request:%s is already bound on this island", a.Name)
+				continue
+			}
+			bound[a.Name] = true
+			out.request = append(out.request, prop{name: a.Name, value: l.value(a)})
 		default:
 			l.errorf(a.Start, "pass a JSON prop to the Svelte island <%s>; directives belong inside its .svelte file", e.Name)
 		}
 	}
-	if request {
+	for _, p := range out.props {
+		if bound[p.name] {
+			l.errorf(e.Start, "prop %s already gets its value from request:%s", p.name, p.name)
+		}
+	}
+	if len(out.request) > 0 {
 		binding := l.islands[e.Name]
 		binding.request = true
 		l.islands[e.Name] = binding

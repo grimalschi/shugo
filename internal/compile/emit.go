@@ -72,7 +72,17 @@ func (e *emitter) nodes(list []node) []program.Op {
 		case island:
 			e.call("$$.island((", n.target, "), {")
 			e.props(n.props)
-			e.m.add("});")
+			if len(n.request) == 0 {
+				e.m.add("});")
+			} else {
+				e.m.add("}, [")
+				for _, p := range n.request {
+					e.m.add("[%s, ", quote(p.name))
+					e.value(p.value)
+					e.m.add("],")
+				}
+				e.m.add("]);")
+			}
 			ops = append(ops, program.Op{Kind: program.Island})
 		case snipp:
 			e.snippet(n)

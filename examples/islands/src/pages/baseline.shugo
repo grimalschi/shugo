@@ -1,9 +1,9 @@
 <script>
-  import { catalog } from "shugo:catalog"
+  import { search } from "shugo:catalog"
   import ProductCard from "../components/ProductCard.shugo"
 
   const action = "/catalog"
-  const result = catalog()
+  const result = search()
   const filters = result.filters
 </script>
 

@@ -44,7 +44,6 @@ type svelteModule struct {
 	Client, Server, CSS string
 	Warnings            []svelteDiagnostic
 	Error               *svelteDiagnostic
-	LegacyRequest       bool
 	Program             []program.IslandOp
 	SourceMap           json.RawMessage
 }
@@ -459,7 +458,7 @@ func (b *builder) islandPrograms(compiler *svelteProcess, paths []string, reques
 		return nil
 	}
 	for _, path := range paths {
-		if request[path] || compiler.modules[path].LegacyRequest {
+		if request[path] {
 			if err := add(path); err != nil {
 				return nil, err
 			}

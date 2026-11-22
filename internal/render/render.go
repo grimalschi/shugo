@@ -36,12 +36,13 @@ func Page(dst []byte, site *program.Site, rec *record.Record, src Source) ([]byt
 
 // Island holds the SSR output and inputs for hydrating one component.
 type Island struct {
-	ID     string          `json:"id"`
-	URL    string          `json:"url"`
-	CSS    string          `json:"css"`
-	Props  json.RawMessage `json:"props"`
-	Body   string          `json:"body"`
-	Search bool            `json:"search"`
+	ID      string            `json:"id"`
+	URL     string            `json:"url"`
+	CSS     string            `json:"css"`
+	Props   json.RawMessage   `json:"props"`
+	Body    string            `json:"body"`
+	Request map[string]string `json:"request,omitempty"` // prop name to data source
+	Search  bool              `json:"search,omitempty"`  // version 4 records
 }
 
 // PageWithIslands lets the Go server replace the precomputed SSR output of
@@ -339,8 +340,7 @@ func (r *renderer) island(value []byte) error {
 	if r.dry {
 		// During evaluation, use the native Svelte render as the reference
 		// for the build-produced Go program before publishing the record.
-		_, compiled := r.site.IslandPrograms[island.ID]
-		if island.Search || compiled {
+		if island.Search || len(island.Request) > 0 {
 			body, err := IslandBody(r.site, island.ID, island.Props)
 			if err != nil {
 				return err
@@ -355,7 +355,7 @@ func (r *renderer) island(value []byte) error {
 		}
 		return nil
 	}
-	if r.replace != nil && island.Search {
+	if r.replace != nil && (island.Search || len(island.Request) > 0) {
 		if err := r.replace(&island); err != nil {
 			return err
 		}

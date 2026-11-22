@@ -22,12 +22,12 @@ let server;
 const nestedTemplate = `
 <script>
   import ProductCard from "./ProductCard.shugo"
-  let { initial } = $props()
+  let { results } = $props()
 </script>
 
-{#if initial.hasHits}
+{#if results.hasHits}
   <ul>
-    {#each initial.hits as item (item.id)}
+    {#each results.hits as item (item.id)}
       <li data-product={item.id}>
         {#if item.hasSizes}
           <ul>
@@ -67,9 +67,15 @@ try {
   const nestedPath = join(components, "Nested.svelte");
   writeFileSync(nestedPath, nestedTemplate);
   writeFileSync(join(project, "src", "pages", "nested.shugo"), `<script>
+  import { search } from "shugo:catalog"
   import Nested from "../components/Nested.svelte"
 </script>
-<Nested shugoSearch />`);
+<Nested request:results={search()} />`);
+  writeFileSync(join(project, "src", "pages", "nested-static.shugo"), `<script>
+  import { catalog } from "shugo:catalog"
+  import Nested from "../components/Nested.svelte"
+</script>
+<Nested results={catalog()} />`);
   const shop = generate(1000);
   const [noSizes, discounted, available, unavailable] = shop.products;
   noSizes.variants = [];
@@ -133,6 +139,7 @@ try {
     [["category", "c1"], ["category", "c2"], ["size", "medium"], ["sort", "new"]],
   ];
   const seenBranches = new Set();
+  let defaultResult;
   for (const values of queries) {
     const search = String(new URLSearchParams(values));
     const query = search ? "?" + search : "";
@@ -143,14 +150,19 @@ try {
     ]);
     assert.equal(api.status, 200, query);
     const result = await api.json();
+    if (!query) defaultResult = result;
     await compare(page, Catalog, result, "/catalog" + query);
-    const body = await compare(nested, Nested, result, "/nested" + query);
+    const body = await compare(nested, Nested, result, "/nested" + query, "results");
     if (query) {
       assert.equal(nested.headers.get("x-robots-tag"), "noindex", "the request rendered the island using filters");
       for (const [, branch] of body.matchAll(/data-branch="([^"]+)"/g)) seenBranches.add(branch);
     }
   }
   assert.deepEqual([...seenBranches].sort(), ["available", "discounted", "empty", "no-sizes", "unavailable"]);
+  const staticAddress = "/nested-static?q=thisproductdoesnotexist";
+  const staticPage = await fetch(origin + staticAddress);
+  assert.equal(staticPage.headers.get("x-robots-tag"), null, "the same component can also render with ordinary props");
+  await compare(staticPage, Nested, defaultResult, staticAddress, "results");
   if (process.platform === "linux") {
     const tasks = `/proc/${server.pid}/task`;
     for (const tid of readdirSync(tasks)) {
@@ -161,7 +173,7 @@ try {
       }
     }
   }
-  console.log(`${queries.length * 2} catalog and nested responses and hydration payloads match Svelte in a deployment without JavaScript tools.`);
+  console.log(`${queries.length * 2 + 1} catalog and nested responses and hydration payloads match Svelte in a deployment without JavaScript tools.`);
 
   const original = readFileSync(catalogPath, "utf8");
   writeFileSync(catalogPath, original + "\n<p>{result.total.toFixed(0)}</p>\n");
@@ -211,10 +223,10 @@ function island(html) {
   return { body: html.slice(start + open.length, middle), props: JSON.parse(html.slice(middle + payload.length, end)) };
 }
 
-async function compare(response, Component, expectedProps, address) {
+async function compare(response, Component, expectedProps, address, prop = "initial") {
   assert.equal(response.status, 200, address);
   const { body, props } = island(await response.text());
-  assert.deepEqual(props.initial, expectedProps, "hydration props must match the API " + address);
+  assert.deepEqual(props[prop], expectedProps, "hydration props must match the API " + address);
   const expected = render(Component, { props }).body;
   if (body !== expected) {
     let at = 0;

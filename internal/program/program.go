@@ -11,8 +11,8 @@ import (
 	"strings"
 )
 
-// Version 4 adds the markup programs of request-bound Svelte islands.
-const Version = 4
+// Version 5 adds named request props and function-driven catalog projection.
+const Version = 5
 
 const versionStaticSvelte = 2
 const versionIslandWorker = 3
@@ -36,6 +36,8 @@ type Site struct {
 	// IslandPrograms holds the precompiled markup of request-bound islands
 	// and the component views they call. Keys are source-relative paths.
 	IslandPrograms map[string][]IslandOp `json:"islandPrograms,omitempty"`
+	// CatalogSearch tells evaluation to prepare the catalog index for search().
+	CatalogSearch bool `json:"catalogSearch,omitempty"`
 }
 
 // File is one compiled template.

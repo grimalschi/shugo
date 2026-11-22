@@ -276,6 +276,7 @@ func closedBy(current, next string) bool {
 var directives = map[string]bool{
 	"class": true, "style": true, "bind": true, "on": true, "use": true,
 	"transition": true, "in": true, "out": true, "animate": true, "let": true,
+	"request": true,
 }
 
 // Parse reads a .shugo file.

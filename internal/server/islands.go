@@ -32,7 +32,7 @@ func NewCatalog(dir string) *Catalog {
 	return &Catalog{dir: dir}
 }
 
-func (i *Catalog) search(v *store.View, query url.Values) (catalog.Result, error) {
+func (i *Catalog) search(v *store.View, target *url.URL) (catalog.Result, error) {
 	name, err := v.Catalog()
 	if err != nil {
 		return catalog.Result{}, err
@@ -40,11 +40,14 @@ func (i *Catalog) search(v *store.View, query url.Values) (catalog.Result, error
 	if name == "" {
 		return catalog.Result{}, errNoCatalog
 	}
+	if len(target.RawQuery) > maxSearchQuery {
+		return catalog.Result{}, errSearchTooLong
+	}
 	index, err := i.snapshot(name)
 	if err != nil {
 		return catalog.Result{}, err
 	}
-	return index.Search(query), nil
+	return index.Search(target.Query()), nil
 }
 
 var errNoCatalog = errors.New("the store has no catalog index")
@@ -66,38 +69,39 @@ func (i *Catalog) snapshot(name string) (*catalog.Index, error) {
 	return i.index, nil
 }
 
-func (s *Server) searchCatalog(w http.ResponseWriter, r *http.Request) {
-	if len(r.URL.RawQuery) > maxSearchQuery {
-		http.Error(w, errSearchTooLong.Error(), http.StatusRequestURITooLong)
-		return
-	}
+// Without a published index the path remains available to the site itself.
+func (s *Server) searchCatalog(w http.ResponseWriter, r *http.Request) bool {
 	var result catalog.Result
 	err := s.Pages.store.View(func(v *store.View) error {
 		var err error
-		result, err = s.Catalog.search(v, r.URL.Query())
+		result, err = s.Catalog.search(v, r.URL)
 		return err
 	})
 	if errors.Is(err, errNoCatalog) {
-		http.NotFound(w, r)
-		return
+		return false
+	}
+	if errors.Is(err, errSearchTooLong) {
+		http.Error(w, errSearchTooLong.Error(), http.StatusRequestURITooLong)
+		return true
 	}
 	if err != nil {
 		s.fail(w, err)
-		return
+		return true
 	}
 	data, err := json.Marshal(result)
 	if err != nil {
 		s.fail(w, err)
-		return
+		return true
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Content-Length", fmt.Sprint(len(data)))
 	if r.Method == http.MethodHead {
 		w.WriteHeader(http.StatusOK)
-		return
+		return true
 	}
 	w.Write(data)
+	return true
 }
 
 func usesSearch(query url.Values) bool {
@@ -112,17 +116,18 @@ func usesSearch(query url.Values) bool {
 type replaceIsland func(*store.View, *program.Site, *render.Island) error
 
 func (i *Catalog) forRequest(target *url.URL, rendered *bool) replaceIsland {
-	if len(target.RawQuery) > maxSearchQuery {
-		return func(*store.View, *program.Site, *render.Island) error { return errSearchTooLong }
-	}
-	query := target.Query()
-	if !usesSearch(query) {
-		return nil
-	}
+	var checked bool
 	var initial json.RawMessage
 	return func(v *store.View, site *program.Site, island *render.Island) error {
-		if initial == nil {
-			result, err := i.search(v, query)
+		if !checked {
+			checked = true
+			if len(target.RawQuery) > maxSearchQuery {
+				return errSearchTooLong
+			}
+			if !usesSearch(target.Query()) {
+				return nil
+			}
+			result, err := i.search(v, target)
 			if err != nil {
 				return err
 			}
@@ -131,11 +136,22 @@ func (i *Catalog) forRequest(target *url.URL, rendered *bool) replaceIsland {
 				return err
 			}
 		}
+		if initial == nil {
+			return nil
+		}
 		var props map[string]json.RawMessage
 		if err := json.Unmarshal(island.Props, &props); err != nil {
 			return err
 		}
-		props["initial"] = initial
+		if island.Search && len(island.Request) == 0 {
+			props["initial"] = initial
+		}
+		for name, source := range island.Request {
+			if source != "catalog" {
+				return fmt.Errorf("island %s: unknown request data source %q", island.ID, source)
+			}
+			props[name] = initial
+		}
 		encoded, err := json.Marshal(props)
 		if err != nil {
 			return err

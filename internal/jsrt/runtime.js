@@ -13,10 +13,21 @@
 import { readFileSync, readSync, writeSync } from "node:fs";
 
 import { during, open, Query, Reads } from "shugo:query";
-import { catalog } from "shugo:catalog";
 
 // The data database of the project, once it is open; null if it has none.
 let data = null;
+
+// Search results are ordinary view data. Keep their source out of the JSON
+// so the same result can be used in a static template or a request binding.
+const requestSources = new WeakMap();
+
+export function catalogView() {
+  const result = process.env.SHUGO_CATALOG;
+  if (!result) throw new Error("shugo:catalog search() needs a prepared catalog index");
+  const view = JSON.parse(result);
+  requestSources.set(view, "catalog");
+  return view;
+}
 
 // ---------------------------------------------------------------------------
 // What is computed
@@ -87,8 +98,14 @@ class Writer {
     this.block.values.push(escape(String(value ?? "")));
   }
 
-  island(target, { shugoSearch = false, ...props }) {
-    if (shugoSearch) props.initial = catalog();
+  island(target, props, bound = []) {
+    const request = [];
+    for (const [prop, value] of bound) {
+      const source = requestSources.get(value);
+      if (!source) throw new TypeError(`request:${prop} needs a search() result from shugo:catalog`);
+      request.push([prop, source]);
+    }
+    if (request.length) props = { ...props, ...Object.fromEntries(bound) };
     // Normalize before SSR so the browser hydrates with the same values.
     const serial = JSON.stringify(props, (_, value) => {
       if (typeof value === "function" || typeof value === "symbol") {
@@ -100,7 +117,8 @@ class Writer {
     const { body, head } = target.render(normalized);
     if (head) throw new Error("Put the island’s head elements in its Shugo page");
     this.block.values.push(escape(JSON.stringify({
-      id: target.id, url: target.url, css: target.css, search: Boolean(shugoSearch),
+      id: target.id, url: target.url, css: target.css,
+      request: request.length ? Object.fromEntries(request) : undefined,
       props: JSON.parse(serial), body,
     })));
   }

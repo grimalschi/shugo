@@ -14,7 +14,7 @@ import (
 
 type islandBinding struct {
 	path    string
-	request bool // at least one use of the binding can supply shugoSearch
+	request bool // at least one call binds props to request data
 }
 
 // unit is one compiled .shugo file.

@@ -166,10 +166,10 @@ func Run(p *project.Project, compiled *compile.Result, st *store.Store, options 
 	k.check, report.Checked = options.Check, options.Check
 	w := &worker{project: p, log: options.Log}
 	defer w.stop()
-	if p.Config.CatalogIslands && p.Data() == "" {
-		return nil, errors.New("catalogIslands needs a data database in shugo.json")
+	if compiled.Site.CatalogSearch && p.Data() == "" {
+		return nil, errors.New("shugo:catalog search() needs a data database in shugo.json")
 	}
-	if !p.Config.CatalogIslands && (options.Whole || kept != compiled.ID) {
+	if !compiled.Site.CatalogSearch && (options.Whole || kept != compiled.ID) {
 		if name, err := u.Catalog(); err != nil {
 			return nil, err
 		} else if name != "" {
@@ -311,7 +311,7 @@ func tracked(w *worker, k *keeper, path string, whole bool, took func(string)) e
 			return err
 		}
 	}
-	if w.project.Config.CatalogIslands {
+	if k.site.CatalogSearch {
 		took("data")
 		changed, err := w.prepareCatalog(k.update, whole || now != at)
 		if err != nil {

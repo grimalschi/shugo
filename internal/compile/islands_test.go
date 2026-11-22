@@ -37,19 +37,17 @@ func TestLowerIsland(t *testing.T) {
 	}
 }
 
-func TestSearchIslandUseSelectsRequestProgram(t *testing.T) {
+func TestRequestBindingSelectsIslandProgram(t *testing.T) {
 	for _, test := range []struct {
 		markup string
 		want   bool
 	}{
 		{`<Island />`, false},
-		{`<Island shugoSearch />`, true},
-		{`<Island shugoSearch={true} />`, true},
-		{`<Island shugoSearch={false} />`, false},
-		{`<Island shugoSearch={enabled} />`, true},
-		{`<Island {...props} shugoSearch={false} />`, false},
-		{`<Island shugoSearch={false} {...props} />`, true},
-		{`<Island shugoSearch /><Island shugoSearch={false} />`, true},
+		{`<Island initial={search()} />`, false},
+		{`<Island {...props} />`, false},
+		{`<Island request:initial={search()} />`, true},
+		{`<Island request:results={source} {...props} />`, true},
+		{`<Island request:initial={source} /><Island initial={data} />`, true},
 	} {
 		u, err := compileFile("src/pages/catalog.shugo", `<script>import Island from './Island.svelte'</script>`+test.markup, 0, page)
 		if err != nil {
@@ -68,6 +66,11 @@ func TestIslandBoundaryDiagnostics(t *testing.T) {
 		{`<script>import Counter from './Counter.svelte';</script><Counter>{#snippet detail()}hi{/snippet}</Counter>`, "cannot pass children or snippets"},
 		{`<script>import Counter from './Counter.svelte';</script><svelte:component this={Counter} />`, "must be rendered by its imported tag"},
 		{`<script>import Counter from './Counter.svelte';</script><Counter bind:value />`, "directives belong inside"},
+		{`<script>import Counter from './Counter.svelte';</script><Counter shugoSearch />`, "use request:initial"},
+		{`<script>import Counter from './Counter.svelte';</script><Counter request:initial />`, "needs one source expression"},
+		{`<script>import Counter from './Counter.svelte';</script><Counter request:initial={source} initial={value} />`, "already gets its value"},
+		{`<script>import Counter from './Counter.svelte';</script><Counter request:initial={source} request:initial={other} />`, "already bound"},
+		{`<div request:initial={source}></div>`, "binds a prop on a .svelte island"},
 		{`<script>import Counter from './Counter.svelte';</script><svg><Counter /></svg>`, "its wrapper in the HTML body"},
 	} {
 		if _, err := compileFile("src/pages/index.shugo", test.source, 0, page); err == nil || !strings.Contains(err.Error(), test.message) {

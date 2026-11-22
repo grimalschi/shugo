@@ -11,16 +11,25 @@ import (
 	"github.com/grimalschi/shugo/internal/catalog"
 	"github.com/grimalschi/shugo/internal/project"
 	"github.com/grimalschi/shugo/internal/server"
+	"github.com/grimalschi/shugo/internal/store"
 )
+
+const catalogAddressPage = `
+-- src/pages/[section]/catalog.shugo --
+<script module>
+  export const getStaticPaths = () => [{ params: { section: "_islands" } }]
+</script>
+<p>Site catalog page</p>
+`
 
 func TestCatalogSnapshot(t *testing.T) {
 	s := newSite(t, `
 -- shugo.json --
-{"data":"data/shop.db","catalogIslands":true}
+{"data":"data/shop.db"}
 -- src/pages/index.shugo --
 <script>
-  import { catalog } from "shugo:catalog"
-  const result = catalog()
+  import { search } from "shugo:catalog"
+  const result = search()
 </script>
 <h1>{result.hits[0].title}</h1>
 `)
@@ -82,4 +91,50 @@ INSERT INTO variants VALUES ('sku', 'p1', 'large', 1, 1);
 	}
 	query("", "Changed first")
 	expect(t, s.page("/"), "<h1>Changed first</h1>")
+
+	s.write(`
+-- src/pages/index.shugo --
+<h1>Static shop</h1>
+` + catalogAddressPage)
+	s.build()
+	expect(t, s.page("/"), "<h1>Static shop</h1>")
+	expectNoCatalogIndex(t, s, ts)
+}
+
+func TestCatalogUnusedSearch(t *testing.T) {
+	s := newSite(t, `
+-- shugo.json --
+{"data":"data/shop.db"}
+-- src/pages/index.shugo --
+<script>
+  import { search } from "shugo:catalog"
+</script>
+<p>Regular page</p>
+`+catalogAddressPage)
+	s.sql(`CREATE TABLE notes (id TEXT PRIMARY KEY, body TEXT)`)
+	s.build()
+	expect(t, s.page("/"), "<p>Regular page</p>")
+	ts := httptest.NewServer(&server.Server{
+		Pages: s.pages, Catalog: server.NewCatalog(s.project().Path(project.Output)),
+	})
+	defer ts.Close()
+	expectNoCatalogIndex(t, s, ts)
+}
+
+func expectNoCatalogIndex(t *testing.T, s *site, ts *httptest.Server) {
+	t.Helper()
+	if err := s.store.View(func(v *store.View) error {
+		name, err := v.Catalog()
+		if name != "" {
+			t.Errorf("unexpected published catalog index %q", name)
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	status, header, body := get(t, ts, "/_islands/catalog")
+	if status != http.StatusOK || !strings.HasPrefix(header.Get("Content-Type"), "text/html") {
+		t.Fatalf("site catalog page: %d, %s, %s", status, header.Get("Content-Type"), body)
+	}
+	expect(t, body, "<p>Site catalog page</p>")
 }
