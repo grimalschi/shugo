@@ -13,11 +13,11 @@ The `tap.sh` wrapper captures messages between Go and JavaScript. Shugo runs it 
 
 | File | Contents |
 | --- | --- |
-| `src/pages/products/[slug].shugo` | Data-driven page: a query supplies the list of URLs, and each page displays the product and its variants. |
-| `src/pages/categories/[id].shugo` | Category page with product cards. |
-| `src/pages/index.shugo` | Home page with cards for all products. |
+| `src/pages/products/[slug].svelte` | Data-driven page: a query supplies the list of URLs, and each page displays the product and its variants. |
+| `src/pages/categories/[id].svelte` | Category page with product cards. |
+| `src/pages/index.svelte` | Home page with cards for all products. |
 | `src/site.html` | Shell for every page, with `<html>`, `<head>`, and `<body>`. The pages' `<svelte:head>` content goes into `%shugo.head%`, and the page itself goes into `%shugo.body%`. |
-| `src/pages/+layout.shugo` | Layout with a header. |
-| `src/components/Header.shugo` | Shared block with no parameters that displays navigation and counts. |
-| `src/components/ProductCard.shugo` | Shared block keyed by product. |
-| `src/components/Variant.shugo` | Regular component that receives a variant row. |
+| `src/pages/+layout.svelte` | Layout with a header. |
+| `src/components/Header.svelte` | Shared block with no parameters that displays navigation and counts. |
+| `src/components/ProductCard.svelte` | Shared block keyed by product. |
+| `src/components/Variant.svelte` | Regular component that receives a variant row. |

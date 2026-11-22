@@ -40,7 +40,7 @@ func TestParseAndFind(t *testing.T) {
 
 func TestRoundTrip(t *testing.T) {
 	m := &Map{
-		Sources: []string{"page.shugo", "lib.ts"},
+		Sources: []string{"page.svelte", "lib.ts"},
 		Lines: [][]Segment{
 			{{0, 0, 10, 4}, {12, 0, 10, 16}, {30, -1, 0, 0}},
 			nil,

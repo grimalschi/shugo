@@ -12,7 +12,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { open } from "./scripts/db.mjs";
@@ -31,7 +31,9 @@ const runtime = option("runtime", "");
 // whole command took: starting it is a part of what an update costs.
 const run = (command, folder = here, ...more) => {
   const started = performance.now();
-  const report = JSON.parse(execFileSync(shugo, [command, "-json", ...(runtime ? ["-runtime", runtime] : []), ...more, folder], { encoding: "utf8", maxBuffer: 1 << 30 }));
+  const args = [command, "-json"];
+  if (runtime && (command === "build" || command === "update")) args.push("-runtime", runtime);
+  const report = JSON.parse(execFileSync(shugo, [...args, ...more, folder], { encoding: "utf8", maxBuffer: 1 << 30 }));
   report.took = performance.now() - started;
   return report;
 };
@@ -154,7 +156,7 @@ console.table(rows);
 
 // The same data built from scratch must give the same site.
 const scratch = mkdtempSync(join(tmpdir(), "shugo-stand-"));
-cpSync(here, scratch, { recursive: true, filter: (path) => !path.includes("_build") && !path.includes("node_modules") });
+cpSync(here, scratch, { recursive: true, filter: (path) => !["_build", "node_modules"].includes(basename(path)) });
 run("build", scratch);
 run("export", scratch);
 const [stepByStep, fromScratch] = [digest(join(here, "_build/dist")), digest(join(scratch, "_build/dist"))];

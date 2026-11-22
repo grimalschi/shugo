@@ -1,0 +1,22 @@
+<script module>
+  import { query, page } from "shugo"
+  // The route gives the addresses; every page asks for its product itself.
+  export function getStaticPaths() {
+    return query("products").select("slug").all().map((row) => ({ params: { slug: row.slug } }))
+  }
+</script>
+
+<script>
+  import Variant from "../../components/Variant.svelte"
+  import { price } from "../../lib/money"
+
+  const item = query("products").where({ slug: page.params.slug }).first()
+  const variants = query("variants").where({ product: item.id }).order("position").all()
+</script>
+
+<svelte:head><title>{item.title} — Pottery Shop</title></svelte:head>
+<h1>{item.title}</h1>
+<p class="price">{price(item.price)}</p>
+<ul>
+  {#each variants as variant}<Variant {variant} />{/each}
+</ul>

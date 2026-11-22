@@ -9,11 +9,10 @@ Here lies what Shugo does not have yet: proposals that are waiting for the decis
 | [Data adapter](data-adapter.md) | How data from any source gets into the project database: full load with comparison, point changes, a scheme that signals, libraries that can only wait | waiting for a decision; advice is the next big step |
 | [Pictures](images.md) | Built-in compression with WebP and, optionally, libvips for speed and AVIF; format, addresses, export | two modes and format are solved; the rest is waiting for the decision |
 | [Internationalization](i18n.md) | One page for all languages, lines in the database, addresses `/about` and `/en/about`, optional parameter `[[lang]]` | lines in the database are solved; the rest is waiting for the decision |
-| [Compatible with Svelte](svelte-compatibility.md) | `lang="ts"`, rune locations, style class like Svelte, availability warnings, `<svelte:head>` in components, `$lib`; check by compiler Svelte | postponed entirely |
 | [Multiple JS processes for first build](parallel-build.md) | First Assembly Divides Calculation Between Processes by Number of Cores | postponed |
 | [Comparisons and windows in readings](range-queries.md) | Accurate update of comparison queries and `limit`: Reading boundaries and R*Tree index | postponed |
 
-Accepted and done 22 November 2026 years, so we left this folder: `query`, `paginate` and `page` from module `shugo` the National Museum [Templates](../../spec/templates.md#file-structure); shell `src/site.html` the National Museum [Layouts](../../spec/layouts.md#shell-srcsitehtml).
+Accepted and done 22 November 2026 years, so we left this folder: `query`, `paginate` and `page` from module `shugo` the National Museum [Templates](../../spec/templates.md#file-structure); shell `src/site.html` the National Museum [Layouts](../../spec/layouts.md#shell-srcsitehtml). Closed on the same day: compatibility with Svelte The basis was itself SvelteHis parser is picking up patterns. `.svelte`, TypeScript Written with `lang="ts"`The remaining differences are listed in [Templates](../../spec/templates.md#how-shugo-differs-from-svelte).
 
 ## Done and waiting for approval later
 

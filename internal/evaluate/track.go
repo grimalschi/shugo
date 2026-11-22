@@ -348,6 +348,20 @@ func (k *keeper) read(reader string, kept []byte, text []byte) (encoded []byte, 
 		for len(list) > 0 {
 			number, _ := list[0].(json.Number)
 			at, err := number.Int64()
+			if err == nil && at == -1 && k.site.CatalogSearch {
+				now = append(now, reading{shape: store.CatalogResultShape})
+				list = list[1:]
+				continue
+			}
+			if err == nil && at == -2 && k.site.Search && len(list) > 1 {
+				id, ok := list[1].(string)
+				if !ok || id == "" {
+					return nil, false, errorf("a damaged search reading")
+				}
+				now = append(now, reading{shape: store.SearchResultShape, key: id})
+				list = list[2:]
+				continue
+			}
 			shape := k.shapes.told[int(at)]
 			if err != nil || shape == nil || len(list)-1 < len(shape.by) {
 				return nil, false, errorf("a reading of a shape it has not told")

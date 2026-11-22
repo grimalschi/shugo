@@ -46,7 +46,7 @@ func markup(text string) skeleton.Op { return op(skeleton.Markup, text) }
 //
 // The page is route 0, the module route 1.
 var site = &skeleton.Site{Files: []skeleton.File{
-	{Path: "page.shugo", Parts: [][]skeleton.Op{
+	{Path: "page.svelte", Parts: [][]skeleton.Op{
 		{
 			markup("<main>"), op(skeleton.Text, ""),
 			markup("<a"), op(skeleton.Attr, "href"), op(skeleton.Attr, "class"), op(skeleton.Spread, ""), markup(">"),
@@ -56,10 +56,10 @@ var site = &skeleton.Site{Files: []skeleton.File{
 		},
 		{markup("<b>"), op(skeleton.Text, ""), markup("</b>")}, // put into the card
 	}},
-	{Path: "card.shugo", Parts: [][]skeleton.Op{{
+	{Path: "card.svelte", Parts: [][]skeleton.Op{{
 		markup("<section>"), op(skeleton.Render, ""), op(skeleton.Render, ""), markup("</section>"),
 	}}},
-	{Path: "header.shugo", Parts: [][]skeleton.Op{{markup("<header>"), op(skeleton.Text, ""), markup("</header>")}}},
+	{Path: "header.svelte", Parts: [][]skeleton.Op{{markup("<header>"), op(skeleton.Text, ""), markup("</header>")}}},
 	skeleton.ModuleFile("feed.xml.ts"),
 }, Routes: []skeleton.Route{{File: 0, Pattern: "/"}, {File: 3, Pattern: "/feed.xml", Extension: ".xml"}}}
 

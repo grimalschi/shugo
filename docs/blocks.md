@@ -29,7 +29,7 @@ Product page in the store from [examples/catalog](../examples/catalog/README.md)
 
 ```
 page entry /products/jug
-└─ layout src/pages/+layout.shugo{|children} general: one for the whole site
+└─ layout src/pages/+layout.svelte{|children} common: one for the whole site
    ├─ Header general: one for the whole site
    ├─ {@render children()}: page block in page entry
    │  ├─ <svelte:head>: block <title> in page entry
@@ -48,8 +48,8 @@ The documents around — `<!doctype>`, `<html>`, `<head>`, `<body>` — are not 
 
 The layout never lies in the page entry. The page stores a link to it and its snippets, and the layout is its own entry:
 
-- **A model that does not read a page**, — one entry for the entire site: `src/pages/+layout.shugo{|children}`.
-- **A model that reads the address** `page.url` or `page.params` from the `shugo` module, for example, to highlight the current menu item own entry to each page. Its name is the route and address of the page: `src/pages/+layout.shugo{"@path":"/c1","@route":0|children}`. The name of the entry is calculated by itself: from the address you get `page` - `page.url` and `page.params`, like a page.
+- **A model that does not read a page**, — one entry for the entire site: `src/pages/+layout.svelte{|children}`.
+- **A model that reads the address** `page.url` or `page.params` from the `shugo` module, for example, to highlight the current menu item own entry to each page. Its name is the route and address of the page: `src/pages/+layout.svelte{"@path":"/c1","@route":0|children}`. The name of the entry is calculated by itself: from the address you get `page` - `page.url` and `page.params`, like a page.
 
 Whether the template reads a page, the compiler learns by imports. The template or module that imports `page` or `paginate` from the `shugo` module depends on the page, and with it everyone who imports it: for example, a layout that imports the module from `src/lib/`, where the function reads `page.url`. Such a layout is a record for each page, such a component is not a common block: it is calculated on each page anew, in the record of the one who showed it. `query` does not depend on the page: what it read is written on who is currently being calculated.
 

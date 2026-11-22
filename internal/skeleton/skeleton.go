@@ -16,8 +16,10 @@ import (
 // snippets and <svelte:element>; 3 writes addresses as they are, as Svelte
 // does, and has no operation of its own for them; 4 puts the head of a page
 // together where the <head> ends, and layouts show no head of their own; 5
-// puts every page into the shell of src/site.html.
-const Version = 5
+// puts every page into the shell of src/site.html; 7 writes Svelte islands
+// and keeps the programs of those shown on request, with the searches they
+// are bound to. 6 was a format of the experiment with islands.
+const Version = 7
 
 // Site is a whole compiled project.
 type Site struct {
@@ -35,6 +37,17 @@ type Site struct {
 	Origin string `json:"origin,omitempty"`
 	// Redirects sends one path to another.
 	Redirects map[string]string `json:"redirects,omitempty"`
+	// Assets lists the public files the compiler made for this build. The
+	// assets folder keeps those of earlier builds too, for a server that
+	// still shows them; an export copies the files of this list alone.
+	Assets []string `json:"assets"`
+	// IslandPrograms holds the precompiled markup of request-bound islands
+	// and the component views they call. Keys are source-relative paths.
+	IslandPrograms map[string][]IslandOp `json:"islandPrograms,omitempty"`
+	// CatalogSearch prepares the legacy catalog default result during evaluation.
+	CatalogSearch bool `json:"catalogSearch,omitempty"`
+	// Search enables generic search requests while the project is evaluated.
+	Search bool `json:"search,omitempty"`
 }
 
 // File is one compiled template, or a module among the pages.
@@ -96,6 +109,7 @@ const (
 	Call    Kind = 'c' // show the next component the block calls
 	Render  Kind = 'n' // show a snippet: given by a caller, or a block of its own
 	Element Kind = 'e' // write an element whose tag is a value: <svelte:element>
+	Island  Kind = 'd' // write an island's server markup and hydration payload
 )
 
 // Shell is the document every page stands in, src/site.html: its markup
@@ -218,7 +232,7 @@ func (o Op) hasText() bool {
 func (o Op) check() error {
 	want := 0
 	switch o.Kind {
-	case Markup, Text, HTML, Attr, Spread, Call, Render:
+	case Markup, Text, HTML, Attr, Spread, Call, Render, Island:
 	case For:
 		want = min(max(1, len(o.Bodies)), 2)
 	case Element:
@@ -249,7 +263,7 @@ func Decode(data []byte) (*Site, error) {
 		return nil, err
 	}
 	if site.Version != Version {
-		return nil, fmt.Errorf("skeleton: the project was compiled for format %d, this runtime reads format %d", site.Version, Version)
+		return nil, fmt.Errorf("skeleton: the project was compiled for format %d, this runtime reads format %d: run `shugo build`", site.Version, Version)
 	}
 	return site, nil
 }

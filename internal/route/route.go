@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/grimalschi/shugo/internal/project"
 )
 
 // Kind tells what a segment of an address matches.
@@ -24,17 +26,10 @@ type Segment struct {
 }
 
 // Extension is what the files of templates end with.
-const Extension = ".shugo"
+const Extension = project.TemplateExtension
 
 // Layout is the name of the file that wraps the pages of its folder.
 const Layout = "+layout" + Extension
-
-// Module tells whether a file is a module of code: among the pages, a
-// module gives a file of the site that is not HTML. Declarations of types
-// are no modules.
-func Module(file string) bool {
-	return (strings.HasSuffix(file, ".ts") || strings.HasSuffix(file, ".js")) && !strings.HasSuffix(file, ".d.ts")
-}
 
 // Route is what the path of a file under src/pages/ says of the addresses
 // it gives.
@@ -47,15 +42,18 @@ type Route struct {
 }
 
 // Parse reads the path of a file under src/pages/: a page of templates, such
-// as "products/[slug].shugo", or a module, such as "sitemap.xml.ts". It
-// returns false for a file that gives no address: one whose name or folder
-// starts with "_".
+// as "products/[slug].svelte", or a module, such as "sitemap.xml.ts". It
+// returns false for a file that gives no address: an island, or one whose
+// name or folder starts with "_".
 func Parse(file string) (Route, bool, error) {
 	var r Route
-	module := Module(file)
-	name := strings.TrimSuffix(file, Extension)
-	if module {
+	module := project.IsModule(file)
+	name, template := strings.CutSuffix(file, Extension)
+	switch {
+	case module:
 		name = file[:len(file)-len(".ts")]
+	case !template || project.IsIsland(file):
+		return Route{}, false, nil
 	}
 	parts := strings.Split(name, "/")
 	for _, part := range parts {

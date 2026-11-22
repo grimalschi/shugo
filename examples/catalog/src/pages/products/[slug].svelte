@@ -1,0 +1,63 @@
+<script module>
+  import { query, page } from "shugo"
+  // The pages get their addresses alone; each asks for its product itself.
+  // So one product that changes has one page computed, not the list of all.
+  // The list names the one column it needs: of a hundred thousand products
+  // that is a third of the time it takes to fetch them whole.
+  export function getStaticPaths() {
+    return query("products").select("slug").all().map(({ slug }) => ({ params: { slug } }))
+  }
+</script>
+
+<script>
+  import Badge from "../../components/Badge.svelte"
+  import ProductCard from "../../components/ProductCard.svelte"
+  import Variant from "../../components/Variant.svelte"
+  import { finalPrice, price } from "../../lib/catalog"
+
+  // No query names its columns. A page depends on what is read of its rows
+  // while it is computed — here, in the template, in the functions the
+  // template calls and in the components it gives a row to — and on nothing
+  // else of them.
+  const item = query("products").where({ slug: page.params.slug }).first()
+  const badges = query("badges").where({ product: item.id }).order("position").all()
+  const variants = query("variants").where({ product: item.id }).order("position").all()
+  const reviews = query("reviews").where({ product: item.id, approved: true }).all()
+  const related = query("related").where({ product: item.id }).order("position").all()
+</script>
+
+<svelte:head><title>{item.title} — Measure</title></svelte:head>
+<h1>{item.title}</h1>
+<p class="badges">{#each badges as badge}<Badge text={badge.text} />{/each}</p>
+<p class="price">
+  {#if item.discount}
+    <s>{price(item.price)}</s>
+    <strong>{price(finalPrice(item))}</strong>
+    <span>−{item.discount}% to {item.discount_until}</span>
+  {:else}
+    <strong>{price(item.price)}</strong>
+  {/if}
+</p>
+{#if item.available}
+  <p class="stock">In stock</p>
+{:else}
+  <p class="stock">Available to order; arriving {item.arrival}</p>
+{/if}
+<p>{item.description}</p>
+<ul class="variants">
+  {#each variants as variant}<Variant {variant} />{/each}
+</ul>
+<section class="reviews">
+  <h2>Reviews: {reviews.length}</h2>
+  {#each reviews as review}
+    <blockquote><p>{review.text}</p><small>{review.author}</small></blockquote>
+  {/each}
+</section>
+{#if related.length}
+  <section class="related">
+    <h2>Frequently bought together</h2>
+    <ul class="cards">
+      {#each related as one}<li><ProductCard id={one.other} /></li>{/each}
+    </ul>
+  </section>
+{/if}

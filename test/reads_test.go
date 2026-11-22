@@ -25,14 +25,14 @@ const readSite = `
 {"data": "data/shop.db"}
 -- src/lib/text.ts --
 export const shout = (row: { title: string }) => row.title.toUpperCase()
--- src/components/Row.shugo --
+-- src/components/Row.svelte --
 <li>{$props().row.title}</li>
--- src/components/Frame.shugo --
+-- src/components/Frame.svelte --
 <script>
 let { children } = $props()
 </script>
 <div>{@render children?.()}</div>
--- src/pages/script.shugo --
+-- src/pages/script.svelte --
 <script>
 import { query } from "shugo"
 const item = query("products").get("p1")
@@ -40,21 +40,21 @@ const cost = item.price * 2
 console.log("script")
 </script>
 <p>{cost}</p>
--- src/pages/template.shugo --
+-- src/pages/template.svelte --
 <script>
 import { query } from "shugo"
 const item = query("products").get("p1")
 console.log("template")
 </script>
 <p>{item.title}</p>
--- src/pages/neither.shugo --
+-- src/pages/neither.svelte --
 <script>
 import { query } from "shugo"
 const item = query("products").get("p1")
 console.log("neither")
 </script>
 <p>{#if item}there{:else}gone{/if}</p>
--- src/pages/asked.shugo --
+-- src/pages/asked.svelte --
 <script>
 import { query } from "shugo"
 const item = query("products").get("p1")
@@ -62,21 +62,21 @@ const priced = "price" in item
 console.log("asked")
 </script>
 <p>{priced}</p>
--- src/pages/spread.shugo --
+-- src/pages/spread.svelte --
 <script>
 import { query } from "shugo"
 const copy = { ...query("products").get("p1") }
 console.log("spread")
 </script>
 <p>{copy.title}</p>
--- src/pages/written.shugo --
+-- src/pages/written.svelte --
 <script>
 import { query } from "shugo"
 const text = JSON.stringify(query("products").get("p1")).length > 0
 console.log("written")
 </script>
 <p>{text}</p>
--- src/pages/function.shugo --
+-- src/pages/function.svelte --
 <script>
 import { query } from "shugo"
 import { shout } from "../lib/text"
@@ -84,7 +84,7 @@ const item = query("products").get("p1")
 console.log("function")
 </script>
 <p>{shout(item)}</p>
--- src/pages/local.shugo --
+-- src/pages/local.svelte --
 <script>
 import { query } from "shugo"
 const item = query("products").get("p1")
@@ -92,49 +92,49 @@ const cost = (row) => row.price + 1
 console.log("local")
 </script>
 <p>{cost(item)}</p>
--- src/pages/component.shugo --
+-- src/pages/component.svelte --
 <script>
 import { query } from "shugo"
-import Row from "../components/Row.shugo"
+import Row from "../components/Row.svelte"
 const item = query("products").get("p1")
 console.log("component")
 </script>
 <ul><Row row={item} /></ul>
--- src/pages/fill.shugo --
+-- src/pages/fill.svelte --
 <script>
 import { query } from "shugo"
-import Frame from "../components/Frame.shugo"
+import Frame from "../components/Frame.svelte"
 const item = query("products").get("p1")
 console.log("fill")
 </script>
 <Frame>{item.title}</Frame>
--- src/pages/asking.shugo --
+-- src/pages/asking.svelte --
 <script>
 import { query } from "shugo"
 </script>
 <p>{query("products").get("p1").title}{console.log("asking")}</p>
--- src/pages/together.shugo --
+-- src/pages/together.svelte --
 <script>
 import { query } from "shugo"
 const rows = query("products").where({ category: "c1" }).order("position").all()
 console.log("together")
 </script>
 <ul>{#each rows as row}<li>{row.title}</li>{/each}</ul>
--- src/pages/alone.shugo --
+-- src/pages/alone.svelte --
 <script>
 import { query } from "shugo"
 const rows = query("products").order("position").limit(2).all()
 console.log("alone")
 </script>
 <ul>{#each rows as row}<li>{row.title}</li>{/each}</ul>
--- src/pages/joined.shugo --
+-- src/pages/joined.svelte --
 <script>
 import { query } from "shugo"
 const item = query("products").join("categories", "category").get("p1")
 console.log("joined")
 </script>
 <p>{item.title} in {item.categories.title}</p>
--- src/pages/listed/[slug].shugo --
+-- src/pages/listed/[slug].svelte --
 <script module>
 import { query, page } from "shugo"
 export const getStaticPaths = () => query("products").all().map(({ slug }) => ({ params: { slug } }))
@@ -143,7 +143,7 @@ export const getStaticPaths = () => query("products").all().map(({ slug }) => ({
 console.log("listed " + page.params.slug)
 </script>
 <p>{page.params.slug}</p>
--- src/pages/garden/[slug].shugo --
+-- src/pages/garden/[slug].svelte --
 <script module>
 import { query, page } from "shugo"
 export const getStaticPaths = () => query("products").select("slug").where({ category: "c2" }).all().map(({ slug }) => ({ params: { slug } }))
@@ -241,21 +241,21 @@ func TestWaysThatAreTaken(t *testing.T) {
 -- src/lib/text.ts --
 // What it reads of the row depends on the row.
 export const label = (row) => (row.price > 6 ? row.title : row.note)
--- src/pages/branch.shugo --
+-- src/pages/branch.svelte --
 <script>
 import { query } from "shugo"
 const item = query("products").get("p1")
 console.log("branch")
 </script>
 {#if item.available}<p>in stock</p>{:else}<p>comes {item.arrival}</p>{/if}
--- src/pages/either.shugo --
+-- src/pages/either.svelte --
 <script>
 import { query } from "shugo"
 const item = query("products").get("p1")
 console.log("either")
 </script>
 <p>{item.note || item.title}</p>
--- src/pages/function.shugo --
+-- src/pages/function.svelte --
 <script>
 import { query } from "shugo"
 import { label } from "../lib/text"
@@ -263,14 +263,14 @@ const item = query("products").get("p2")
 console.log("function")
 </script>
 <p>{label(item)}</p>
--- src/pages/loop.shugo --
+-- src/pages/loop.svelte --
 <script>
 import { query } from "shugo"
 const rows = query("products").where({ available: true }).order("position").all()
 console.log("loop")
 </script>
 <ul>{#each rows as row}<li>{row.title}</li>{/each}</ul>
--- src/pages/first.shugo --
+-- src/pages/first.svelte --
 <script>
 import { query } from "shugo"
 const rows = query("products").order("position").limit(2).all()
@@ -336,7 +336,7 @@ func TestSelectTakesLess(t *testing.T) {
 	s := newSite(t, `
 -- shugo.json --
 {"data": "data/shop.db"}
--- src/pages/index.shugo --
+-- src/pages/index.svelte --
 <script>
 import { query } from "shugo"
 const item = query("products").select("title", "price", "note").get("p1")
@@ -360,7 +360,7 @@ func TestRowIsAnOrdinaryObject(t *testing.T) {
 	s := newSite(t, `
 -- shugo.json --
 {"data": "data/shop.db"}
--- src/pages/index.shugo --
+-- src/pages/index.svelte --
 <script>
 import { query } from "shugo"
 const item = query("products").get("p1")
@@ -369,7 +369,7 @@ const same = item.then === undefined && item.toString === Object.prototype.toStr
 console.log("index")
 </script>
 <p title={item}>{priced} {same} {item} {[item, item]}</p>
--- src/pages/attributes.shugo --
+-- src/pages/attributes.svelte --
 <script>
 import { query } from "shugo"
 const item = query("products").select("title", "note").get("p1")
@@ -411,13 +411,13 @@ func TestRowKeptForAnotherScript(t *testing.T) {
 		want        []string
 	}{
 		{"a row read after its page is computed", keptSite + `
--- src/pages/index.shugo --
+-- src/pages/index.svelte --
 <script>
 import { jug } from "../lib/kept"
 const item = jug()
 </script>
 <p>{item.title}</p>
--- src/pages/about.shugo --
+-- src/pages/about.svelte --
 <script>
 import { jug } from "../lib/kept"
 const item = jug()
@@ -435,7 +435,7 @@ const item = jug()
 let first: { title: string } | undefined
 export const keep = (row: { title: string }) => (first ??= row)
 export const kept = () => first
--- src/pages/[slug].shugo --
+-- src/pages/[slug].svelte --
 <script module>
 import { query } from "shugo"
 import { keep, kept } from "../lib/kept"
@@ -444,12 +444,12 @@ export const getStaticPaths = () => query("products").all().map((row) => (keep(r
 <p>{kept().title}</p>
 `, []string{"a row of the table products is read when the page, shared block or list of pages it belongs to is already computed"}},
 		{"a query asked after its page is computed", keptSite + `
--- src/pages/index.shugo --
+-- src/pages/index.svelte --
 <script>
 import { count } from "../lib/kept"
 </script>
 <p>{count()}</p>
--- src/pages/about.shugo --
+-- src/pages/about.svelte --
 <script>
 import { count } from "../lib/kept"
 </script>
@@ -492,7 +492,7 @@ old
 import { query } from "shugo"
 let kept: string | undefined
 export const title = () => (kept ??= query("products").get("p2").title)
--- src/pages/index.shugo --
+-- src/pages/index.svelte --
 <script>
 import { query } from "shugo"
 import { readFileSync } from "node:fs"
@@ -500,18 +500,18 @@ const note = readFileSync("note.txt", "utf8").trim()
 const count = query("products").count()
 </script>
 <p>{note}: {count}</p>
--- src/pages/about.shugo --
+-- src/pages/about.svelte --
 <script>
 import { query } from "shugo"
 const item = query("products").get("p1")
 </script>
 <p>{item.title}</p>
--- src/pages/one.shugo --
+-- src/pages/one.svelte --
 <script>
 import { title } from "../lib/kept"
 </script>
 <p>{title()}</p>
--- src/pages/two.shugo --
+-- src/pages/two.svelte --
 <script>
 import { title } from "../lib/kept"
 </script>
@@ -559,7 +559,7 @@ func TestParametersComeFromTheAddress(t *testing.T) {
 	s := newSite(t, `
 -- shugo.json --
 {"data": "data/shop.db"}
--- src/pages/price/[price].shugo --
+-- src/pages/price/[price].svelte --
 <script module>
 import { query, page } from "shugo"
 export const getStaticPaths = () => query("products").select("price").all().map(({ price }) => ({ params: { price, more: "no" } }))
@@ -587,7 +587,7 @@ func TestCheckCommand(t *testing.T) {
 {"data": "data/shop.db"}
 -- note.txt --
 old
--- src/pages/index.shugo --
+-- src/pages/index.svelte --
 <script>
 import { query } from "shugo"
 import { readFileSync } from "node:fs"

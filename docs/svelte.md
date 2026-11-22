@@ -1,14 +1,14 @@
 # Shugo and Svelte
 
-The Shugo templates are components of the Svelte 5, and the page that Shugo collects is the same as that given by the Svelte server, byte per byte, except for hydration tags. The document describes how it is done and how it is checked, and the studies that selected the syntax. How to write templates in [Templates](../spec/templates.md).
+Ordinary `.svelte` Shugo the Official Parser Svelte 5.59.1. The markup program and the code for reading are built from the resulting tree. To `.island.svelte` Svelte It also compiles browser code, and Shugo prepares the program SSR with hydration marks. [Templates](../spec/templates.md) · [SSR Islands on Go](../examples/islands/GO-SSR.md)
 
 ## How Shugo repeats Svelte
 
-The standard is Svelte 5.59.1. The Shugo compiler parses the `.shugo` file itself, on Go, and converts the values into text functions transferred from the server runtime of Svelte as is:
+Parser, tree conversion and HTML generation use the following parts of Svelte and Shugo.
 
 | What | Where to Svelte | Where in Shugo |
 | --- | --- | --- |
-| Analysis of markup, blocks and tags | `phases/1-parse` | `internal/syntax` |
+| Analysis of markup, blocks and tags | `svelte/compiler.parse` | `internal/syntax/svelte-ast.mjs` translates official AST to compile nodes Shugo |
 | Spaces: what is removed, what is compressed, `<pre>` and `<textarea>` | `clean_nodes` | `internal/compile/lower.go` |
 | What not to invest in: mistakes and warnings | `html-tree-validation.js` | `internal/compile/nesting.go` |
 | Component Style Class and Selector Rewriting | hash `cssHash`, `phases/3-transform/css` | `internal/compile/css.go` |
@@ -29,7 +29,22 @@ The document around the Svelte page does not write: `render()` gives the head an
 - **Random pages.** `TestRandomPages` writes pages at random and considers them HTML as its model on Go, independent of the Shugo code. The model is checked with Svelte 5.59.1 on 400 random pages: matched all. In the course of reconciliation, two discrepancies of Shugo with Svelte were found and corrected: `class` and `style` without value.
 - Before comparing, Svelte removes hydration tags, and the style class is removed from both: Svelte considers it from a different file path and does not put it on all elements ([Styles](../spec/styles.md)).
 
-Svelte version update is a new version in `test/svelte/package.json` and `render.mjs`, new benchmarks and correction of discrepancies. Judging by the history, the visible changes rarely, and bytes - several times a year.
+When updating Svelte synchronously change the built-in compiler, the package version in the island stand and benchmark tests. [Built-in compiler](../internal/syntax/vendor/README.md)
+
+## Cost of analysis and small changes
+
+For example, `examples/basic` cold build from the new catalog took 43 ms with the former parser and 152 ms with the official. The compilation phase was taken by 20 and 130 ms respectively. These are the medians of seven alternate runs on Bun.
+
+Below is the full time `shugo update` on the island stand and a complete re-creation of the FTS5 image. For each action, the median of three repetitions is specified. When editing data, compilation is skipped.
+
+| Edit | 1 000 | 100 000 |
+| --- | ---: | ---: |
+| Field not in the search projection | 15 ms | 14 ms |
+| Price of goods from the first issue | 107 ms | 4.80 s |
+| Indexed description of goods outside the first issue | 64 ms | 4.76 s |
+| Adding HTML to one template | 0.63 s | 5.99 s |
+
+From 4.80 s price updates on a large base, 4.76 s took a new snapshot of the index. After editing the description, zero pages were recalculated. Changing the template in this stand starts the complete build, including the index. [Catalog Stand](../examples/islands/GO-SSR.md)
 
 ## Test: How models write templates without documentation
 

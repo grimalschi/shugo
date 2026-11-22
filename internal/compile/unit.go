@@ -12,7 +12,12 @@ import (
 	"github.com/grimalschi/shugo/internal/syntax"
 )
 
-// unit is one compiled .shugo file.
+type islandBinding struct {
+	path    string
+	request bool // at least one call binds props to request data
+}
+
+// unit is one regular .svelte file compiled by Shugo.
 type unit struct {
 	file   *syntax.File
 	role   role
@@ -24,17 +29,15 @@ type unit struct {
 	paths bool
 	// warnings are what is written in a way Svelte allows but warns about.
 	warnings []string
+	islands  map[string]islandBinding
 	// own tells that the file itself cannot be computed once for all pages:
 	// it reads the page it is shown on.
 	own bool
 }
 
 // compileFile compiles one file. id is the number its blocks carry.
-func compileFile(path, source string, id int, r role) (*unit, error) {
-	f, err := syntax.Parse(path, source)
-	if err != nil {
-		return nil, Errors{err.(*syntax.Error)}
-	}
+func compileFile(f *syntax.File, id int, r role) (*unit, error) {
+	path, source := f.Path, f.Source
 	var scripts []*script
 	for _, at := range []*syntax.Script{f.Module, f.Script} {
 		if at == nil || strings.TrimSpace(source[at.Code.Start:at.Code.End]) == "" {
@@ -49,7 +52,16 @@ func compileFile(path, source string, id int, r role) (*unit, error) {
 	}
 	moduleScript, instance := scripts[0], scripts[1]
 
-	l := &lowerer{file: f, role: r}
+	var islands map[string]islandBinding
+	if len(moduleScript.islands)+len(instance.islands) > 0 {
+		islands = map[string]islandBinding{}
+		for _, s := range scripts {
+			for name, path := range s.islands {
+				islands[name] = islandBinding{path: path}
+			}
+		}
+	}
+	l := &lowerer{file: f, role: r, islands: islands}
 	var styles []string
 	if f.Style != nil {
 		css := source[f.Style.Code.Start:f.Style.Code.End]
@@ -86,19 +98,11 @@ func compileFile(path, source string, id int, r role) (*unit, error) {
 
 	return &unit{
 		file: f, role: r, module: m, parts: e.parts, styles: styles,
+		islands:  islands,
 		paths:    moduleScript.paths || instance.paths,
-		warnings: append(warningsOf(f), l.warnings...),
+		warnings: l.warnings,
 		own:      importsPage(strings.Join(instance.lines, "\n")) || importsPage(strings.Join(moduleScript.lines, "\n")),
 	}, nil
-}
-
-// warningsOf returns the warnings the parser had about a file.
-func warningsOf(f *syntax.File) []string {
-	var out []string
-	for _, w := range f.Warnings {
-		out = append(out, w.Error())
-	}
-	return out
 }
 
 // renders tells whether a template shows a snippet anywhere: a layout must

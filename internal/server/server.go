@@ -1,7 +1,10 @@
 package server
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -20,7 +23,9 @@ type Server struct {
 	// compile.AssetsURL.
 	Public, Assets string
 	// Live, when set, tells open pages to reload after every update.
-	Live *Live
+	Live    *Live
+	Catalog *Catalog
+	Search  *Search
 	// Failed is called with every error that a visitor sees as a status 500.
 	Failed func(error)
 }
@@ -58,16 +63,35 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, target, http.StatusPermanentRedirect)
 		return
 	}
+	if s.Catalog != nil && address == catalogPath && s.searchCatalog(w, r) {
+		return
+	}
+	if s.Search != nil && s.searchIndex(w, r) {
+		return
+	}
 
 	buffer := buffers.Get().(*[]byte)
 	defer buffers.Put(buffer)
-	page, err := s.Pages.Render((*buffer)[:0], address)
+	var replace replaceIsland
+	filtered := false
+	if (s.Catalog != nil || s.Search != nil) && r.URL.RawQuery != "" {
+		replace = s.forRequest(r.Context(), r.URL, &filtered)
+	}
+	page, err := s.Pages.render((*buffer)[:0], address, replace)
+	if errors.Is(err, errSearchTooLong) {
+		http.Error(w, errSearchTooLong.Error(), http.StatusRequestURITooLong)
+		return
+	}
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
 	if page.Found && address != notFound {
 		*buffer = page.Body
+		if filtered {
+			w.Header().Set("X-Robots-Tag", "noindex")
+			w.Header().Set("Link", fmt.Sprintf("<%s>; rel=\"canonical\"", (&url.URL{Path: address}).EscapedPath()))
+		}
 		s.answer(w, r, http.StatusOK, page)
 		return
 	}

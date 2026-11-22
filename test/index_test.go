@@ -40,62 +40,62 @@ func (s *site) indexes() []string {
 const indexSite = `
 -- shugo.json --
 {"data": "data/shop.db"}
--- src/pages/equal.shugo --
+-- src/pages/equal.svelte --
 <script>
 import { query } from "shugo"
 </script>
 <p>{query("products").where({ category: "c1" }).all().length}</p>
--- src/pages/counted.shugo --
+-- src/pages/counted.svelte --
 <script>
 import { query } from "shugo"
 </script>
 <p>{query("products").where({ category: "c2", price: 9 }).count()}</p>
--- src/pages/ordered.shugo --
+-- src/pages/ordered.svelte --
 <script>
 import { query } from "shugo"
 </script>
 <p>{query("products").where({ note: "" }).order("position", "desc").all().map((row) => row.title)}</p><p>{query("products").where({ note: "" }).count()}</p>
--- src/pages/sorted.shugo --
+-- src/pages/sorted.svelte --
 <script>
 import { query } from "shugo"
 </script>
 <p>{query("products").order("price").limit(2).all().map((row) => row.title)}</p>
--- src/pages/among.shugo --
+-- src/pages/among.svelte --
 <script>
 import { query } from "shugo"
 </script>
 <p>{query("products").where("title", "in", ["Jug", "Cup"]).all().length}</p>
--- src/pages/both.shugo --
+-- src/pages/both.svelte --
 <script>
 import { query } from "shugo"
 </script>
 <p>{query("categories").where({ title: "Garden" }).where("position", "in", [1, 2]).order("id").all().length}</p>
--- src/pages/key.shugo --
+-- src/pages/key.svelte --
 <script>
 import { query } from "shugo"
 </script>
 <p>{query("products").get("p1").title}{query("products").where("id", "in", ["p1", "p2"]).order("price").all().length}</p>
--- src/pages/unique.shugo --
+-- src/pages/unique.svelte --
 <script>
 import { query } from "shugo"
 </script>
 <p>{query("products").where({ slug: "jug" }).first().title}</p>
--- src/pages/all.shugo --
+-- src/pages/all.svelte --
 <script>
 import { query } from "shugo"
 </script>
 <p>{query("categories").all().length}{query("categories").count()}</p>
--- src/pages/bykey.shugo --
+-- src/pages/bykey.svelte --
 <script>
 import { query } from "shugo"
 </script>
 <p>{query("products").order("id").limit(1).all().length}</p>
--- src/pages/other.shugo --
+-- src/pages/other.svelte --
 <script>
 import { query } from "shugo"
 </script>
 <p>{query("products").where("price", "<", 8).all().length}</p>
--- src/pages/joined.shugo --
+-- src/pages/joined.svelte --
 <script>
 import { query } from "shugo"
 </script>
@@ -177,14 +177,14 @@ CREATE INDEX by_three ON products (price, category, note);
 const orderSite = `
 -- shugo.json --
 {"data": "data/shop.db"}
--- src/pages/a.shugo --
+-- src/pages/a.svelte --
 <script>
 import { query } from "shugo"
 const titles = (query) => query.all().map((row) => row.title)
 console.log("a")
 </script>
 <p>{titles(query("products").where({ category: "c1" }))}</p><p>{titles(query("products").order("price"))} {titles(query("products").order("price", "desc"))} {titles(query("products").order("price").limit(2))}</p><p>{titles(query("tags").where({ kind: "x" }))} {titles(query("odd").where({ kind: "x" }))}</p><p>{titles(query("products").where({ note: "" }))} {titles(query("products").order("slug"))} {titles(query("products").order("alias"))}</p>
--- src/pages/b.shugo --
+-- src/pages/b.svelte --
 <script>
 import { query } from "shugo"
 </script>
@@ -258,7 +258,7 @@ func TestIndexMadeByAnUpdate(t *testing.T) {
 	s := newSite(t, `
 -- shugo.json --
 {"data": "data/shop.db"}
--- src/pages/index.shugo --
+-- src/pages/index.svelte --
 <script>
 import { query } from "shugo"
 const item = query("products").get("p1")
@@ -321,7 +321,7 @@ export function rename(): void {
     db.close()
   }
 }
--- src/pages/index.shugo --
+-- src/pages/index.svelte --
 <script>
 import { query } from "shugo"
 import { rename } from "../lib/outside"

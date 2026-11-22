@@ -45,7 +45,7 @@ The error in the page that was not opened, the development mode will not show: i
 
 | What has changed | What is calculated | What the browser sees |
 | --- | --- | --- |
-| Templates and code: `.shugo`, `.ts` in `src/`, `shugo.json` | compiling; pages - when asked | open pages are reloaded and re-computed |
+| Templates and code: `.svelte`, `.ts` in `src/`, `shugo.json` | compiling; pages - when asked | open pages are reloaded and re-computed |
 | Data | nothing at once; a page whose lines have changed when asked | reloads open pages that have read the changed lines |
 | Styles only: `.css` or `<style>` in template | nothing | new style file is replaced in open pages without rebooting |
 | Files in `public/` | nothing | reload all open pages |

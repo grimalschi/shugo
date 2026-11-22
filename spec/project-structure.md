@@ -4,7 +4,7 @@ The document describes what folders and files are in the project on Shugo and wh
 
 ## Decisions
 
-- Pages, layouts and components are `.shugo` files. The rest of the project code is TypeScript.
+- Pages, layouts and common components are `.svelte` files. The entry points for hydration are indicated by the suffix `.island.svelte`. The rest of the project code is TypeScript.
 - Project settings are the `shugo.json` file at the root.
 - Everything that framework writes is stored in the `_build` folder.
 - The site code is in the folder `src/` (the decision of the author of the project 21 November 2026 year).
@@ -30,7 +30,8 @@ _build/ result of the framework; git is not included
 
 - Only the `src/pages/` folder is required. Without `src/site.html`, the framework shell is taken.
 - `src/components/`, `src/lib/` and `src/styles/` are agreements: framework finds files by import, not by folder names.
-- `.shugo` files are only searched in `src/`, except for `node_modules` and hidden folders. Importing a `.shugo` file from another location is an build error with a hint of where it belongs.
+- `.svelte` files are only searched in `src/`, except for `node_modules` and hidden folders. Importing a `.svelte` file from another location is an build error with a hint of where it belongs.
+- Islands can lie next to pages in `src/pages/`. The address is set by the page using the island. For ordinary components, the `_components/` folder will be suitable next to the page.
 - `@/` in import means folder `src/`: `import { price } from "@/lib/shop"`.
 - `public/`, `data/` and `shugo.json` lie at the root, as do `static/` and settings in SvelteKit and `public/` in Astro.
 
@@ -60,15 +61,20 @@ All fields are optional. Unknown field is an error.
 | --- | --- |
 | `eval.mjs`, `eval.mjs.map` | the entire JS project for the calculation stage and source map |
 | `site.json` | project framework: layout of templates with places for values and routes |
-| `sources.json` | from which files the project is assembled, with each hash, and `src/site.html`: `shugo update` understands that the project has changed |
-| `assets/` | collected Styles |
+| `sources.json` | from which files the project is assembled, with each hash, together with `src/site.html`, and versions of the frame and parser Svelte: according to it, `shugo update` understands that the project needs to be reassembled |
+| `assets/` | collected island styles and browser modules; files of previous builds are not deleted so that the server that still shows their pages finds them |
+| `search-*.sqlite` | published search indexes `search(…)`; `catalog-*.sqlite` — index `shugo:catalog` |
 | `store.db` | storage |
 | `dist/` | site in files after `shugo export` |
 
 Packages from npm to `eval.mjs` are not sewn: they are taken from the `node_modules` project at launch.
 
+### Switching from `.shugo`
+
+Rename `.shugo` templates to `.svelte` and fix the import paths: the build finds both old files and old imports and tells you how to name them. In TypeScript components, add `lang="ts"`. Then run `shugo build`: the repository of the previous version of Shugo is not readable, and the site is re-calculated.
+
 ## Open questions
 
 - `shugo init` is a new project with an example, `src/site.html`, `tsconfig.json`, `shugo` module types for the editor and a memo for the agent: it is decided to do (21 solution November 2026 years), has not yet been done.
-- `$lib` of SvelteKit along with `@/` is in [Svelte Compatibility Offer](../docs/proposals/svelte-compatibility.md), which has been postponed.
+- `$lib` from SvelteKit is on par with `@/`.
 - Settings in `shugo.json` that are not available yet: languages, pictures, build folder, site address in the subfolder (`base`, it is decided to do).

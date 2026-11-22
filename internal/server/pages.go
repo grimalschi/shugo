@@ -125,6 +125,12 @@ type Page struct {
 
 // Render appends the page at path to dst.
 func (p *Pages) Render(dst []byte, path string) (Page, error) {
+	return p.render(dst, path, nil)
+}
+
+// render is Render for a request that may give islands of the page other
+// input: replace gives it to them.
+func (p *Pages) render(dst []byte, path string, replace replaceIsland) (Page, error) {
 	page := Page{Body: dst}
 	err := p.store.View(func(v *store.View) error {
 		site, err := p.skeleton(v)
@@ -136,7 +142,11 @@ func (p *Pages) Render(dst []byte, path string) (Page, error) {
 		if err != nil || !found {
 			return err
 		}
-		body, err := build(dst, site, route, data, &source{view: v})
+		var update func(*render.Island) error
+		if replace != nil {
+			update = func(island *render.Island) error { return replace(v, site, island) }
+		}
+		body, err := buildWithIslands(dst, site, route, data, &source{view: v}, update)
 		if err != nil {
 			return fmt.Errorf("page %s: %w", path, err)
 		}
@@ -148,11 +158,17 @@ func (p *Pages) Render(dst []byte, path string) (Page, error) {
 
 // build builds a page of a route from its record.
 func build(dst []byte, site *skeleton.Site, route int, data []byte, src *source) ([]byte, error) {
+	return buildWithIslands(dst, site, route, data, src, nil)
+}
+
+// buildWithIslands is build for a request that may give islands of the
+// page other input.
+func buildWithIslands(dst []byte, site *skeleton.Site, route int, data []byte, src *source, replace func(*render.Island) error) ([]byte, error) {
 	rec, err := record.Decode(data)
 	if err != nil {
 		return dst, err
 	}
-	return render.Page(dst, site, route, rec, src)
+	return render.PageWithIslands(dst, site, route, rec, src, replace)
 }
 
 // mediaType tells what a page of a route is: HTML, or for a module the

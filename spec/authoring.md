@@ -1,6 +1,6 @@
 # Writing a Shugo site
 
-Shugo builds static sites. A page, a layout and a component are each a `.shugo` file, and a `.shugo` file is a **Svelte 5 component**: `<script>`, markup, `<style>`. Shugo renders it exactly as the server renderer of Svelte 5.59 does, so what you know of Svelte holds: `$props()`, `{#if}`, `{#each}`, snippets, `{@render}`, `{@html}`, scoped styles, the same whitespace rules. What is Shugo's own: data comes from the site's SQLite database through `query`, imported from the module `shugo`, and a page with a parameter in its name lists its pages with `getStaticPaths`. The section [Coming from Svelte and SvelteKit](#coming-from-svelte-and-sveltekit) lists what differs.
+Shugo builds static sites with interactive islands. A page, a layout and a component are each a `.svelte` file, and a `.svelte` file is a **Svelte 5 component**: `<script>`, markup, `<style>`. The official parser of Svelte reads it, and Shugo renders it exactly as the server renderer of Svelte 5.59 does, so what you know of Svelte holds: `$props()`, `{#if}`, `{#each}`, snippets, `{@render}`, `{@html}`, scoped styles, the same whitespace rules. What is Shugo's own: data comes from the site's SQLite database through `query`, imported from the module `shugo`, and a page with a parameter in its name lists its pages with `getStaticPaths`. A component named `*.island.svelte` also runs in the browser: see [Islands](#islands). The section [Coming from Svelte and SvelteKit](#coming-from-svelte-and-sveltekit) lists what differs.
 
 ## Project layout
 
@@ -18,7 +18,7 @@ public/          files served as they are: /robots.txt, /img/logo.svg
 _build/          written by shugo; never edit, never commit
 ```
 
-Only `src/pages/` is required. Every `.shugo` file lives in `src/`. `@/` in an import is `src/`: `import { price } from "@/lib/shop"`.
+Only `src/pages/` is required. Every `.svelte` file lives in `src/`. `@/` in an import is `src/`: `import { price } from "@/lib/shop"`.
 
 `shugo.json`, every field optional:
 
@@ -58,7 +58,7 @@ Run `shugo build` after every change and read the errors and warnings: each name
 ```svelte
 <script lang="ts">
   import { query } from "shugo"
-  import Card from "../components/Card.shugo"
+  import Card from "../components/Card.svelte"
   import { price } from "@/lib/shop"
 
   const products = query("products").order("title").all()
@@ -141,10 +141,10 @@ The rules of Svelte:
 
 ## Components
 
-A component is a `.shugo` file. Import it in the script and use it as a tag that starts with a capital letter. **Import every component you use**, in layouts too.
+A component is a `.svelte` file. Import it in the script and use it as a tag that starts with a capital letter. **Import every component you use**, in layouts too.
 
 ```svelte
-<!-- src/components/Card.shugo -->
+<!-- src/components/Card.svelte -->
 <script lang="ts">
   import type { Snippet } from "svelte"
 
@@ -179,7 +179,7 @@ A component is a `.shugo` file. Import it in the script and use it as a tag that
 - What stands inside the tag is the snippet `children`; `{#snippet name()}` inside the tag is the prop `name`. A snippet may take parameters: `{#snippet row(item)}…{/snippet}`, shown with `{@render row(item)}`.
 - A snippet sees the variables of the template that wrote it.
 - `<style>` applies to its own component only, as in Svelte; `:global(…)` reaches the whole site.
-- A component shows itself by importing itself: `import Tree from "./Tree.shugo"` inside `Tree.shugo`.
+- A component shows itself by importing itself: `import Tree from "./Tree.svelte"` inside `Tree.svelte`.
 - A component in a variable is shown by its tag: `const View = compact ? List : Grid`, then `<View {items} />`.
 
 ### The module `shugo`
@@ -197,18 +197,18 @@ import { query, paginate, page } from "shugo"
 | `page.params` | the parameters of the address of the page: `{ slug: "jug" }` |
 | `page.url` | the address of the page, a `URL` |
 | `page.route.id` | the route: `/products/[slug]` |
-| `page.status` | 200, and 404 on `src/pages/404.shugo` |
+| `page.status` | 200, and 404 on `src/pages/404.svelte` |
 
 `page` is the `page` of `$app/state` in SvelteKit, with the fields a static page has. Props come from `$props()`. There is no global `Shugo` or `Astro`: writing one is an error that names the import.
 
 ## Layouts
 
-`src/pages/+layout.shugo` wraps every page in its folder and below. A layout in a deeper folder goes inside the outer one. A layout gets the page as `children`, like `+layout.svelte` in SvelteKit.
+`src/pages/+layout.svelte` wraps every page in its folder and below. A layout in a deeper folder goes inside the outer one. A layout gets the page as `children`, like `+layout.svelte` in SvelteKit.
 
 ```svelte
-<!-- src/pages/+layout.shugo -->
+<!-- src/pages/+layout.svelte -->
 <script>
-  import Header from "../components/Header.shugo"
+  import Header from "../components/Header.svelte"
   import "../styles/main.css"
 
   let { children } = $props()
@@ -247,25 +247,25 @@ import { query, paginate, page } from "shugo"
 
 | File | Address |
 | --- | --- |
-| `src/pages/index.shugo` | `/` |
-| `src/pages/about.shugo` | `/about` |
-| `src/pages/blog/[slug].shugo` | `/blog/…` |
-| `src/pages/docs/[...path].shugo` | `/docs` and everything below |
-| `src/pages/(shop)/cart.shugo` | `/cart` — a folder in parentheses is not a part of the address |
-| `src/pages/_parts/x.shugo` | not a page |
-| `src/pages/404.shugo` | shown for addresses that have no page |
+| `src/pages/index.svelte` | `/` |
+| `src/pages/about.svelte` | `/about` |
+| `src/pages/blog/[slug].svelte` | `/blog/…` |
+| `src/pages/docs/[...path].svelte` | `/docs` and everything below |
+| `src/pages/(shop)/cart.svelte` | `/cart` — a folder in parentheses is not a part of the address |
+| `src/pages/_parts/x.svelte` | not a page |
+| `src/pages/404.svelte` | shown for addresses that have no page |
 | `src/pages/sitemap.xml.ts` | `/sitemap.xml`: a file that is not HTML, see [Files that are not HTML](#files-that-are-not-html) |
 
-Names that start with `+` are kept for the framework; only `+layout.shugo` exists. Addresses have no slash at the end: the server sends `/about/` on to `/about`.
+Names that start with `+` are kept for the framework; only `+layout.svelte` exists. Addresses have no slash at the end: the server sends `/about/` on to `/about`.
 
-When two files could give one address, the one that names more of it wins: `blog/new.shugo` over `blog/[slug].shugo` over `blog/[...path].shugo`. So `blog/[...page].shugo` and `blog/posts/[slug].shugo` live side by side.
+When two files could give one address, the one that names more of it wins: `blog/new.svelte` over `blog/[slug].svelte` over `blog/[...path].svelte`. So `blog/[...page].svelte` and `blog/posts/[slug].svelte` live side by side.
 
 ## Pages from data
 
 A file with a parameter in its name must say which pages there are. `getStaticPaths`, exported from `<script module>`, takes nothing and asks the data database with `query`:
 
 ```svelte
-<!-- src/pages/products/[slug].shugo -->
+<!-- src/pages/products/[slug].svelte -->
 <script module>
   import { query, page } from "shugo"
 
@@ -287,10 +287,10 @@ A file with a parameter in its name must say which pages there are. `getStaticPa
 
 The list of addresses is the one place where `select` pays: of a hundred thousand rows it fetches one column instead of all.
 
-For lists split into pages name the file `[...page].shugo`. `paginate` in `getStaticPaths` takes the number of items and says which pages there are; `paginate` in the page takes a query, or an array, and returns the items of that page:
+For lists split into pages name the file `[...page].svelte`. `paginate` in `getStaticPaths` takes the number of items and says which pages there are; `paginate` in the page takes a query, or an array, and returns the items of that page:
 
 ```svelte
-<!-- src/pages/blog/[...page].shugo gives /blog, /blog/2, /blog/3 … -->
+<!-- src/pages/blog/[...page].svelte gives /blog, /blog/2, /blog/3 … -->
 <script module>
   import { query, paginate } from "shugo"
 
@@ -316,7 +316,7 @@ For lists split into pages name the file `[...page].shugo`. `paginate` in `getSt
 | `list.start`, `list.end` | the places of the first and the last item of this page, from 0 |
 | `list.url.current`, `.prev`, `.next`, `.first`, `.last` | addresses; `undefined` where there is no such page |
 
-With `[page].shugo` the first page is `/blog/1`. `paginate(count, { pageSize, params })` adds `params` to every page, for a list inside something else: `src/pages/tags/[tag]/[...page].shugo` with `params: { tag }`. The same `pageSize` goes to both calls. Do not name the result `page`: that is the page of the module `shugo`.
+With `[page].svelte` the first page is `/blog/1`. `paginate(count, { pageSize, params })` adds `params` to every page, for a list inside something else: `src/pages/tags/[tag]/[...page].svelte` with `params: { tag }`. The same `pageSize` goes to both calls. Do not name the result `page`: that is the page of the module `shugo`.
 
 ## Files that are not HTML
 
@@ -407,20 +407,49 @@ Create `Intl.NumberFormat`, `Intl.DateTimeFormat` and the like once in a module,
 - Code for the browser goes into a `<script>` inside an element or inside `<svelte:head>`; it reaches the page as written, braces included. Pass values through attributes: `<div id="map" data-places={JSON.stringify(places)}>`.
 - A component with such a `<script>` shown ten times gives ten copies of it. Keep such a script in the page or in the layout.
 
+## Islands
+
+A component named `*.island.svelte` is an island: the page shows its HTML, and in the browser Svelte hydrates it, so runes, events and actions work there. A template imports it by name and gives it JSON props:
+
+```svelte
+<!-- src/pages/catalog.svelte -->
+<script>
+  import Catalog from "../components/Catalog.island.svelte"
+  import { search } from "shugo:search"
+
+  const products = search("products", {
+    text: ["title", "description"],
+    filters: { category: "multi", price: "range", available: "boolean" },
+    sorts: { popular: { position: "asc" }, cheap: { price: "asc" } },
+    defaultSort: "popular",
+    pageSize: 24,
+  })
+</script>
+
+<Catalog request:initial={products} action="/catalog" />
+```
+
+- An island needs the package `svelte@5.59.1` in the project. Regular templates do not.
+- Props are JSON data: no functions, no snippets, nothing inside the tag.
+- An island may import regular components, such as `ProductCard.svelte`, when they take data through props and use Svelte alone: no `query`, no `page`.
+- `search("table", { … })` describes a search of a table of the data database; Shugo builds and names its index. `text` are the columns of the full-text search by `q`; `filters` take `multi` (`category=cups&category=plates`), `range` (`price_from`, `price_to`) and `boolean` (`available=1`); `sorts` and `defaultSort` name the orders for `sort`; `where` fixes a part of the table: `{ published: true }`. The result has `hits`, `total`, `facets`, `query`, the fields of pages and `endpoint`.
+- `request:initial={products}` binds the prop `initial` to the search of the address: `/catalog?category=cups&sort=cheap` comes from the server with those results already, built by Go from a program the build made of the island, without JavaScript. In the browser the island asks `initial.endpoint` with the same parameters and keeps the address in step through the History API. A plain prop, `initial={products}`, gets what the page computed.
+- What a page reads through `search` is tracked: an update computes it again when the first page of results changes.
+
 ## Coming from Svelte and SvelteKit
 
 | Svelte, SvelteKit | Shugo |
 | --- | --- |
-| `.svelte` | `.shugo`; the same component inside |
+| `.svelte` | `.svelte` for static templates, `*.island.svelte` for a hydration entry |
 | `+page.svelte` in a folder per address | a file per address in `src/pages/` |
-| `+layout.svelte`, `+layout.ts` with `load` | `+layout.shugo`; data comes from `query` in whoever shows it |
+| `+layout.svelte`, `+layout.ts` with `load` | `+layout.svelte`; data comes from `query` in whoever shows it |
 | `+page.ts` with `load`, `entries` | `<script>` asks `query`; `getStaticPaths` in `<script module>` lists the pages |
 | `page` from `$app/state` | `page` from `shugo`: `page.params`, `page.url`, `page.route.id`, `page.status` |
 | `$lib/…` | `@/lib/…` |
 | `src/app.html` with `%sveltekit.head%`, `%sveltekit.body%` | `src/site.html` with `%shugo.head%`, `%shugo.body%` |
-| `+error.svelte` | `src/pages/404.shugo` |
+| `+error.svelte` | `src/pages/404.svelte` |
 | `+server.ts` with `GET` and `prerender` | `src/pages/sitemap.xml.ts` with `GET` that returns a string |
 | `<svelte:head>` in any component | in pages and layouts |
-| TypeScript only with `lang="ts"` | also without it, but write `lang="ts"` so the file moves to Svelte as it is |
-| hydration, `$state` that changes, events | none: pages are static |
+| TypeScript with `lang="ts"` | the same parser and syntax |
+| hydration, `$state` that changes, events | only in `*.island.svelte`; the rest of the page is static |
 | `<svelte:self>`, `<svelte:component>` | work, with the warnings of Svelte 5 |

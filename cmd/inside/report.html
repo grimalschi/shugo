@@ -132,7 +132,7 @@
 <h2 id="map">Architecture and terminology</h2>
 <pre>
  project source files                  project data: data/site.db
- pages/*.shugo, components/*.shugo     tables + change journal (maintained by Shugo triggers)
+ pages/*.svelte, components/*.svelte   tables + change journal (maintained by Shugo triggers)
         │                                         │
         ▼  shugo build: compilation (Go)         │
  _build/eval.mjs   — JS: data code and expressions  │
@@ -152,7 +152,7 @@
 </pre>
 <dl class="terms card">
   <dt>Template skeleton</dt><dd>A list of operations representing the template markup with placeholders for values. Each file has one, stored in <code>_build/site.json</code> and in the store.</dd>
-  <dt>File JS module</dt><dd>A function the compiler generates from the <code>.shugo</code>file. It runs the data code and writes each expression's value in order. The modules are bundled in <code>_build/eval.mjs</code>.</dd>
+  <dt>File JS module</dt><dd>A function the compiler generates from the <code>.svelte</code>file. It runs the data code and writes each expression's value in order. The modules are bundled in <code>_build/eval.mjs</code>.</dd>
   <dt>Block</dt><dd>One rendering of a template: a page, layout, component, or snippet.</dd>
   <dt>Value tape</dt><dd>The expression values for a block, in order, stored with the block in its record.</dd>
   <dt>Record</dt><dd>All the blocks for a page or shared block. Each records its template, value tape, nested blocks, and caller-supplied snippets.</dd>
@@ -166,12 +166,12 @@
 <h2 id="project">1. Project</h2>
 <p class="note">The shop has three products in two categories. It has a product page, a category page, a home page, and a layout with a header. The header and product card are shared blocks. The product variant is a regular component.</p>
 {{range .Files}}
-<details {{if eq .Path "pages/products/[slug].shugo"}}open{{end}}><summary>{{.Path}}</summary><pre>{{.Source}}</pre></details>
+<details {{if eq .Path "src/pages/products/[slug].svelte"}}open{{end}}><summary>{{.Path}}</summary><pre>{{.Source}}</pre></details>
 {{end}}
 <details><summary>data/seed.sql — seed data</summary><pre>{{.Seed}}</pre></details>
 
 <h2 id="compile">2. Compilation: JS and template skeletons</h2>
-<p>For each <code>.shugo</code> file, the compiler produces two things. <b>The JS module</b> runs the data code and records each expression's value as it renders the template. Each call to <code>$$.text</code>, <code>$$.attr</code>, <code>$$.branch</code>, <code>$$.loop</code>/<code>$$.count</code>, <code>$$.render</code> adds a value to the block's tape. <b>Skeleton</b> represents the same markup, with each expression replaced by an operation that takes the next value from the tape. The compiler emits both in one pass, keeping them in the same order.</p>
+<p>For each <code>.svelte</code> file, the compiler produces two things. <b>The JS module</b> runs the data code and records each expression's value as it renders the template. Each call to <code>$$.text</code>, <code>$$.attr</code>, <code>$$.branch</code>, <code>$$.loop</code>/<code>$$.count</code>, <code>$$.render</code> adds a value to the block's tape. <b>Skeleton</b> represents the same markup, with each expression replaced by an operation that takes the next value from the tape. The compiler emits both in one pass, keeping them in the same order.</p>
 <p class="note">This JS comes from the built <code>_build/eval.mjs</code> ({{.Compiled.Bundle}} bytes). Imports have already been resolved, producing names like <code>ProductCard_default</code>.</p>
 {{range .Files}}{{if ge .Number 0}}
 <div class="card" id="{{anchor "file" .Path}}">

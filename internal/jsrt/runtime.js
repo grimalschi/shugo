@@ -10,12 +10,38 @@
 //
 // Runs on Bun and on Node.
 
-import { readFileSync, readSync, writeSync } from "node:fs";
+import { closeSync, readFileSync } from "node:fs";
 
-import { during, open, Query, Reads } from "shugo:query";
+import { during, open, Query, readCatalog, Reads } from "shugo:query";
+import { buildChannel } from "shugo:wire";
 
 // The data database of the project, once it is open; null if it has none.
 let data = null;
+
+// Search results are ordinary view data. Keep their source out of the JSON
+// so the same result can be used in a static template or a request binding.
+const requestSources = new WeakMap();
+let catalogJSON;
+
+export function requestSource(value, source) {
+  requestSources.set(value, source);
+  return value;
+}
+
+export function catalogView() {
+  if (catalogJSON === undefined) {
+    const descriptor = process.env.SHUGO_CATALOG_FD;
+    if (!descriptor) throw new Error("shugo:catalog search() needs a prepared catalog index");
+    const fd = Number(descriptor);
+    try {
+      catalogJSON = readFileSync(fd, "utf8");
+    } finally {
+      closeSync(fd);
+    }
+  }
+  readCatalog();
+  return requestSource(JSON.parse(catalogJSON), "catalog");
+}
 
 // ---------------------------------------------------------------------------
 // What is computed
@@ -86,6 +112,31 @@ class Writer {
   // {@html expression}
   html(value) {
     this.block.values.push(escape(String(value ?? "")));
+  }
+
+  island(target, props, bound = []) {
+    const request = [];
+    for (const [prop, value] of bound) {
+      const source = requestSources.get(value);
+      if (!source) throw new TypeError(`request:${prop} needs a search() result from shugo:search or shugo:catalog`);
+      request.push([prop, source]);
+    }
+    if (request.length) props = { ...props, ...Object.fromEntries(bound) };
+    // Normalize before SSR so the browser hydrates with the same values.
+    const serial = JSON.stringify(props, (_, value) => {
+      if (typeof value === "function" || typeof value === "symbol") {
+        throw new TypeError("Svelte island props must be JSON data");
+      }
+      return value;
+    });
+    const normalized = JSON.parse(serial);
+    const { body, head } = target.render(normalized);
+    if (head) throw new Error("Put the island’s head elements in its Shugo page");
+    this.block.values.push(escape(JSON.stringify({
+      id: target.id, url: target.url, css: target.css,
+      request: request.length ? Object.fromEntries(request) : undefined,
+      props: JSON.parse(serial), body,
+    })));
   }
 
   // "text {expression}": an expression inside the value of an attribute.
@@ -172,8 +223,11 @@ class Writer {
   // The snippets without parameters written inside the tag come as [name,
   // part, body].
   call(target, props, given) {
+    if (typeof target?.id === "string" && typeof target.url === "string" && typeof target.render === "function") {
+      throw new TypeError("a Svelte island must be rendered by its imported tag");
+    }
     if (target === null || typeof target !== "object" || typeof target.render !== "function") {
-      throw new TypeError(`this tag is not a component: it is ${describe(target)}. A component is what a .shugo file exports: import Card from "./Card.shugo"`);
+      throw new TypeError(`this tag is not a component: it is ${describe(target)}. Import a Svelte component, for example import Card from "./Card.svelte"`);
     }
     // What stands inside the tag is computed here, in the template that
     // wrote it, whether or not the component shows it.
@@ -201,6 +255,7 @@ class Writer {
       values.push("-");
       return;
     }
+    if (optional) args = args();
     const info = snippet?.[SNIPPET];
     if (info === undefined) throw new TypeError(`{@render …} shows a snippet, and this is ${describe(snippet)}`);
     if (info.kind === "given") {
@@ -602,7 +657,7 @@ function describe(value) {
 // ---------------------------------------------------------------------------
 // The run
 
-// component is what every .shugo file exports.
+// component is what a regular .svelte file exports in the evaluation bundle.
 export function component(file, render) {
   return { file, render };
 }
@@ -796,7 +851,7 @@ class Run {
 
 // A component that depends on nothing of the page and is called with plain
 // values shows the same wherever it stands, so it is computed once under a
-// name made of its file and those values: components/Card.shugo{"id":"p7"}.
+// name made of its file and those values: components/Card.svelte{"id":"p7"}.
 // null means: not shared. JSON writes every control character as an escape,
 // so a name never holds one of the separators.
 function sharedName(path, props, snippets) {
@@ -990,35 +1045,12 @@ function failure(error) {
 // A message in either direction is a length in four bytes, a letter that
 // says what the message is, and its body.
 export async function run(modules) {
-  const [input, output] = [Number(process.env.SHUGO_IN), Number(process.env.SHUGO_OUT)];
-  if (!Number.isInteger(input) || !Number.isInteger(output)) {
+  const wire = buildChannel();
+  if (wire === null) {
     console.error("This file is a part of a Shugo project and is run by the shugo command: `shugo build` or `shugo update`.");
     process.exit(2);
   }
-  const send = (kind, text) => {
-    const body = Buffer.from(kind + text);
-    const head = Buffer.allocUnsafe(4);
-    head.writeUInt32LE(body.length, 0);
-    for (const buffer of [head, body]) {
-      for (let sent = 0; sent < buffer.length; ) sent += writeSync(output, buffer, sent, buffer.length - sent);
-    }
-  };
-  // Nothing happens here between two requests, so waiting for the next one
-  // may hold everything else up.
-  const fill = (buffer) => {
-    for (let got = 0; got < buffer.length; ) {
-      const count = readSync(input, buffer, got, buffer.length - got, null);
-      if (count === 0) return false;
-      got += count;
-    }
-    return true;
-  };
-  const receive = () => {
-    const head = Buffer.allocUnsafe(4);
-    if (!fill(head)) return null;
-    const body = Buffer.allocUnsafe(head.readUInt32LE(0));
-    return fill(body) ? { kind: String.fromCharCode(body[0]), text: body.toString("utf8", 1) } : null;
-  };
+  const { send, receive } = wire;
 
   try {
     const site = JSON.parse(readFileSync(new URL("./site.json", import.meta.url), "utf8"));
@@ -1036,6 +1068,7 @@ export async function run(modules) {
       });
     }
     const run = new Run(site, new Map(modules), send);
+    if (process.env.SHUGO_SEARCH === "1") send("A", "");
     for (let request = receive(); request !== null && request.kind !== "Q"; request = receive()) {
       switch (request.kind) {
         case "L":

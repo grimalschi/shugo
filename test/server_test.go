@@ -23,19 +23,19 @@ const small = `
 {"redirects": {"/old": "/about"}}
 -- src/site.html --
 <html><head><title>T</title>%shugo.head%</head><body>%shugo.body%</body></html>
--- src/pages/+layout.shugo --
+-- src/pages/+layout.svelte --
 <script>
 let { children } = $props()
 import "../styles/main.css"
 </script>
 {@render children()}
--- src/pages/index.shugo --
+-- src/pages/index.svelte --
 <h1>home</h1>
--- src/pages/about.shugo --
+-- src/pages/about.svelte --
 <h1>about</h1>
--- src/pages/404.shugo --
+-- src/pages/404.svelte --
 <h1>no such page</h1>
--- src/pages/café au lait.shugo --
+-- src/pages/café au lait.svelte --
 <h1>café</h1>
 -- src/styles/main.css --
 h1 { color: red }
@@ -131,7 +131,7 @@ func TestServer(t *testing.T) {
 // Text files too go compressed; small answers and pictures as they are.
 func TestCompressionAndTags(t *testing.T) {
 	long := strings.Repeat("<p>Handmade clay pitcher.</p>", 60)
-	s := newSite(t, small+"-- src/pages/long.shugo --\n"+long+"\n-- public/notes.txt --\n"+strings.Repeat("notes ", 400)+"\n")
+	s := newSite(t, small+"-- src/pages/long.svelte --\n"+long+"\n-- public/notes.txt --\n"+strings.Repeat("notes ", 400)+"\n")
 	s.build()
 	ts := serve(t, s)
 	ask := func(address string, headers ...string) (*http.Response, string) {
@@ -190,7 +190,7 @@ func TestCompressionAndTags(t *testing.T) {
 	}
 
 	// The page changes: its tag does too.
-	s.write("-- src/pages/long.shugo --\n<h1>new</h1>" + long)
+	s.write("-- src/pages/long.svelte --\n<h1>new</h1>" + long)
 	s.build()
 	if res, body := ask("/long", "If-None-Match", tag); res.StatusCode != http.StatusOK || !strings.Contains(body, "<h1>new</h1>") {
 		t.Errorf("the changed page: %d", res.StatusCode)
@@ -253,8 +253,8 @@ func TestExport(t *testing.T) {
 	// One page changes and one goes away: one file is written, one removed.
 	// The project has changed, so every page is built again, and the
 	// folder is cleared of pages the site does not have.
-	s.write("-- src/pages/about.shugo --\n<h1>about us</h1>")
-	s.remove("src/pages/café au lait.shugo")
+	s.write("-- src/pages/about.svelte --\n<h1>about us</h1>")
+	s.remove("src/pages/café au lait.svelte")
 	s.build()
 	if done := export(); done.Pages != 3 || done.Built != 3 || done.Written != 1 || done.Removed != 2 {
 		t.Errorf("after a change: %+v", done)

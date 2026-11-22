@@ -635,7 +635,7 @@ func lookAtCompiled(project string) (*compiled, error) {
 		code := strings.TrimSpace(strings.Join(lines, "\n"))
 		if path != "" && strings.Contains(code, "component(") {
 			out.Modules[path] = code
-		} else if path != "" && !strings.HasSuffix(path, ".shugo") && !strings.Contains(path, ":") && code != "" {
+		} else if path != "" && !strings.HasSuffix(path, ".svelte") && !strings.Contains(path, ":") && code != "" {
 			if _, kept := out.Modules[path]; !kept {
 				out.Modules[path] = code
 			}

@@ -66,7 +66,7 @@ func svelteTask(t *testing.T, dir string) {
 	helpers := false
 	for _, entry := range entries {
 		name := entry.Name()
-		if !strings.HasSuffix(name, ".shugo") && name != "helpers.js" {
+		if !strings.HasSuffix(name, ".svelte") && name != "helpers.js" {
 			continue
 		}
 		helpers = helpers || name == "helpers.js"
@@ -78,7 +78,7 @@ func svelteTask(t *testing.T, dir string) {
 	}
 	// A page for every dataset shows the component with it and nothing else.
 	for i, data := range task.Datasets {
-		fmt.Fprintf(&files, "-- src/pages/d%d.shugo --\n<script>\n  import Entry from \"../components/%s.shugo\";\n", i, task.Entry)
+		fmt.Fprintf(&files, "-- src/pages/d%d.svelte --\n<script>\n  import Entry from \"../components/%s.svelte\";\n", i, task.Entry)
 		spread := "{...props}"
 		if helpers {
 			files.WriteString("  import helpers from \"../components/helpers.js\";\n")

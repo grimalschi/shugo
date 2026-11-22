@@ -4,7 +4,7 @@ The document describes where the data for pages comes from and when they are loa
 
 ## Decisions
 
-- Data gets code on TypeScript in `<script>` files `.shugo`.
+- Data gets code on TypeScript in `<script>` files `.svelte`.
 - Your data can load pages, layouts and components.
 - The framework is not tied to a data source: it can be a database, file or someone else's API. What has changed is determined by comparison, not tracking the source.
 - While each update, the process starts anew and loads all the data; then the result is compared to the past. *Replaced by solutions from 20 November 2026 year:* update recognizes changes from the database log and calculates only what they touched - [Change tracking](../docs/change-tracking.md#decisions).

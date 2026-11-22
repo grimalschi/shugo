@@ -86,24 +86,27 @@ func Export(pages *Pages, public, assets, dir string) (Exported, error) {
 		return nil
 	}
 
-	// The copied files go first: where a page has the same address as a
-	// copied file, the page is the one that stays.
-	if err := copyFiles(map[string]string{"": public, strings.Trim(compile.AssetsURL, "/") + "/": assets}, last.Copied, next.Copied, write); err != nil {
-		return done, err
-	}
-	for name := range last.Copied {
-		if _, kept := next.Copied[name]; !kept {
-			if err := remove(name); err != nil {
-				return done, err
-			}
-		}
-	}
-
-	// All the pages come from one state of the store.
+	// Pages and the list of their assets come from one state of the store.
 	err := pages.store.View(func(v *store.View) error {
 		site, err := pages.skeleton(v)
 		if err != nil {
 			return err
+		}
+		// The copied files go first: where a page has the same address as a
+		// copied file, the page is the one that stays.
+		if err := copyFiles(public, "", nil, last.Copied, next.Copied, write); err != nil {
+			return err
+		}
+		prefix := strings.Trim(compile.AssetsURL, "/") + "/"
+		if err := copyFiles(assets, prefix, site.Assets, last.Copied, next.Copied, write); err != nil {
+			return err
+		}
+		for name := range last.Copied {
+			if _, kept := next.Copied[name]; !kept {
+				if err := remove(name); err != nil {
+					return err
+				}
+			}
 		}
 		mark, err := v.Mark()
 		if err != nil {
@@ -176,40 +179,52 @@ func Export(pages *Pages, public, assets, dir string) (Exported, error) {
 	return done, os.WriteFile(filepath.Join(dir, listFile), data, 0o644)
 }
 
-// copyFiles copies the files of folders, each under its prefix, and notes
-// them in copied. A file whose original has the same size and time of
-// change as when it was copied last is not read.
-func copyFiles(folders map[string]string, last, copied map[string]string, write func(name string, data []byte) error) error {
-	for prefix, folder := range folders {
-		err := filepath.WalkDir(folder, func(path string, entry fs.DirEntry, err error) error {
-			if errors.Is(err, fs.ErrNotExist) {
-				return fs.SkipAll
-			}
-			if err != nil || entry.IsDir() {
-				return err
-			}
-			info, err := entry.Info()
-			if err != nil {
-				return err
-			}
-			rel, _ := filepath.Rel(folder, path)
-			name := prefix + filepath.ToSlash(rel)
-			stamp := fmt.Sprintf("%d %d", info.Size(), info.ModTime().UnixNano())
-			copied[name] = stamp
-			if last[name] == stamp {
-				return nil
-			}
-			data, err := os.ReadFile(path)
-			if err != nil {
-				return err
-			}
-			return write(name, data)
-		})
+// copyFiles uses the manifest when supplied, or all files in the folder.
+// A file with the same size and time of change is not read again.
+func copyFiles(folder, prefix string, names []string, last, copied map[string]string, write func(name string, data []byte) error) error {
+	copyFile := func(path, name string, info fs.FileInfo) error {
+		name = prefix + name
+		stamp := fmt.Sprintf("%d %d", info.Size(), info.ModTime().UnixNano())
+		copied[name] = stamp
+		if last[name] == stamp {
+			return nil
+		}
+		data, err := os.ReadFile(path)
 		if err != nil {
 			return err
 		}
+		return write(name, data)
 	}
-	return nil
+	if names != nil {
+		for _, name := range names {
+			if !filepath.IsLocal(name) || name != filepath.Base(name) || name == "." {
+				return fmt.Errorf("invalid compiled asset name %q", name)
+			}
+			path := filepath.Join(folder, name)
+			info, err := os.Stat(path)
+			if err != nil {
+				return err
+			}
+			if err := copyFile(path, name, info); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return filepath.WalkDir(folder, func(path string, entry fs.DirEntry, err error) error {
+		if errors.Is(err, fs.ErrNotExist) {
+			return fs.SkipAll
+		}
+		if err != nil || entry.IsDir() {
+			return err
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(folder, path)
+		return copyFile(path, filepath.ToSlash(rel), info)
+	})
 }
 
 // removeOtherPages removes from dir the files of pages that are neither

@@ -8,7 +8,7 @@ import (
 
 func TestSiteRoundTrip(t *testing.T) {
 	site := &Site{
-		Files: []File{{Path: "src/pages/index.shugo", Shared: true, Parts: [][]Op{
+		Files: []File{{Path: "src/pages/index.svelte", Shared: true, Parts: [][]Op{
 			{
 				{Kind: Markup, Text: `<a class="x"`},
 				{Kind: Attr, Text: "href"},
@@ -20,6 +20,7 @@ func TestSiteRoundTrip(t *testing.T) {
 				{Kind: Render},
 				{Kind: For, Bodies: [][]Op{{{Kind: Text}}, {{Kind: Markup, Text: "none"}}}},
 				{Kind: Element, Bodies: [][]Op{{{Kind: Attr, Text: "id"}}, {{Kind: Text}}}},
+				{Kind: Island},
 			},
 			{},
 		}}},
@@ -50,13 +51,13 @@ func TestSiteRoundTrip(t *testing.T) {
 func TestDecodeRejects(t *testing.T) {
 	cases := []string{
 		`{"version":4,"files":[]}`,
-		`{"version":5,"files":[{"path":"a","parts":[[["x"]]]}]}`,
-		`{"version":5,"files":[{"path":"a","parts":[[["u","href"]]]}]}`,
-		`{"version":5,"files":[{"path":"a","parts":[[["f"]]]}]}`,
-		`{"version":5,"files":[{"path":"a","parts":[[["r"]]]}]}`,
-		`{"version":5,"files":[{"path":"a","parts":[[["t",[]]]]}]}`,
-		`{"version":5,"files":[{"path":"a","parts":[[[]]]}]}`,
-		`{"version":5,"files":[{"path":"a","parts":[[["n","last"]]]}]}`,
+		`{"version":7,"files":[{"path":"a","parts":[[["x"]]]}]}`,
+		`{"version":7,"files":[{"path":"a","parts":[[["u","href"]]]}]}`,
+		`{"version":7,"files":[{"path":"a","parts":[[["f"]]]}]}`,
+		`{"version":7,"files":[{"path":"a","parts":[[["r"]]]}]}`,
+		`{"version":7,"files":[{"path":"a","parts":[[["t",[]]]]}]}`,
+		`{"version":7,"files":[{"path":"a","parts":[[[]]]}]}`,
+		`{"version":7,"files":[{"path":"a","parts":[[["n","last"]]]}]}`,
 	}
 	for _, data := range cases {
 		if _, err := Decode([]byte(data)); err == nil {

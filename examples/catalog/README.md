@@ -28,12 +28,12 @@ Only the list of product URLs specifies columns. Each page depends on the column
 | File | What it shows |
 | --- | --- |
 | `scripts/generate.mjs` | Shop tables with single-column keys and separate ordering columns. The generator leaves index creation to the build. |
-| `src/site.html` | Shell for every page, with `<html lang="en">`, `<head>`, `<body>`, and the `%shugo.head%` and `%shugo.body%` placeholders. `src/pages/+layout.shugo` starts with the header. |
-| `src/components/Header.shugo` | Shared block with no parameters. It reads its own configuration, navigation, and category counts. |
-| `src/components/ProductCard.shugo` | Shared block that takes a product ID and reads the product. The template calls `finalPrice(item)`, so the card depends on the `price` and `discount` fields that the function reads. |
-| `src/components/Variant.shugo` | Regular component that receives the full variant row. Reading `title` and `stock` adds them as page dependencies. The variant's shelf location is never read. |
-| `src/pages/products/[slug].shugo` | The route lists URLs, and each page queries its own product, variants, reviews, badges, and recommendations. The page reads the expected arrival date only when the product is out of stock, and the discount expiration date only when a discount applies. |
-| `src/pages/categories/[category]/[...page].shugo` | The route passes a product count to `paginate` from `shugo`. The page passes a query. |
+| `src/site.html` | Shell for every page, with `<html lang="en">`, `<head>`, `<body>`, and the `%shugo.head%` and `%shugo.body%` placeholders. `src/pages/+layout.svelte` starts with the header. |
+| `src/components/Header.svelte` | Shared block with no parameters. It reads its own configuration, navigation, and category counts. |
+| `src/components/ProductCard.svelte` | Shared block that takes a product ID and reads the product. The template calls `finalPrice(item)`, so the card depends on the `price` and `discount` fields that the function reads. |
+| `src/components/Variant.svelte` | Regular component that receives the full variant row. Reading `title` and `stock` adds them as page dependencies. The variant's shelf location is never read. |
+| `src/pages/products/[slug].svelte` | The route lists URLs, and each page queries its own product, variants, reviews, badges, and recommendations. The page reads the expected arrival date only when the product is out of stock, and the discount expiration date only when a discount applies. |
+| `src/pages/categories/[category]/[...page].svelte` | The route passes a product count to `paginate` from `shugo`. The page passes a query. |
 | `src/lib/catalog.ts` | Price helpers that load no data. |
 
 ## Results

@@ -212,7 +212,7 @@ func talk(folder string) (requests, answers []frame, err error) {
 }
 
 // sources reads the files of the project, with what the compiler made of
-// every .shugo file.
+// every .svelte file.
 func sources(project string, c *compiled) ([]sourceFile, error) {
 	var out []sourceFile
 	err := filepath.WalkDir(project, func(path string, entry os.DirEntry, err error) error {
@@ -227,7 +227,7 @@ func sources(project string, c *compiled) ([]sourceFile, error) {
 			}
 			return nil
 		}
-		if !strings.HasSuffix(rel, ".shugo") && !strings.HasSuffix(rel, ".ts") && rel != "shugo.json" && rel != shugoproject.Shell {
+		if !strings.HasSuffix(rel, ".svelte") && !strings.HasSuffix(rel, ".ts") && rel != "shugo.json" && rel != shugoproject.Shell {
 			return nil
 		}
 		source, err := os.ReadFile(path)
