@@ -117,7 +117,13 @@ class Look {
     if (ast.module) this.script(ast.module, true);
     if (ast.instance) this.script(ast.instance, false);
     this.fragment(ast.fragment, []);
-    this.facts.islands = [...new Map([...this.islands.values()].map((island) => [island.source, island])).values()];
+    // An island imported under two names is one island, bound to a request
+    // when either tag binds it.
+    const bySource = new Map();
+    for (const { source, request } of this.islands.values()) {
+      bySource.set(source, { source, request: request || (bySource.get(source)?.request ?? false) });
+    }
+    this.facts.islands = [...bySource.values()];
   }
 
   error(at, message) {

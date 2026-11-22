@@ -67,8 +67,9 @@ func TestRequestBindings(t *testing.T) {
 		{`<Island request:initial={search()} />`, true},
 		{`<Island request:results={source} {...props} />`, true},
 		{`<Island request:initial={source} /><Island initial={data} />`, true},
+		{`<Island request:initial={source} /><Same initial={data} />`, true},
 	} {
-		got, err := c.Compile("src/pages/catalog.svelte", `<script>import Island from './Island.island.svelte'</script>`+test.markup)
+		got, err := c.Compile("src/pages/catalog.svelte", `<script>import Island from './Island.island.svelte'; import Same from './Island.island.svelte'</script>`+test.markup)
 		if err != nil {
 			t.Fatal(err)
 		}
