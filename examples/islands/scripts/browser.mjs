@@ -1,7 +1,8 @@
 // Run with Playwright CLI run-code --filename, on an open demo page.
 async (page) => {
-  const origin = new URL(page.url()).origin;
-  const catalog = "/catalog";
+  const start = new URL(page.url());
+  const origin = start.origin;
+  const catalog = start.pathname === "/" ? "/catalog" : start.pathname;
   const endpoint = "/_islands/catalog";
   const hydrated = "[data-shugo-island][data-shugo-hydrated]";
   const busy = "[data-catalog-results] [aria-busy=false]";
@@ -141,10 +142,12 @@ async (page) => {
 
   await page.getByRole("link", { name: "Next" }).click();
   same((await results(page, urlSearch())).page, 2, "paging preserves catalog state");
+  same(new URL(page.url()).pathname, catalog, "paging keeps the catalog's own route");
   assert(await page.locator("#results-heading").evaluate((heading) => heading === document.activeElement),
     "paging moves keyboard focus to results");
   await page.getByRole("link", { name: "Previous" }).click();
   await results(page, "");
+  same(page.url(), origin + catalog, "returning to the first page drops the empty query");
   same(navigations, before, "all interactive actions stayed in one document");
   checks.push("keyboard focus and client-side pagination");
 
@@ -194,6 +197,13 @@ async (page) => {
     await results(tab, deep, false);
     await controls(tab, open.filters);
     same(await tab.locator(hydrated).count(), 0, "no JS context stays unhydrated");
+    await Promise.all([
+      tab.waitForNavigation(),
+      tab.getByRole("link", { name: "Previous" }).click(),
+    ]);
+    same(new URL(tab.url()).pathname, catalog, "native pagination keeps the catalog's own route");
+    const previous = await results(tab, new URL(tab.url()).search, false);
+    same(previous.page, 1, "native pagination opens the previous page");
     await tab.getByRole("searchbox").fill("mug");
     const [submitted] = await Promise.all([
       tab.waitForNavigation(),

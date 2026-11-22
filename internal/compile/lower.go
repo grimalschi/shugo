@@ -580,7 +580,7 @@ func (l *lowerer) island(e *syntax.Element, ctx context) node {
 			out.props = append(out.props, prop{spread: &code{c.Text, c.Start}})
 		case syntax.Plain, syntax.Shorthand:
 			if a.Name == "shugoSearch" {
-				l.errorf(a.Start, "use request:initial={search()} with search imported from \"shugo:catalog\"")
+				l.errorf(a.Start, "use request:initial={search(\"products\", options)} with search imported from \"shugo:search\"")
 			}
 			out.props = append(out.props, prop{name: a.Name, value: l.value(a)})
 		case syntax.Directive:
@@ -589,7 +589,7 @@ func (l *lowerer) island(e *syntax.Element, ctx context) node {
 				continue
 			}
 			if _, ok := a.Expr(); !ok || len(a.Modifiers) != 0 {
-				l.errorf(a.Start, "request:%s needs one source expression, as in request:%s={search()}", a.Name, a.Name)
+				l.errorf(a.Start, "request:%s needs one source expression, as in request:%s={search(\"products\", options)}", a.Name, a.Name)
 				continue
 			}
 			if bound[a.Name] {

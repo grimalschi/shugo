@@ -42,7 +42,9 @@ Internal formats and connections on the small store show the stand "Shugo inside
 
 The `search()` call from `shugo:catalog` records the dependency for the computed page, common block, or address list. When you change the first issue of Shugo adds its readers to ordinary readers of the changed data. Reading recording is re-created at each calculation, so the conditional call of `search()` loses communication when the branch stops running. Changing the general block reaches all pages that show it. Calling when loading a module is considered common to the entire site, since any template can use the value.
 
-When you change indexed fields, Shugo builds a new SQLite snapshot. If the first issue is the same, pages continue to use the finished entries, and filter queries see the published new version of the index. Changes in fields outside the direct projection save the image and go along the usual `Shugo.query` links. For SQLite representations and computable columns, changes throughout the source base are taken into account. If the journal received records during the preparation of the picture, the next update will check it again, including when canceling the records.
+When changing only the price or discount, Shugo copies the published SQLite snapshot and applies it to the copy of the change of the lines from the journal. The remaining changes to the indexed fields reassemble the image. If the first issue is the same, pages continue to use the finished entries, and filter queries see the published new version of the index. Changes in fields outside the direct projection save the image and go along the usual `Shugo.query` links. For SQLite representations and computable columns, changes throughout the source base are taken into account.
+
+Before publication, Shugo checks the journal after preparing an index and calculating pages. If the source has changed during this time, Shugo discards the prepared pages and snapshot and tries again. After three attempts with parallel records, the command returns the error, and the server continues to give the previous published state.
 
 ## Trial implementations
 

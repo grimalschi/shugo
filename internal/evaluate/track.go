@@ -353,6 +353,15 @@ func (k *keeper) read(reader string, kept []byte, text []byte) (encoded []byte, 
 				list = list[1:]
 				continue
 			}
+			if err == nil && at == -2 && k.site.Search && len(list) > 1 {
+				id, ok := list[1].(string)
+				if !ok || id == "" {
+					return nil, false, errorf("a damaged search reading")
+				}
+				now = append(now, reading{shape: store.SearchResultShape, key: id})
+				list = list[2:]
+				continue
+			}
 			shape := k.shapes.told[int(at)]
 			if err != nil || shape == nil || len(list)-1 < len(shape.by) {
 				return nil, false, errorf("a reading of a shape it has not told")
@@ -430,7 +439,13 @@ func (k *keeper) route(index int, props bool, text []byte) error {
 	if err != nil {
 		return err
 	}
-	reads, changed, err := k.read(store.RouteReader(index), kept, text)
+	reader := store.RouteReader(index)
+	// A normal update recomputes retained pages when their listing gives
+	// or removes props. A route that only lists addresses reaches new pages.
+	if !was && !props {
+		delete(k.reached, reader)
+	}
+	reads, changed, err := k.read(reader, kept, text)
 	if err != nil || (found && !changed && was == props) {
 		return err
 	}

@@ -10,9 +10,10 @@
 //
 // Runs on Bun and on Node.
 
-import { readFileSync, readSync, writeSync } from "node:fs";
+import { closeSync, readFileSync } from "node:fs";
 
 import { during, open, Query, readCatalog, Reads } from "shugo:query";
+import { buildChannel } from "shugo:wire";
 
 // The data database of the project, once it is open; null if it has none.
 let data = null;
@@ -20,14 +21,26 @@ let data = null;
 // Search results are ordinary view data. Keep their source out of the JSON
 // so the same result can be used in a static template or a request binding.
 const requestSources = new WeakMap();
+let catalogJSON;
+
+export function requestSource(value, source) {
+  requestSources.set(value, source);
+  return value;
+}
 
 export function catalogView() {
-  const result = process.env.SHUGO_CATALOG;
-  if (!result) throw new Error("shugo:catalog search() needs a prepared catalog index");
+  if (catalogJSON === undefined) {
+    const descriptor = process.env.SHUGO_CATALOG_FD;
+    if (!descriptor) throw new Error("shugo:catalog search() needs a prepared catalog index");
+    const fd = Number(descriptor);
+    try {
+      catalogJSON = readFileSync(fd, "utf8");
+    } finally {
+      closeSync(fd);
+    }
+  }
   readCatalog();
-  const view = JSON.parse(result);
-  requestSources.set(view, "catalog");
-  return view;
+  return requestSource(JSON.parse(catalogJSON), "catalog");
 }
 
 // ---------------------------------------------------------------------------
@@ -103,7 +116,7 @@ class Writer {
     const request = [];
     for (const [prop, value] of bound) {
       const source = requestSources.get(value);
-      if (!source) throw new TypeError(`request:${prop} needs a search() result from shugo:catalog`);
+      if (!source) throw new TypeError(`request:${prop} needs a search() result from shugo:search or shugo:catalog`);
       request.push([prop, source]);
     }
     if (request.length) props = { ...props, ...Object.fromEntries(bound) };
@@ -1008,35 +1021,12 @@ function failure(error) {
 // A message in either direction is a length in four bytes, a letter that
 // says what the message is, and its body.
 export async function run(modules) {
-  const [input, output] = [Number(process.env.SHUGO_IN), Number(process.env.SHUGO_OUT)];
-  if (!Number.isInteger(input) || !Number.isInteger(output)) {
+  const wire = buildChannel();
+  if (wire === null) {
     console.error("This file is a part of a Shugo project and is run by the shugo command: `shugo build` or `shugo update`.");
     process.exit(2);
   }
-  const send = (kind, text) => {
-    const body = Buffer.from(kind + text);
-    const head = Buffer.allocUnsafe(4);
-    head.writeUInt32LE(body.length, 0);
-    for (const buffer of [head, body]) {
-      for (let sent = 0; sent < buffer.length; ) sent += writeSync(output, buffer, sent, buffer.length - sent);
-    }
-  };
-  // Nothing happens here between two requests, so waiting for the next one
-  // may hold everything else up.
-  const fill = (buffer) => {
-    for (let got = 0; got < buffer.length; ) {
-      const count = readSync(input, buffer, got, buffer.length - got, null);
-      if (count === 0) return false;
-      got += count;
-    }
-    return true;
-  };
-  const receive = () => {
-    const head = Buffer.allocUnsafe(4);
-    if (!fill(head)) return null;
-    const body = Buffer.allocUnsafe(head.readUInt32LE(0));
-    return fill(body) ? { kind: String.fromCharCode(body[0]), text: body.toString("utf8", 1) } : null;
-  };
+  const { send, receive } = wire;
 
   try {
     const site = JSON.parse(readFileSync(new URL("./site.json", import.meta.url), "utf8"));
@@ -1054,6 +1044,7 @@ export async function run(modules) {
       });
     }
     const run = new Run(site, new Map(modules), send);
+    if (process.env.SHUGO_SEARCH === "1") send("A", "");
     for (let request = receive(); request !== null && request.kind !== "Q"; request = receive()) {
       switch (request.kind) {
         case "L":

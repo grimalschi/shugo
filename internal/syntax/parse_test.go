@@ -109,7 +109,7 @@ func showAttr(a Attr) string {
 
 func testParser(t *testing.T) *Parser {
 	t.Helper()
-	parser, err := Start("")
+	parser, err := Start("", "")
 	if err != nil {
 		t.Fatal(err)
 	}

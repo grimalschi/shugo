@@ -154,7 +154,7 @@ Details are in [proposal for internationalization](../docs/proposals/i18n.md). I
 
 ## New questions after switching to Svelte
 
-16. **Types for the editor.** Extensions `.svelte` and `.island.svelte` are selected. How to describe `Shugo`, `shugo:catalog` and `request:` for review in editor.
+16. **Types for the editor.** Extensions `.svelte` and `.island.svelte` are selected. How to describe `Shugo`, `shugo:search` and `request:` for review in editor.
 17. **`lang="ts"`.** After switching to the official parser for TypeScript, `lang="ts"` is used.
 18. **Accessibility alerts.** U Svelte There are dozens of them (`alt` in pictures, roles, signatures). **The Council:** The agent is useful, and Svelte He's waiting for them.
 19. **Rune places.** Svelte forbids `$props()` in markup, second call `$props()` and the like; Shugo does not check yet. **The Council:** check as well as Svelte.

@@ -1,6 +1,7 @@
 package compile
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -27,10 +28,16 @@ type style struct {
 // Tailwind build its style sheet.
 var tailwind = regexp.MustCompile(`@import\s+["']tailwindcss|@tailwind\b|@apply\b|@theme\b|@utility\b|@plugin\b`)
 
-// styles builds the style sheet and names any fonts or pictures it needs.
-func (b *builder) styles(sheets []style) ([]byte, []string, error) {
+type stylesheet struct {
+	sheet          []byte
+	assets, inputs []string
+}
+
+// styles builds the sheet and records its public assets and source inputs.
+func (b *builder) styles(sheets []style) (stylesheet, error) {
+	var out stylesheet
 	if len(sheets) == 0 {
-		return nil, nil, nil
+		return out, nil
 	}
 	// One sheet that imports all the others in their order. The content of
 	// <style> tags is imported by number.
@@ -41,7 +48,7 @@ func (b *builder) styles(sheets []style) ([]byte, []string, error) {
 		if sheet.path != "" {
 			data, err := os.ReadFile(sheet.path)
 			if err != nil {
-				return nil, nil, err
+				return out, err
 			}
 			text = string(data)
 			fmt.Fprintf(&entry, "@import %s;\n", strconv.Quote(filepath.ToSlash(sheet.path)))
@@ -51,8 +58,9 @@ func (b *builder) styles(sheets []style) ([]byte, []string, error) {
 		needsTailwind = needsTailwind || tailwind.MatchString(text)
 	}
 	if needsTailwind {
-		sheet, err := b.tailwind(sheets)
-		return sheet, nil, err
+		var err error
+		out.sheet, err = b.tailwind(sheets)
+		return out, err
 	}
 
 	plugin := api.Plugin{Name: "shugo-styles", Setup: func(build api.PluginBuild) {
@@ -65,14 +73,16 @@ func (b *builder) styles(sheets []style) ([]byte, []string, error) {
 			return api.OnLoadResult{Contents: &sheet.text, Loader: api.LoaderCSS, ResolveDir: filepath.Dir(b.project.Path(filepath.FromSlash(sheet.from)))}, nil
 		})
 	}}
+	const entryFile = "shugo:styles.css"
 	result := api.Build(api.BuildOptions{
-		Stdin:            &api.StdinOptions{Contents: entry.String(), Loader: api.LoaderCSS, ResolveDir: b.project.Root, Sourcefile: "styles.css"},
+		Stdin:            &api.StdinOptions{Contents: entry.String(), Loader: api.LoaderCSS, ResolveDir: b.project.Root, Sourcefile: entryFile},
 		Bundle:           true,
 		MinifyWhitespace: true,
 		MinifySyntax:     true,
 		Plugins:          []api.Plugin{plugin},
 		AbsWorkingDir:    b.project.Root,
 		Outfile:          "styles.css",
+		Metafile:         true,
 		Write:            false,
 		LogLevel:         api.LogLevelSilent,
 		LegalComments:    api.LegalCommentsNone,
@@ -82,23 +92,30 @@ func (b *builder) styles(sheets []style) ([]byte, []string, error) {
 		Charset:          api.CharsetUTF8,
 	})
 	if len(result.Errors) > 0 {
-		return nil, nil, b.diagnoseAll(result.Errors)
+		return out, b.diagnoseAll(result.Errors)
 	}
-	var sheet []byte
-	var files []string
+	var meta struct{ Inputs map[string]json.RawMessage }
+	if err := json.Unmarshal([]byte(result.Metafile), &meta); err != nil {
+		return out, err
+	}
+	for name := range meta.Inputs {
+		if name != entryFile && !strings.HasPrefix(name, "shugo-style:") {
+			out.inputs = append(out.inputs, name)
+		}
+	}
 	for _, file := range result.OutputFiles {
 		if strings.HasSuffix(file.Path, ".css") {
-			sheet = file.Contents
+			out.sheet = file.Contents
 			continue
 		}
 		// A font or a picture the style sheets point at.
 		name := filepath.Base(file.Path)
 		if err := writeHashedFile(b.project.Path(project.Output, Assets, name), file.Contents); err != nil {
-			return nil, nil, err
+			return out, err
 		}
-		files = append(files, name)
+		out.assets = append(out.assets, name)
 	}
-	return sheet, files, nil
+	return out, nil
 }
 
 // Files a style sheet may point at with url(…): they are copied next to it.

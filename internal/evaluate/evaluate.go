@@ -69,6 +69,15 @@ type Report struct {
 	// CatalogRecomputed reports that the new default search result required
 	// reevaluating pages whose build may have embedded that result.
 	CatalogRecomputed bool `json:"catalogRecomputed,omitempty"`
+	// CatalogPrices counts prices updated in the existing catalog projection.
+	CatalogPrices int `json:"catalogPrices,omitempty"`
+	// SearchIndexes counts the distinct generic indices built in this update.
+	SearchIndexes int `json:"searchIndexes,omitempty"`
+	// SearchRetries counts attempts discarded while evaluating generic searches.
+	SearchRetries int `json:"searchRetries,omitempty"`
+	// CatalogRetries counts attempts discarded because the source advanced
+	// while the catalog and pages were being evaluated.
+	CatalogRetries int `json:"catalogRetries,omitempty"`
 	// Time is how long every step took, in milliseconds.
 	Time map[string]float64 `json:"time"`
 }
@@ -127,6 +136,33 @@ type Options struct {
 // Run brings the store up to date with the project. If it fails, the store
 // stays as it was.
 func Run(p *project.Project, compiled *compile.Result, st *store.Store, options Options) (*Report, error) {
+	if !compiled.Site.CatalogSearch && !compiled.Site.Search {
+		return run(p, compiled, st, options)
+	}
+	started := time.Now()
+	const attempts = 3
+	for retry := range attempts {
+		report, err := run(p, compiled, st, options)
+		if errors.Is(err, catalogSourceMoved) {
+			continue
+		}
+		if err == nil && retry > 0 {
+			if compiled.Site.CatalogSearch {
+				report.CatalogRetries = retry
+			}
+			if compiled.Site.Search {
+				report.SearchRetries = retry
+			}
+			report.Time["total"] = float64(time.Since(started).Microseconds()) / 1000
+		}
+		return report, err
+	}
+	return nil, fmt.Errorf("the source database changed during all %d search update attempts; retry once it settles", attempts)
+}
+
+var catalogSourceMoved = errors.New("the source database changed during search evaluation")
+
+func run(p *project.Project, compiled *compile.Result, st *store.Store, options Options) (*Report, error) {
 	started := time.Now()
 	lap := started
 	report := &Report{Build: compiled.ID, Time: map[string]float64{}}
@@ -167,6 +203,14 @@ func Run(p *project.Project, compiled *compile.Result, st *store.Store, options 
 	k.check, report.Checked = options.Check, options.Check
 	w := &worker{project: p, log: options.Log}
 	defer w.stop()
+	defer func() {
+		if w.search != nil {
+			w.search.discard()
+		}
+	}()
+	if compiled.Site.Search && p.Data() == "" {
+		return nil, errors.New("shugo:search needs a data database in shugo.json")
+	}
 	if compiled.Site.CatalogSearch && p.Data() == "" {
 		return nil, errors.New("shugo:catalog search() needs a data database in shugo.json")
 	}
@@ -177,6 +221,11 @@ func Run(p *project.Project, compiled *compile.Result, st *store.Store, options 
 			if err := u.SetCatalog("", nil); err != nil {
 				return nil, err
 			}
+		}
+	}
+	if !compiled.Site.Search && kept != compiled.ID {
+		if err := clearSearch(u); err != nil {
+			return nil, err
 		}
 	}
 	switch path := p.Data(); {
@@ -205,6 +254,12 @@ func Run(p *project.Project, compiled *compile.Result, st *store.Store, options 
 			script.locate(p)
 		}
 		return nil, err
+	}
+	if w.search != nil {
+		if err := w.search.publish(u); err != nil {
+			return nil, err
+		}
+		report.SearchIndexes = w.search.built
 	}
 	if kept != compiled.ID {
 		site, err := compiled.Site.Encode()
@@ -279,6 +334,12 @@ func shared(w *worker, k *keeper) error {
 // whole has it compute everything instead; so has a journal that cannot
 // tell what has changed since the records were computed.
 func tracked(w *worker, k *keeper, path string, whole bool, took func(string)) error {
+	var opened os.FileInfo
+	if k.site.CatalogSearch || k.site.Search {
+		// Search projections and evaluation open their own connections
+		// using this path. The journal belongs to the file we open here.
+		opened, _ = os.Stat(path)
+	}
 	source, err := data.Open(path)
 	if err != nil {
 		return err
@@ -293,9 +354,11 @@ func tracked(w *worker, k *keeper, path string, whole bool, took func(string)) e
 	}
 	var journal string
 	var at int64
-	// Older stores contain only the journal ID and position.
-	var catalogPending bool
-	fmt.Sscanf(state, "%s %d %t", &journal, &at, &catalogPending)
+	// A previous build may have published data from different journal
+	// positions. Reconcile both pages and catalog once during migration.
+	var legacyCatalogPending bool
+	fmt.Sscanf(state, "%s %d %t", &journal, &at, &legacyCatalogPending)
+	whole = whole || (k.site.CatalogSearch && legacyCatalogPending)
 	k.report.Data = &DataReport{}
 
 	var changes []data.Change
@@ -314,24 +377,28 @@ func tracked(w *worker, k *keeper, path string, whole bool, took func(string)) e
 			return err
 		}
 	}
-	var catalogChanged bool
+	var prepared catalogPreparation
+	if k.site.Search {
+		took("data")
+		w.search, err = prepareSearch(w.project, k.update, source, changes, whole)
+		if err != nil {
+			return err
+		}
+		took("search")
+	}
 	if k.site.CatalogSearch {
 		took("data")
-		catalogChanged, err = w.prepareCatalog(k.update, whole || catalogPending || catalog.Affected(source, changes))
+		plan := catalog.UpdatePlan{Rebuild: whole}
+		if !whole {
+			plan = catalog.PlanUpdate(source, changes)
+		}
+		prepared, err = w.prepareCatalog(k.update, plan)
 		if err != nil {
 			return err
 		}
-		// The catalog opens its own source snapshot after reading the journal.
-		// It may have seen newer writes that cancel out in the next journal
-		// read. In that case, rebuild once even when nothing appears changed.
-		after, err := source.Position()
-		if err != nil {
-			return err
-		}
-		catalogPending = after != now
+		defer prepared.discard()
+		k.report.CatalogPrices = prepared.prices
 		took("catalog")
-	} else {
-		catalogPending = false
 	}
 	if whole {
 		k.report.Data.Whole = true
@@ -344,12 +411,21 @@ func tracked(w *worker, k *keeper, path string, whole bool, took func(string)) e
 		if err != nil {
 			return err
 		}
-		if catalogChanged {
+		if prepared.changed {
 			if err := k.update.Readers(store.CatalogResultShape, nil, func(reader string) {
 				readers[reader] = struct{}{}
 				k.report.CatalogRecomputed = true
 			}); err != nil {
 				return err
+			}
+		}
+		if w.search != nil {
+			for _, id := range w.search.changed {
+				if err := k.update.Readers(store.SearchResultShape, []byte(id), func(reader string) {
+					readers[reader] = struct{}{}
+				}); err != nil {
+					return err
+				}
 			}
 		}
 		took("data")
@@ -362,12 +438,33 @@ func tracked(w *worker, k *keeper, path string, whole bool, took func(string)) e
 	if err != nil {
 		return err
 	}
-	k.report.Data.Position = now
-	state = fmt.Sprintf("%s %d", source.ID, now)
-	if catalogPending {
-		state += " true"
+	if k.site.CatalogSearch || k.site.Search {
+		// Journal deltas, search projections and page scripts can
+		// read on different connections. Any write in this window may
+		// have made one of those reads see a different source generation.
+		current, err := os.Stat(path)
+		if errors.Is(err, os.ErrNotExist) {
+			return catalogSourceMoved
+		}
+		if err != nil {
+			return err
+		}
+		if opened == nil || !os.SameFile(opened, current) {
+			return catalogSourceMoved
+		}
+		moved, err := source.Moved(now)
+		if err != nil {
+			return err
+		}
+		if moved {
+			return catalogSourceMoved
+		}
+		if err := prepared.publish(k.update); err != nil {
+			return err
+		}
 	}
-	return k.update.SetData(state)
+	k.report.Data.Position = now
+	return k.update.SetData(fmt.Sprintf("%s %d", source.ID, now))
 }
 
 // checked computes everything where the journal told to compute only the
@@ -375,23 +472,7 @@ func tracked(w *worker, k *keeper, path string, whole bool, took func(string)) e
 // having been told: a page that reads its data past the database, or takes
 // it from what another page left in a module.
 func checked(w *worker, k *keeper, readers map[string]struct{}, took func(string)) error {
-	k.reached = map[string]struct{}{}
-	for reader := range readers {
-		route, is := store.ReaderRoute(reader)
-		if !is {
-			k.reached[reader] = struct{}{}
-			continue
-		}
-		// A list of pages that is read again has its new pages computed,
-		// and all of them if the route gives its pages more than addresses.
-		props, _, _, err := k.update.Route(route)
-		if err != nil {
-			return err
-		}
-		if props {
-			k.reached[reader] = struct{}{}
-		}
-	}
+	k.reached = readers
 	return everything(w, k, took)
 }
 
@@ -471,6 +552,14 @@ func relist(w *worker, k *keeper, routes []int, pages map[string]int) error {
 		if len(queue) == 0 {
 			return nil
 		}
+		previousProps := make(map[int]bool, len(queue))
+		for _, route := range queue {
+			props, _, _, err := k.update.Route(route)
+			if err != nil {
+				return err
+			}
+			previousProps[route] = props
+		}
 		k.report.Data.Routes += len(queue)
 		found, err := w.list(queue, k)
 		if err != nil {
@@ -506,16 +595,15 @@ func relist(w *worker, k *keeper, routes []int, pages map[string]int) error {
 					}
 				}
 			}
-			// What the route gives its pages beside their addresses may be
-			// other than it was, and only the route knows: all its pages are
-			// computed again.
+			// Recompute retained pages when a relist can change or remove
+			// their props.
 			props, _, _, err := k.update.Route(route)
 			if err != nil {
 				return err
 			}
 			for path := range given[route] {
 				if _, had := before[path]; had {
-					if props {
+					if props || previousProps[route] {
 						pages[path] = route
 					}
 					continue

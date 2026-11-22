@@ -7,8 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"path/filepath"
-	"sync"
+	"strings"
 
 	"github.com/grimalschi/shugo/internal/catalog"
 	"github.com/grimalschi/shugo/internal/program"
@@ -23,20 +22,11 @@ const (
 
 // Catalog reads the catalog snapshot named by the page store.
 type Catalog struct {
-	dir     string
-	mu      sync.Mutex
-	current *catalogSnapshot
-	closed  bool
-}
-
-type catalogSnapshot struct {
-	name    string
-	index   *catalog.Index
-	readers int
+	*snapshots[*catalog.Index]
 }
 
 func NewCatalog(dir string) *Catalog {
-	return &Catalog{dir: dir}
+	return &Catalog{newSnapshots(dir, 1, catalog.Open)}
 }
 
 func (i *Catalog) search(ctx context.Context, v *store.View, target *url.URL) (catalog.Result, error) {
@@ -50,7 +40,7 @@ func (i *Catalog) search(ctx context.Context, v *store.View, target *url.URL) (c
 	if len(target.RawQuery) > maxSearchQuery {
 		return catalog.Result{}, errSearchTooLong
 	}
-	snapshot, err := i.snapshot(name)
+	snapshot, err := i.take(name)
 	if err != nil {
 		return catalog.Result{}, err
 	}
@@ -59,54 +49,7 @@ func (i *Catalog) search(ctx context.Context, v *store.View, target *url.URL) (c
 }
 
 var errNoCatalog = errors.New("the store has no catalog index")
-var errSearchTooLong = errors.New("catalog query is too long")
-
-func (i *Catalog) snapshot(name string) (*catalogSnapshot, error) {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-	if i.closed {
-		return nil, errors.New("catalog reader is closed")
-	}
-	if i.current == nil || i.current.name != name {
-		if filepath.Base(name) != name || !filepath.IsLocal(name) {
-			return nil, errors.New("invalid catalog index name")
-		}
-		index, err := catalog.Open(filepath.Join(i.dir, name))
-		if err != nil {
-			return nil, err
-		}
-		old := i.current
-		i.current = &catalogSnapshot{name: name, index: index}
-		if old != nil && old.readers == 0 {
-			old.index.Close()
-		}
-	}
-	i.current.readers++
-	return i.current, nil
-}
-
-func (i *Catalog) release(snapshot *catalogSnapshot) {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-	snapshot.readers--
-	if snapshot != i.current && snapshot.readers == 0 {
-		snapshot.index.Close()
-	}
-}
-
-// Close releases the current index. Active searches release their snapshots
-// when they finish.
-func (i *Catalog) Close() error {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-	i.closed = true
-	old := i.current
-	i.current = nil
-	if old != nil && old.readers == 0 {
-		return old.index.Close()
-	}
-	return nil
-}
+var errSearchTooLong = errors.New("search query is too long")
 
 // Without a published index the path remains available to the site itself.
 func (s *Server) searchCatalog(w http.ResponseWriter, r *http.Request) bool {
@@ -119,28 +62,32 @@ func (s *Server) searchCatalog(w http.ResponseWriter, r *http.Request) bool {
 	if errors.Is(err, errNoCatalog) {
 		return false
 	}
+	s.writeSearch(w, r, result, err)
+	return true
+}
+
+func (s *Server) writeSearch(w http.ResponseWriter, r *http.Request, result any, err error) {
 	if errors.Is(err, errSearchTooLong) {
 		http.Error(w, errSearchTooLong.Error(), http.StatusRequestURITooLong)
-		return true
+		return
 	}
 	if err != nil {
 		s.fail(w, err)
-		return true
+		return
 	}
 	data, err := json.Marshal(result)
 	if err != nil {
 		s.fail(w, err)
-		return true
+		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Content-Length", fmt.Sprint(len(data)))
 	if r.Method == http.MethodHead {
 		w.WriteHeader(http.StatusOK)
-		return true
+		return
 	}
 	w.Write(data)
-	return true
 }
 
 func usesSearch(query url.Values) bool {
@@ -154,42 +101,43 @@ func usesSearch(query url.Values) bool {
 
 type replaceIsland func(*store.View, *program.Site, *render.Island) error
 
-func (i *Catalog) forRequest(ctx context.Context, target *url.URL, rendered *bool) replaceIsland {
-	var checked bool
-	var initial json.RawMessage
+func (s *Server) forRequest(ctx context.Context, target *url.URL, rendered *bool) replaceIsland {
+	var query url.Values
+	if len(target.RawQuery) <= maxSearchQuery {
+		query = target.Query()
+	}
+	results := map[string]json.RawMessage{}
 	return func(v *store.View, site *program.Site, island *render.Island) error {
-		if !checked {
-			checked = true
-			if len(target.RawQuery) > maxSearchQuery {
-				return errSearchTooLong
-			}
-			if !usesSearch(target.Query()) {
-				return nil
-			}
-			result, err := i.search(ctx, v, target)
-			if err != nil {
-				return err
-			}
-			initial, err = json.Marshal(result)
-			if err != nil {
-				return err
-			}
+		if len(target.RawQuery) > maxSearchQuery {
+			return errSearchTooLong
 		}
-		if initial == nil {
-			return nil
+		bindings := island.Request
+		if island.Search && len(bindings) == 0 {
+			bindings = map[string]string{"initial": "catalog"}
 		}
 		var props map[string]json.RawMessage
-		if err := json.Unmarshal(island.Props, &props); err != nil {
-			return err
-		}
-		if island.Search && len(island.Request) == 0 {
-			props["initial"] = initial
-		}
-		for name, source := range island.Request {
-			if source != "catalog" {
-				return fmt.Errorf("island %s: unknown request data source %q", island.ID, source)
+		for name, source := range bindings {
+			result, known := results[source]
+			if !known {
+				var err error
+				result, err = s.requestSearch(ctx, v, target, query, source)
+				if err != nil {
+					return fmt.Errorf("island %s: %w", island.ID, err)
+				}
+				results[source] = result
 			}
-			props[name] = initial
+			if result == nil {
+				continue
+			}
+			if props == nil {
+				if err := json.Unmarshal(island.Props, &props); err != nil {
+					return err
+				}
+			}
+			props[name] = result
+		}
+		if props == nil {
+			return nil
 		}
 		encoded, err := json.Marshal(props)
 		if err != nil {
@@ -203,4 +151,36 @@ func (i *Catalog) forRequest(ctx context.Context, target *url.URL, rendered *boo
 		*rendered = true
 		return nil
 	}
+}
+
+func (s *Server) requestSearch(ctx context.Context, v *store.View, target *url.URL, query url.Values, source string) (json.RawMessage, error) {
+	switch {
+	case source == "catalog" && s.Catalog != nil:
+		if usesSearch(query) {
+			result, err := s.Catalog.search(ctx, v, target)
+			if err != nil {
+				return nil, err
+			}
+			return json.Marshal(result)
+		}
+	case strings.HasPrefix(source, "search:") && s.Search != nil:
+		id := strings.TrimPrefix(source, "search:")
+		binding, found, err := v.Search(id)
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			return nil, fmt.Errorf("search %s has no published binding", id)
+		}
+		if binding.Definition.UsesQuery(query) {
+			result, err := s.Search.query(ctx, binding, query)
+			if err != nil {
+				return nil, err
+			}
+			return json.Marshal(result)
+		}
+	default:
+		return nil, fmt.Errorf("unknown request data source %q", source)
+	}
+	return nil, nil
 }

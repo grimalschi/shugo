@@ -11,8 +11,8 @@ import (
 	"strings"
 )
 
-// Version 5 adds named request props and function-driven catalog projection.
-const Version = 5
+// Version 6 adds request bindings to published table searches.
+const Version = 6
 
 const versionStaticSvelte = 2
 const versionIslandWorker = 3
@@ -36,8 +36,10 @@ type Site struct {
 	// IslandPrograms holds the precompiled markup of request-bound islands
 	// and the component views they call. Keys are source-relative paths.
 	IslandPrograms map[string][]IslandOp `json:"islandPrograms,omitempty"`
-	// CatalogSearch tells evaluation to prepare the catalog index for search().
+	// CatalogSearch prepares the legacy catalog default result during evaluation.
 	CatalogSearch bool `json:"catalogSearch,omitempty"`
+	// Search enables generic search requests while the project is evaluated.
+	Search bool `json:"search,omitempty"`
 }
 
 // File is one compiled template.

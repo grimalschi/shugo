@@ -207,6 +207,15 @@ func writeProducts(ctx context.Context, tx *sql.Tx, products []entry) error {
 }
 
 func publish(ctx context.Context, name string, data snapshot) (*Index, error) {
+	return publishSQLite(ctx, name, func(path string) error {
+		return writeFile(ctx, path, data)
+	})
+}
+
+func publishSQLite(ctx context.Context, name string, write func(string) error) (*Index, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	dir, err := os.Open(filepath.Dir(name))
 	if err != nil {
 		return nil, err
@@ -221,7 +230,7 @@ func publish(ctx context.Context, name string, data snapshot) (*Index, error) {
 	if err := stage.Close(); err != nil {
 		return nil, err
 	}
-	if err := writeFile(ctx, path, data); err != nil {
+	if err := write(path); err != nil {
 		return nil, err
 	}
 	f, err := os.OpenFile(path, os.O_RDWR, 0)
@@ -257,18 +266,27 @@ func publish(ctx context.Context, name string, data snapshot) (*Index, error) {
 	return index, nil
 }
 
-func writeFile(ctx context.Context, path string, data snapshot) error {
+func openStage(ctx context.Context, path string) (*sql.DB, error) {
 	db, err := openFile(path, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer db.Close()
 	db.SetMaxOpenConns(1)
 	// The staging file is private and discarded if the build fails. Its
 	// completed state is fsynced before publication.
 	if _, err := db.ExecContext(ctx, "PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF;"); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return db, nil
+}
+
+func writeFile(ctx context.Context, path string, data snapshot) error {
+	db, err := openStage(ctx, path)
+	if err != nil {
 		return err
 	}
+	defer db.Close()
 	if err := writeIndex(ctx, db, data); err != nil {
 		return err
 	}

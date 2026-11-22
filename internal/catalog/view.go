@@ -7,10 +7,6 @@ import (
 	"strings"
 )
 
-// The experiment has one catalog route. The results API returns pagination
-// links for it, using the same order and escaping as URLSearchParams.
-const catalogPath = "/catalog"
-
 type SortOption struct {
 	option
 	Selected bool `json:"selected"`
@@ -101,7 +97,7 @@ func money(value int64) string {
 }
 
 func (r *Result) preparePageLinks() {
-	base := href(r.Filters)
+	base := filterHref(r.Filters)
 	if r.HasPrev {
 		r.PrevHref = pageHref(base, r.Page-1)
 	}
@@ -132,21 +128,21 @@ func pageHref(base string, page int) string {
 		return base
 	}
 	delimiter := "&"
-	if base == catalogPath {
-		delimiter = "?"
+	if base == "?" {
+		delimiter = ""
 	}
 	return base + delimiter + "page=" + strconv.Itoa(page)
 }
 
 var formEscape = strings.NewReplacer("~", "%7E", "%2A", "*")
 
-func href(filters Filters) string {
+// filterHref returns a query-only link on the current route, with the
+// escaping of URLSearchParams. A bare "?" removes the current filters.
+func filterHref(filters Filters) string {
 	var out strings.Builder
-	out.WriteString(catalogPath)
+	out.WriteByte('?')
 	add := func(name, value string) {
-		if out.Len() == len(catalogPath) {
-			out.WriteByte('?')
-		} else {
+		if out.Len() > 1 {
 			out.WriteByte('&')
 		}
 		out.WriteString(name)

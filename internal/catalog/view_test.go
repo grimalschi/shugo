@@ -40,7 +40,7 @@ func TestPageLinks(t *testing.T) {
 		Stock: true, PriceFrom: &low, PriceTo: &high, Sort: "cheap", Page: 5}
 	result := Result{Filters: filter, Page: 5, Pages: 10}
 	result.prepareView()
-	const base = "/catalog?q=tea+%26+%7E*%27+%3Cx%3E&category=c2&category=c4&size=small&stock=1&price_from=192&price_to=9000&sort=cheap"
+	const base = "?q=tea+%26+%7E*%27+%3Cx%3E&category=c2&category=c4&size=small&stock=1&price_from=192&price_to=9000&sort=cheap"
 	if !result.HasPrev || !result.HasNext || result.PrevHref != base+"&page=4" || result.NextHref != base+"&page=6" {
 		t.Fatalf("previous and next links: %q, %q", result.PrevHref, result.NextHref)
 	}
@@ -59,14 +59,14 @@ func TestPageLinks(t *testing.T) {
 
 	first := Result{Filters: Filters{Sort: "popular", Page: 1}, Page: 1, Pages: 2}
 	first.prepareView()
-	if first.HasPrev || first.PrevHref != "" || !first.HasNext || first.NextHref != "/catalog?page=2" ||
-		!reflect.DeepEqual(first.PageLinks, []PageLink{{Current: true, Label: "1"}, {Label: "2", Href: "/catalog?page=2"}}) {
+	if first.HasPrev || first.PrevHref != "" || !first.HasNext || first.NextHref != "?page=2" ||
+		!reflect.DeepEqual(first.PageLinks, []PageLink{{Current: true, Label: "1"}, {Label: "2", Href: "?page=2"}}) {
 		t.Fatalf("first page links: %+v", first)
 	}
 	last := Result{Filters: Filters{Sort: "popular", Page: 2}, Page: 2, Pages: 2}
 	last.prepareView()
-	if !last.HasPrev || last.PrevHref != "/catalog" || last.HasNext || last.NextHref != "" ||
-		!reflect.DeepEqual(last.PageLinks, []PageLink{{Label: "1", Href: "/catalog"}, {Current: true, Label: "2"}}) {
+	if !last.HasPrev || last.PrevHref != "?" || last.HasNext || last.NextHref != "" ||
+		!reflect.DeepEqual(last.PageLinks, []PageLink{{Label: "1", Href: "?"}, {Current: true, Label: "2"}}) {
 		t.Fatalf("last page links: %+v", last)
 	}
 }

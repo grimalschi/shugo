@@ -49,17 +49,45 @@ The page imports the island by name and passes it data as parameters. The file c
 ```svelte
 <script>
   import Catalog from "../components/Catalog.island.svelte"
-  import { search } from "shugo:catalog"
+  import { search } from "shugo:search"
+
+  const products = search("products", {
+    text: ["title", "description"],
+    fields: ["slug"],
+    filters: { category: "multi", price: "range", available: "boolean" },
+    sorts: { popular: { position: "asc" }, cheap: { price: "asc" } },
+    defaultSort: "popular",
+    pageSize: 24,
+  })
 </script>
 
-<Catalog request:initial={search()} action="/catalog" endpoint="/_islands/catalog" />
+<Catalog request:initial={products} action="/catalog" />
 ```
 
 The suffix selects the boundary of hydration. A subsidiary of `*.island.svelte` inside another island is included in its tree Svelte. The regular `ProductCard.svelte` can be imported into both the server template and the island if the component takes data through the parameters and uses only Svelte tools. `Shugo.query` is executed in a normal server template that transmits the result to the island.
 
-`request:initial={search()}` binds the parameter `initial` to the output of URL. The `search()` call registers the connection for initial issuance during the calculation, including calls within components and `getStaticPaths`. The call when loading the module is registered for the entire site. The usual parameter `initial={search()}` receives the result of the calculation step.
+`request:initial={products}` binds the parameter `initial` to the output of URL. The `search` call registers the reading of the initial issuance during the calculation, including calls within components and `getStaticPaths`. The call when loading the module registers reading for the entire site. The normal parameter `initial={products}` transmits the result of the calculation step.
 
 When assembling Shugo prepares the program SSR from the output of Svelte. On request Go reads the published index and applies the program, including branches, lists and hydration tags. In the browser Svelte connects handlers to the received markup. [How SSR Island is going](../examples/islands/GO-SSR.md)
+
+### Search by table
+
+The first argument of `search` calls the table in the `data` database from `shugo.json`. Shugo displays the index identity from the table, search columns and projection fields. Page size, default sorting and fixed `where` values refer to a specific call. `products` and `articles` searches read their tables, and two `products` searches with the same projection can use the same index.
+
+| Parameter | Conduct |
+| --- | --- |
+| `text` | Full-text search columns by `q` |
+| `fields` | Additional columns in `hits` |
+| `filters` | `multi` reads repetitive values, e.g. `category=cups&category=plates`. `range` reads `price_from` and `price_to`. `boolean` reads `available=1` or `available=0` |
+| `sorts`, `defaultSort` | Permitted variants of `sort` and the default option |
+| `pageSize` | Number of results per page, default is 24. Page number is passed as `page` |
+| `where` | Fixed equality, e.g. `{ published: true }`. The request from the browser is applied within this area |
+
+By default, the URL filter name matches the column. You can set your own, for example, `filters: { topic: { column: "section", type: "multi" } }`. In addition to `fields`, the `hits` string includes the primary key and text columns, filters and sorting.
+
+The result contains `hits`, `total`, `facets`, `query`, pagination fields and `endpoint`. The `/catalog?category=cups&sort=cheap` page immediately gives the HTML for these parameters. After hydration, the island sends the same set of parameters to `initial.endpoint` and updates the address via History API. The GET form at the page address allows you to open the same issue without JavaScript in the browser.
+
+`shugo serve` serves both HTML and search endpoint. With `shugo export`, files get an issue prepared during assembly. In the example there are two pages with a common island and search for different tables. [Example of catalogue and articles](../examples/search/README.md)
 
 ## Open questions
 

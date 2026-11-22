@@ -205,8 +205,8 @@ func TestSearchRefreshesWhenConcurrentWritesCancelOut(t *testing.T) {
 	if err := update.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	if report := s.update(); report.Data.Rows != 0 || report.Computed.Pages != 1 || !report.CatalogRecomputed {
-		t.Fatalf("an unsettled projection must refresh after coalesced changes: %+v", report)
+	if report := s.update(); report.Data.Rows != 0 || !report.Data.Whole || report.Computed.Pages != 1 {
+		t.Fatalf("an unsettled legacy publication must refresh after coalesced changes: %+v", report)
 	}
 	expect(t, s.page("/"), "<h1>Final</h1>")
 	if report := s.update(); report.Computed.Pages != 0 || report.CatalogRecomputed {
@@ -227,6 +227,16 @@ func TestModuleScopeSearchKeepsDependency(t *testing.T) {
 	if report := s.update(); report.Computed.Pages != 2 || report.Pages.Changed != 1 || !report.CatalogRecomputed {
 		t.Fatalf("the module initializer is tracked conservatively, with only changed output published: %+v", report)
 	}
+	expect(t, s.page("/"), "<h1>Updated</h1>")
+}
+
+func TestCatalogBuildInputExceedsEnvironmentValueLimit(t *testing.T) {
+	s := newSite(t, strings.Replace(searchTitlePage, "<script>", "<script module>", 1))
+	s.sql(migrationCatalogData + "UPDATE categories SET title = hex(zeroblob(100000));")
+	s.build()
+	expect(t, s.page("/"), "<h1>First</h1>")
+	s.sql("UPDATE products SET title = 'Updated' WHERE id = 'p1'")
+	s.update()
 	expect(t, s.page("/"), "<h1>Updated</h1>")
 }
 

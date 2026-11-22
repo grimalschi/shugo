@@ -21,6 +21,8 @@ bin/shugo serve examples/islands -addr 127.0.0.1:4321
 
 `search()` from `shugo:catalog` connects to the index and returns the initial results. On the island tag, `request:initial={search()}` binds the `initial` prop to results for the current URL. A regular `initial={search()}` prop gets results at build time. [Island tag](src/pages/catalog.svelte)
 
+To mount the island at a different URL, pass that path in `action` for form submission and reset. Pagination links change the current URL's query parameters and keep the page path. The JSON endpoint remains `/_islands/catalog`.
+
 The build publishes the catalog in a separate `_build/catalog-*.sqlite` file. SQLite FTS5 matches words using English stems. Filters, counts, and cards read from the same read-only snapshot. `shugo update` replaces the snapshot when indexed data changes. If the initial results change, it reevaluates their readers. The next update of a project with the old JSON index migrates its catalog to SQLite.
 
 ## Validation and benchmarks

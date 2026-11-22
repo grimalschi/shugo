@@ -3,7 +3,9 @@ package compile
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -61,6 +63,44 @@ func TestBuildExample(t *testing.T) {
 	}
 }
 
+func TestBuildParserUsesProjectRuntimeDirectory(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("runtime fixture uses a POSIX shell")
+	}
+	p := templateProject(t, map[string]string{"src/pages/index.svelte": "<p>hello</p>"})
+	bin, err := exec.LookPath(p.Runtime())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin, err = filepath.Abs(bin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SHUGO_TEST_PARSER_RUNTIME", bin)
+	if err := os.WriteFile(p.Path("runtime"), []byte("#!/bin/sh\nexec \"$SHUGO_TEST_PARSER_RUNTIME\" \"$@\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p.Config.Runtime = "./runtime"
+	t.Chdir(t.TempDir())
+	if err := os.Mkdir("relative-temp", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TMPDIR", "relative-temp")
+	if _, err := Build(p); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p.Path("runtime"), []byte("#!/bin/sh\nprintf '%s\\n' '{\"ready\":false}'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Build(p); err == nil || !strings.Contains(err.Error(), "missing startup acknowledgement") {
+		t.Fatalf("expected a parser startup error, got %v", err)
+	}
+	files, err := os.ReadDir("relative-temp")
+	if err != nil || len(files) != 0 {
+		t.Fatalf("parser leaked its extracted compiler: %v, %v", files, err)
+	}
+}
+
 func TestRegularSvelteDependencies(t *testing.T) {
 	p := templateProject(t, map[string]string{
 		"src/pages/index.svelte": `<script>import Frame from '../components/Frame.svelte'</script><Frame />`,
@@ -113,6 +153,57 @@ const path = Shugo.url.pathname
 	}
 }
 
+func TestStylesTrackTransitiveInputs(t *testing.T) {
+	for _, dep := range []struct{ name, replacement string }{
+		{"src/styles/nested.css", `.mark { color: blue; background: url("./mark.svg"); }`},
+		{"src/styles/mark.svg", `<svg xmlns="http://www.w3.org/2000/svg" width="8"/>`},
+	} {
+		t.Run(filepath.Base(dep.name), func(t *testing.T) {
+			p := templateProject(t, map[string]string{
+				"src/pages/index.svelte": `<script>import '../styles/main.css'</script><p class="mark">hello</p>`,
+				"src/styles/main.css":    `@import "./nested.css";`,
+				"src/styles/nested.css":  `.mark { color: red; background: url("./mark.svg"); }`,
+				"src/styles/mark.svg":    `<svg xmlns="http://www.w3.org/2000/svg"/>`,
+			})
+			original, err := Build(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p.Path(filepath.FromSlash(dep.name)), []byte(dep.replacement), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if changed, err := Changed(p); err != nil || !changed {
+				t.Fatalf("%s changed: changed = %v, error = %v", dep.name, changed, err)
+			}
+			next, err := Build(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if original.Site.Mounts["head"] == next.Site.Mounts["head"] {
+				t.Fatal("published stylesheet needs a new content hash")
+			}
+		})
+	}
+}
+
+func TestManifestHashesParsedTemplate(t *testing.T) {
+	const name = "src/pages/index.svelte"
+	const parsed = "<p>before</p>"
+	p := templateProject(t, map[string]string{name: parsed})
+	b := &builder{project: p, paths: []string{name}, ids: map[string]int{name: 0}}
+	if err := b.compile(); err != nil {
+		t.Fatal(err)
+	}
+	// The source changed after parsing and before the manifest was made.
+	if err := os.WriteFile(p.Path(name), []byte("<p>after</p>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	manifest := b.sources([]string{name})
+	if got := manifest.Files[name]; got != digest([]byte(parsed)) {
+		t.Fatalf("manifest hashed a template different from the compiled template: %q", got)
+	}
+}
+
 func TestStaleTemplateImport(t *testing.T) {
 	p := templateProject(t, map[string]string{
 		"src/pages/index.svelte":     `<script>import Card from '../components/Card.shugo'</script><Card />`,
@@ -123,7 +214,7 @@ func TestStaleTemplateImport(t *testing.T) {
 	}
 }
 
-func TestManifestDetectsParserChange(t *testing.T) {
+func TestManifestDetectsCompilerChanges(t *testing.T) {
 	p := templateProject(t, map[string]string{"src/pages/index.svelte": "<p>hello</p>"})
 	if _, err := Build(p); err != nil {
 		t.Fatal(err)
@@ -137,16 +228,27 @@ func TestManifestDetectsParserChange(t *testing.T) {
 	if err := json.Unmarshal(data, &previous); err != nil {
 		t.Fatal(err)
 	}
-	previous.Parser = ""
-	data, err = json.Marshal(previous)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(manifest, data, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if changed, err := Changed(p); err != nil || !changed {
-		t.Fatalf("manifest before the parser migration: changed = %v, error = %v", changed, err)
+	for _, test := range []struct {
+		name string
+		edit func(*sources)
+	}{
+		{"no parser stamp", func(s *sources) { s.Parser = "" }},
+		{"old input schema", func(s *sources) { s.Revision = 0 }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			old := previous
+			test.edit(&old)
+			data, err := json.Marshal(old)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(manifest, data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if changed, err := Changed(p); err != nil || !changed {
+				t.Fatalf("previous compiler manifest: changed = %v, error = %v", changed, err)
+			}
+		})
 	}
 }
 

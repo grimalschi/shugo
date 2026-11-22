@@ -20,3 +20,9 @@ var Query string
 
 //go:embed catalog.js
 var Catalog string
+
+//go:embed search.js
+var Search string
+
+//go:embed wire.js
+var Wire string

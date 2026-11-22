@@ -94,6 +94,7 @@
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
     event.preventDefault()
     const url = new URL(event.currentTarget.href)
+    if (!url.search) url.search = ""
     if (url.href !== window.location.href || pending || failed) {
       navigate(url, true, Boolean(event.currentTarget.closest(".pagination")))
     } else {

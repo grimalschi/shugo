@@ -36,7 +36,10 @@ const (
 // AssetsURL is where the files of the Assets folder are published.
 const AssetsURL = "/_assets/"
 
-const catalogModule = "shugo:catalog"
+const (
+	catalogModule = "shugo:catalog"
+	searchModule  = "shugo:search"
+)
 
 // Result is a compiled project.
 type Result struct {
@@ -71,7 +74,10 @@ func Build(p *project.Project) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	site := &program.Site{Origin: p.Config.Site, Redirects: p.Config.Redirects, Routes: routes, Assets: []string{}, CatalogSearch: bundled.catalogSearch}
+	site := &program.Site{
+		Origin: p.Config.Site, Redirects: p.Config.Redirects, Routes: routes, Assets: []string{},
+		CatalogSearch: bundled.catalogSearch, Search: bundled.search,
+	}
 	if site.Origin == "" {
 		site.Origin = "http://localhost"
 	}
@@ -86,11 +92,12 @@ func Build(p *project.Project) (*Result, error) {
 	if err := os.MkdirAll(assets, 0o755); err != nil {
 		return nil, err
 	}
-	sheet, files, err := b.styles(bundled.styles)
+	stylesheet, err := b.styles(bundled.styles)
 	if err != nil {
 		return nil, err
 	}
-	site.Assets = append(site.Assets, files...)
+	site.Assets = append(site.Assets, stylesheet.assets...)
+	bundled.files = append(bundled.files, stylesheet.inputs...)
 	if islands != nil {
 		for _, file := range islands.assets {
 			if err := writeHashedFile(file.Path, file.Contents); err != nil {
@@ -102,7 +109,7 @@ func Build(p *project.Project) (*Result, error) {
 		bundled.files = append(bundled.files, islands.files...)
 		warnings = append(warnings, islands.warnings...)
 	}
-	if sheet != nil {
+	if sheet := stylesheet.sheet; sheet != nil {
 		name := "styles." + digest(sheet)[:10] + ".css"
 		if err := writeHashedFile(filepath.Join(assets, name), sheet); err != nil {
 			return nil, err
@@ -178,13 +185,24 @@ type sources struct {
 	Files     map[string]string `json:"files"`
 	Format    int               `json:"format"`
 	Parser    string            `json:"parser"`
+	Revision  int               `json:"revision"`
 }
+
+// The compiler can need a fresh build even when the page program format
+// and Svelte version stay the same. Revision 2 adds the search build protocol
+// to the generated bundle, along with the current compiler input tracking.
+const sourcesRevision = 2
 
 // sources hashes the files of the project that the compiled result depends on.
 func (b *builder) sources(bundled []string) sources {
-	out := sources{Templates: b.paths, Files: map[string]string{}, Format: program.Version, Parser: syntax.SvelteVersion}
+	out := sources{Templates: b.paths, Files: map[string]string{}, Format: program.Version, Parser: syntax.SvelteVersion, Revision: sourcesRevision}
+	for _, unit := range b.units {
+		out.Files[unit.file.Path] = digest([]byte(unit.file.Source))
+	}
 	for _, name := range append(bundled, project.Settings) {
-		out.Files[name] = hashFile(b.project.Path(filepath.FromSlash(name)))
+		if _, read := out.Files[name]; !read {
+			out.Files[name] = hashFile(b.project.Path(filepath.FromSlash(name)))
+		}
 	}
 	return out
 }
@@ -211,7 +229,8 @@ func Changed(p *project.Project) (bool, error) {
 		return false, err
 	}
 	var compiled sources
-	if err := json.Unmarshal(data, &compiled); err != nil || compiled.Format != program.Version || compiled.Parser != syntax.SvelteVersion {
+	if err := json.Unmarshal(data, &compiled); err != nil || compiled.Format != program.Version ||
+		compiled.Parser != syntax.SvelteVersion || compiled.Revision != sourcesRevision {
 		return true, nil
 	}
 	templates, err := p.Templates()
@@ -265,7 +284,7 @@ func (b *builder) compile() error {
 	if len(b.paths) == 0 {
 		return nil
 	}
-	parser, err := syntax.Start(b.project.Runtime())
+	parser, err := syntax.Start(b.project.Runtime(), b.project.Root)
 	if err != nil {
 		return err
 	}
@@ -415,6 +434,7 @@ type bundled struct {
 	styles        []style         // the style sheets in the order they apply
 	warnings      []string
 	catalogSearch bool
+	search        bool
 }
 
 // bundle links the modules of all files, the code they import and the
@@ -460,8 +480,12 @@ func (b *builder) bundle(routes []program.Route, islands *islandOutput) (*bundle
 				contents = entry.String()
 			case "shugo:query":
 				contents = jsrt.Query
+			case "shugo:wire":
+				contents = jsrt.Wire
 			case catalogModule:
 				contents = jsrt.Catalog
+			case searchModule:
+				contents = jsrt.Search
 			case "shugo:island-eval":
 				if islands == nil {
 					return api.OnLoadResult{}, fmt.Errorf("the Svelte island evaluation module needs a %s import", project.IslandSuffix)
@@ -618,6 +642,7 @@ func (b *builder) graph(metafile string, out *bundled) error {
 	// Esbuild's output graph excludes unused imports and tree-shaken code.
 	for _, file := range meta.Outputs {
 		out.catalogSearch = out.catalogSearch || file.Inputs["shugo:"+catalogModule].Bytes > 0
+		out.search = out.search || file.Inputs["shugo:"+searchModule].Bytes > 0
 	}
 	names := make([]string, 0, len(meta.Inputs))
 	for name := range meta.Inputs {

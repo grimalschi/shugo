@@ -294,6 +294,8 @@ func (c *command) serve() error {
 func (c *command) listen(s *server.Server) error {
 	s.Catalog = server.NewCatalog(c.project.Path(project.Output))
 	defer s.Catalog.Close()
+	s.Search = server.NewSearch(c.project.Path(project.Output))
+	defer s.Search.Close()
 	s.Public = c.project.Path(project.Public)
 	s.Assets = c.project.Path(project.Output, compile.Assets)
 	s.Failed = func(err error) { fmt.Fprintln(c.stderr, "error:", err) }

@@ -25,37 +25,76 @@ import (
 
 const indexVersion = 1
 
-// Affected reports whether any of the rows or columns used by the catalog
-// projection changed. Columns used in the SELECT and ORDER BY clauses in
-// readCategories, readProducts, and readSizes all count.
-func Affected(source *data.DB, changes []data.Change) bool {
+type PriceChange struct {
+	ID                   string
+	OriginalPrice, Price int64
+}
+
+// UpdatePlan tells whether a published projection can be updated using prices
+// from the journal or needs a new projection of the source.
+type UpdatePlan struct {
+	Rebuild bool
+	Prices  []PriceChange
+}
+
+func PlanUpdate(source *data.DB, changes []data.Change) UpdatePlan {
 	if len(changes) == 0 {
-		return false
+		return UpdatePlan{}
 	}
+	full := UpdatePlan{Rebuild: true}
 	columns := make(map[*data.Table][]int, len(projectionColumns))
+	products := source.TableFold("products")
+	var idColumn, priceColumn, discountColumn int
 	for name, fields := range projectionColumns {
 		table := source.TableFold(name)
 		if table == nil {
-			return true // a view may read other tables
+			return full // a view may read other tables
 		}
 		for index, field := range table.Columns {
 			lower := strings.ToLower(field)
 			if len(lower) == len(field) && slices.Contains(fields, lower) {
 				columns[table] = append(columns[table], index)
+				if table == products {
+					switch lower {
+					case "id":
+						idColumn = index
+					case "price":
+						priceColumn = index
+					case "discount":
+						discountColumn = index
+					}
+				}
 			}
 		}
 		if len(columns[table]) != len(fields) {
-			return true // a generated column may depend on other columns
+			return full // a generated column may depend on other columns
 		}
 	}
+	var plan UpdatePlan
 	for _, change := range changes {
+		changed := false
 		for _, column := range columns[change.Table] {
-			if change.Differs(column) {
-				return true
+			if !change.Differs(column) {
+				continue
 			}
+			if change.Table != products || change.Old == nil || change.New == nil ||
+				(column != priceColumn && column != discountColumn) {
+				return full
+			}
+			changed = true
 		}
+		if !changed {
+			continue
+		}
+		id, idOK := change.New[idColumn].(string)
+		price, priceOK := change.New[priceColumn].(int64)
+		discount, discountOK := change.New[discountColumn].(int64)
+		if !idOK || !priceOK || (!discountOK && change.New[discountColumn] != nil) {
+			return full
+		}
+		plan.Prices = append(plan.Prices, PriceChange{ID: id, OriginalPrice: price, Price: effectivePrice(price, discount)})
 	}
-	return false
+	return plan
 }
 
 var projectionColumns = map[string][]string{
@@ -179,15 +218,19 @@ ORDER BY position, id`)
 		if err := rows.Scan(&p.ID, &p.Slug, &p.Title, &p.Category, &p.OriginalPrice, &discount, &p.Available, &p.Arrival, &description, &p.Position); err != nil {
 			return nil, err
 		}
-		p.Price = p.OriginalPrice
-		if discount != 0 {
-			p.Price = int64(math.Floor(float64(p.OriginalPrice)*(100-float64(discount))/100 + 0.5))
-		}
+		p.Price = effectivePrice(p.OriginalPrice, discount)
 		p.Text = p.Title + " " + description
 		p.Sizes = []string{}
 		products = append(products, p)
 	}
 	return products, rows.Err()
+}
+
+func effectivePrice(original, discount int64) int64 {
+	if discount == 0 {
+		return original
+	}
+	return int64(math.Floor(float64(original)*(100-float64(discount))/100 + 0.5))
 }
 
 func readSizes(ctx context.Context, tx *sql.Tx, products []entry) error {

@@ -209,11 +209,13 @@ const comparisons = new Set(["=", "!=", "<", "<=", ">", ">=", "like", "in"]);
 // by another computation or after this one is over would leave nobody
 // depending on the answer; so both are refused, with what to do instead.
 let catalogAtModuleScope = false;
+let searchesAtModuleScope;
 
 export class Reads {
   constructor() {
     this.asked = [];
     this.catalog = false;
+    this.searches = undefined;
     // settled tells that the readings are told: nothing more may be asked
     // or read. handed tells that the rows went on to others with every
     // column counted as read, and stay readable.
@@ -232,9 +234,16 @@ export class Reads {
     this.settled = true;
     this.handed = whole;
     const catalog = this.catalog || catalogAtModuleScope;
-    if (this.asked.length === 0 && !catalog) return "";
+    if (this.asked.length === 0 && !catalog && !this.searches && !searchesAtModuleScope) return "";
     // Wire shape -1 reads the default search result and has no key.
     const list = catalog ? [-1] : [];
+    // Wire shape -2 names one generic search by its declaration ID.
+    if (searchesAtModuleScope) {
+      for (const id of searchesAtModuleScope) list.push(-2, id);
+    }
+    if (this.searches) {
+      for (const id of this.searches) if (!searchesAtModuleScope?.has(id)) list.push(-2, id);
+    }
     for (const one of this.asked) one.settle(list, whole);
     return JSON.stringify(list);
   }
@@ -267,6 +276,14 @@ export function readCatalog() {
   } else {
     // Module-level values can be shared by any consumer of the bundle.
     catalogAtModuleScope = true;
+  }
+}
+
+export function readSearch(id) {
+  if (computing?.mine()) {
+    (computing.searches ??= new Set()).add(id);
+  } else {
+    (searchesAtModuleScope ??= new Set()).add(id);
   }
 }
 

@@ -57,7 +57,7 @@ The Go program reads JSON fields, booleans, and arrays. The Go projection prepar
 
 The compilation depends on the fixed server output of Svelte 5.59.1. When updating Svelte, it is useful to run byte comparison and browser test before changing version. The format of the old worker experiment requires a re-build of `shugo build`.
 
-The bar uses the store and URL `/catalog`. `request:` now links the island's parameter to the catalog. The change in the indexed field creates a whole new picture. The cost of the index and the cost of the SSR programme can be measured separately. [How changes are monitored](../../docs/change-tracking.md#initial-search-results)
+The counter uses a store layout and one search source. `request:` links the island's parameter to this source. The page can be placed under another URL and transferred to prop `action`. When changing the price or discount Shugo applies the log to a copy of SQLite image, while saving FTS5. The changes in the text, the facets and the catalog composition recapture the images. The cost of creating the index and the cost of implementing the SSR programme can be measured separately. [How changes are monitored](../../docs/change-tracking.md#initial-search-results)
 
 ## Benchmarks after the switch to `.svelte` and `.island.svelte`
 
@@ -68,7 +68,9 @@ We compared the first SQLite FTS5 catalog build with the version that uses the n
 | 1,000 | 464 → 466 | 381 → 379 | 90 → 81 | 2.47 / 3.43 → 2.54 / 3.33 |
 | 100,000 | 5,007 → 5,029 | 375 → 375 | 4,809 → 4,563 | 59.4 / 65.8 → 59.0 / 83.9 |
 
-The initial results of the price update recalculated one page. The two pages and the block were previously re-readed. With 100,000 products, 4.52 s out of 4.56 was upgraded to create a new FTS5 image. The eight simultaneous requests for this size p95 increased from 376 to 408 ms. After the p95 was passed, the three runs were between 64 and 88 ms.
+The initial results of the price update recalculated one page. The two pages and the block were previously re-readed. This is a measurement made before the journal's price update. With 100,000 products, 4.52 s out of 4.56 seconds, the creation of a new FTS5 image was then taken. The eight simultaneous requests for this size p95 increased from 376 to 408 ms. After the p95 was passed, the three runs were between 64 and 88 ms.
+
+After the change to the journal price update, separate measurements were repeated on the same data. The median of the three `shugo update` teams for the price of one item was 37 ms instead of 101 ms per 1,000 products and 221 ms instead of 4.73 s per 100,000. Of the 221 ms, the catalog took 189 ms. The change in line uses the finished FTS5, and the publication continues to copy and store the 35.6 MB index file.
 
 The initial dimensions of HTML and the resources were in the same order. The catalog weighs 4,784 bytes per 100,000 items after gzip HTML, while the client JS weighs 29,735 bytes. In a static catalog with the same HTML cards, 2,651 bytes after gzip, the browser JS is missing.
 

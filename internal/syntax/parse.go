@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -59,8 +60,9 @@ type Parser struct {
 }
 
 // Start starts the build-time parser. It uses the compiler bundled with Shugo.
-// An empty runtime selects Bun when installed and Node otherwise.
-func Start(runtime string) (*Parser, error) {
+// An empty runtime selects Bun when installed and Node otherwise. The runtime
+// runs in dir, or the current directory if dir is empty.
+func Start(runtime, dir string) (*Parser, error) {
 	if runtime == "" {
 		runtime = "bun"
 		if _, err := exec.LookPath(runtime); err != nil {
@@ -68,7 +70,12 @@ func Start(runtime string) (*Parser, error) {
 		}
 	}
 
-	file, err := os.CreateTemp("", "shugo-svelte-*.cjs")
+	// createRequire needs an absolute path, even when TMPDIR is relative.
+	temp, err := filepath.Abs(os.TempDir())
+	if err != nil {
+		return nil, err
+	}
+	file, err := os.CreateTemp(temp, "shugo-svelte-*.cjs")
 	if err != nil {
 		return nil, err
 	}
@@ -79,6 +86,7 @@ func Start(runtime string) (*Parser, error) {
 	}
 
 	cmd := exec.Command(runtime, "--input-type=module", "--eval", adapter+"\n"+runner, file.Name(), SvelteVersion)
+	cmd.Dir = dir
 	p := &Parser{cmd: cmd}
 	cmd.Stderr = &p.stderr
 	p.stdin, err = cmd.StdinPipe()
@@ -187,7 +195,7 @@ type diagnostic struct {
 
 // Parse reads a single template. Call Start to share a process across a build.
 func Parse(path, source string) (*File, error) {
-	p, err := Start("")
+	p, err := Start("", "")
 	if err != nil {
 		return nil, err
 	}

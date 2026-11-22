@@ -71,13 +71,13 @@
 
     {#if result.hasPages}
       <nav class="pagination" aria-label="Catalog pages">
-        {#if result.hasPrev}<a href={result.prevHref}>Previous</a>{/if}
+        {#if result.hasPrev}<a href={action + result.prevHref}>Previous</a>{/if}
         {#each result.pageLinks as link}
           {#if link.gap}<span aria-hidden="true">…</span>
           {:else if link.current}<span aria-current="page">{link.label}</span>
-          {:else}<a href={link.href}>{link.label}</a>{/if}
+          {:else}<a href={action + link.href}>{link.label}</a>{/if}
         {/each}
-        {#if result.hasNext}<a href={result.nextHref}>Next</a>{/if}
+        {#if result.hasNext}<a href={action + result.nextHref}>Next</a>{/if}
       </nav>
     {/if}
   </section>
