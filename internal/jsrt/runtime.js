@@ -10,9 +10,9 @@
 //
 // Runs on Bun and on Node.
 
-import { closeSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 
-import { during, open, Query, readCatalog, Reads } from "shugo:query";
+import { during, open, Query, Reads } from "shugo:query";
 import { buildChannel } from "shugo:wire";
 
 // The data database of the project, once it is open; null if it has none.
@@ -21,26 +21,10 @@ let data = null;
 // Search results are ordinary view data. Keep their source out of the JSON
 // so the same result can be used in a static template or a request binding.
 const requestSources = new WeakMap();
-let catalogJSON;
 
 export function requestSource(value, source) {
   requestSources.set(value, source);
   return value;
-}
-
-export function catalogView() {
-  if (catalogJSON === undefined) {
-    const descriptor = process.env.SHUGO_CATALOG_FD;
-    if (!descriptor) throw new Error("shugo:catalog search() needs a prepared catalog index");
-    const fd = Number(descriptor);
-    try {
-      catalogJSON = readFileSync(fd, "utf8");
-    } finally {
-      closeSync(fd);
-    }
-  }
-  readCatalog();
-  return requestSource(JSON.parse(catalogJSON), "catalog");
 }
 
 // ---------------------------------------------------------------------------
@@ -118,7 +102,7 @@ class Writer {
     const request = [];
     for (const [prop, value] of bound) {
       const source = requestSources.get(value);
-      if (!source) throw new TypeError(`request:${prop} needs a search() result from shugo:search or shugo:catalog`);
+      if (!source) throw new TypeError(`request:${prop} binds the prop to the results of a search: request:${prop}={search("products", { … })}, with import { search } from "shugo"`);
       request.push([prop, source]);
     }
     if (request.length) props = { ...props, ...Object.fromEntries(bound) };

@@ -51,7 +51,7 @@ The page imports the island by name and passes it data as parameters. The file c
 ```svelte
 <script>
   import Catalog from "../components/Catalog.island.svelte"
-  import { search } from "shugo:search"
+  import { search } from "shugo"
 
   const products = search("products", {
     text: ["title", "description"],
@@ -70,7 +70,7 @@ The suffix selects the boundary of hydration. A subsidiary of `*.island.svelte` 
 
 `request:initial={products}` binds the parameter `initial` to the output of URL. The `search` call registers the reading of the initial issuance during the calculation, including calls within components and `getStaticPaths`. The call when loading the module registers reading for the entire site. The normal parameter `initial={products}` transmits the result of the calculation step.
 
-When assembling Shugo prepares the program SSR from the output of Svelte. On request Go reads the published index and applies the program, including branches, lists and hydration tags. In the browser Svelte connects handlers to the received markup. [How SSR Island is going](../examples/islands/GO-SSR.md)
+When assembling Shugo prepares the program SSR from the output of Svelte. On request Go reads the published index and applies the program, including branches, lists and hydration tags. In the browser Svelte connects handlers to the received markup. [How the Islands Are Made](../docs/islands.md)
 
 ### Search by table
 

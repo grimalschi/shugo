@@ -427,8 +427,8 @@ func (s storeLook) SharedRow(id int64) sharedRow {
 func (s storeLook) SharedName(id int64) string { return s.SharedRow(id).Name }
 
 func (s storeLook) Shape(id int64) shapeRow {
-	if id == store.CatalogResultShape {
-		return shapeRow{ID: id, Table: "first catalog results"}
+	if id == store.SearchResultShape {
+		return shapeRow{ID: id, Table: "first search results"}
 	}
 	for _, sh := range s.Shapes {
 		if sh.ID == id {

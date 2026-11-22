@@ -1,19 +1,19 @@
 package compile
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
+// A project searches when its code calls search; importing it is not enough.
 func TestSearchModuleFlags(t *testing.T) {
 	for _, test := range []struct {
-		name, source    string
-		catalog, search bool
+		name, source string
+		search       bool
 	}{
-		{"unused import", `<script>import { search } from "shugo:search"</script><p>Page</p>`, false, false},
-		{"legacy", `<script>import { search } from "shugo:catalog"</script><p>{search().total}</p>`, true, false},
-		{"generic", `<script>import { search } from "shugo:search"</script><p>{search("items", {}).total}</p>`, false, true},
-		{"both", `<script>
-import { search as catalog } from "shugo:catalog";
-import { search } from "shugo:search";
-</script><p>{catalog().total + search("items").total}</p>`, true, true},
+		{"no search", `<script>import { query } from "shugo"</script><p>Page</p>`, false},
+		{"unused import", `<script>import { search } from "shugo"</script><p>Page</p>`, false},
+		{"a search", `<script>import { search } from "shugo"</script><p>{search("items", {}).total}</p>`, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			p := templateProject(t, map[string]string{"src/pages/index.svelte": test.source})
@@ -21,10 +21,20 @@ import { search } from "shugo:search";
 			if err != nil {
 				t.Fatal(err)
 			}
-			if compiled.Site.CatalogSearch != test.catalog || compiled.Site.Search != test.search {
-				t.Fatalf("legacy and generic search flags = %v, %v; want %v, %v", compiled.Site.CatalogSearch,
-					compiled.Site.Search, test.catalog, test.search)
+			if compiled.Site.Search != test.search {
+				t.Fatalf("searches = %v, want %v", compiled.Site.Search, test.search)
 			}
 		})
+	}
+}
+
+// search came from shugo:search, and in the experiment with islands from
+// shugo:catalog: both are told to take it from shugo.
+func TestSearchFromOldModules(t *testing.T) {
+	for _, module := range []string{"shugo:search", "shugo:catalog"} {
+		p := templateProject(t, map[string]string{"src/pages/index.svelte": `<script>import { search } from "` + module + `"</script><p>{search("items").total}</p>`})
+		if _, err := Build(p); err == nil || !strings.Contains(err.Error(), `import { search } from "shugo"`) {
+			t.Errorf("%s: %v", module, err)
+		}
 	}
 }

@@ -330,23 +330,7 @@ type session struct {
 }
 
 // start runs the JavaScript of the project.
-func start(p *project.Project, log io.Writer, catalog []byte, search *searchPreparation) (*session, error) {
-	var catalogInput *os.File
-	if len(catalog) > 0 {
-		input, err := os.CreateTemp(p.Path(project.Output), ".catalog-input-*")
-		if err != nil {
-			return nil, err
-		}
-		defer os.Remove(input.Name())
-		defer input.Close()
-		if _, err := input.Write(catalog); err != nil {
-			return nil, err
-		}
-		if _, err := input.Seek(0, io.SeekStart); err != nil {
-			return nil, err
-		}
-		catalogInput = input
-	}
+func start(p *project.Project, log io.Writer, search *searchPreparation) (*session, error) {
 	answers, answersIn, err := os.Pipe()
 	if err != nil {
 		return nil, err
@@ -363,18 +347,11 @@ func start(p *project.Project, log io.Writer, catalog []byte, search *searchPrep
 	// Requests and answers go through pipes of their own, so that whatever
 	// the project prints or reads cannot get mixed into them.
 	command.ExtraFiles = []*os.File{answersIn, asksOut}
-	catalogFD := ""
-	if catalogInput != nil {
-		// Module initializers may call search() before the protocol starts.
-		// Pass its JSON as a file, since an environment value has a size limit.
-		catalogFD = strconv.Itoa(3 + len(command.ExtraFiles))
-		command.ExtraFiles = append(command.ExtraFiles, catalogInput)
-	}
 	searchEnabled := ""
 	if search != nil {
 		searchEnabled = "1"
 	}
-	command.Env = append(os.Environ(), "SHUGO_OUT=3", "SHUGO_IN=4", "SHUGO_DATA="+p.Data(), "SHUGO_CATALOG_FD="+catalogFD, "SHUGO_SEARCH="+searchEnabled)
+	command.Env = append(os.Environ(), "SHUGO_OUT=3", "SHUGO_IN=4", "SHUGO_DATA="+p.Data(), "SHUGO_SEARCH="+searchEnabled)
 	err = command.Start()
 	answersIn.Close()
 	asksOut.Close()
@@ -438,7 +415,6 @@ func (s *session) stop() {
 // worker is the JavaScript of the project, started when it is first asked
 // for something: an update that finds nothing to compute never starts it.
 type worker struct {
-	catalog []byte
 	search  *searchPreparation
 	project *project.Project
 	log     io.Writer
@@ -458,7 +434,7 @@ func (w *worker) ready(k *keeper) error {
 			return err
 		}
 	}
-	session, err := start(w.project, w.log, w.catalog, w.search)
+	session, err := start(w.project, w.log, w.search)
 	if err != nil {
 		return err
 	}

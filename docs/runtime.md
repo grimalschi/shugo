@@ -56,7 +56,6 @@ The connections in the pool are twice as large as the cores; everyone has pre-pr
 | file from `public/` | file |
 | `/_assets/…` | file collected by the compiler; cached forever: name changes with content |
 | `/_islands/search/<name>?…` | JSON-issue search `search(…)` from the published index; search name builds itself |
-| `/_islands/catalog?…` | JSON-extract from the published index `shugo:catalog` |
 | the address of the search-related island page with search parameters | 200, HTML with output for these parameters, `X-Robots-Tag: noindex` and `rel="canonical"` link to the address without parameters |
 | everything else | 404 and page `src/pages/404.svelte`, if any |
 | not `GET` and not `HEAD` | 405 |

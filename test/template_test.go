@@ -378,3 +378,24 @@ func scopeClass(t *testing.T, page, after string) string {
 	rest := page[at+len(`class="`+after+` `):]
 	return rest[:strings.IndexByte(rest, '"')]
 }
+
+// A template of the old extension .shugo stops the build with a name for
+// it, and the published site stays as it was.
+func TestLegacySourceRequiresRenameWithoutDroppingThePublishedSite(t *testing.T) {
+	s := newSite(t, `
+-- src/pages/index.svelte --
+<p>Published</p>
+`)
+	s.build()
+	s.write(`
+-- src/pages/old.shugo --
+<p>Legacy source</p>
+`)
+	if _, err := s.tryBuild(); err == nil || !strings.Contains(err.Error(), "old.svelte") || !strings.Contains(err.Error(), "old.shugo") {
+		t.Fatalf("expected a migration diagnostic that names both paths, got %v", err)
+	}
+	expect(t, s.page("/"), "<p>Published</p>")
+	if s.has("/old") {
+		t.Fatal("a failed build published a new page")
+	}
+}

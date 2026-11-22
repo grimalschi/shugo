@@ -255,9 +255,6 @@ func summary(verb string, r *evaluate.Report) string {
 	if r.Rebuilt {
 		out.WriteString("\n  the project was compiled anew, so everything was computed from scratch")
 	}
-	if r.CatalogRecomputed {
-		out.WriteString("\n  recomputed the readers of the changed default catalog result")
-	}
 	line := func(what string, c evaluate.Changes) {
 		if c.Added+c.Changed+c.Removed == 0 {
 			return
@@ -299,8 +296,6 @@ func (c *command) serve() error {
 
 // listen answers requests until the process is stopped.
 func (c *command) listen(s *server.Server) error {
-	s.Catalog = server.NewCatalog(c.project.Path(project.Output))
-	defer s.Catalog.Close()
 	s.Search = server.NewSearch(c.project.Path(project.Output))
 	defer s.Search.Close()
 	s.Public = c.project.Path(project.Public)

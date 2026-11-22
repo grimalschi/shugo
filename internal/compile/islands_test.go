@@ -75,7 +75,6 @@ func TestIslandBoundaryDiagnostics(t *testing.T) {
 		{`<script>import Counter from './Counter.island.svelte';</script><Counter>{#snippet detail()}hi{/snippet}</Counter>`, "cannot pass children or snippets"},
 		{`<script>import Counter from './Counter.island.svelte';</script><svelte:component this={Counter} />`, "must be rendered by its imported tag"},
 		{`<script>import Counter from './Counter.island.svelte';</script><Counter bind:value />`, "directives belong inside"},
-		{`<script>import Counter from './Counter.island.svelte';</script><Counter shugoSearch />`, "use request:initial"},
 		{`<script>import Counter from './Counter.island.svelte';</script><Counter request:initial />`, "needs one source expression"},
 		{`<script>import Counter from './Counter.island.svelte';</script><Counter request:initial={source} initial={value} />`, "already gets its value"},
 		{`<script>import Counter from './Counter.island.svelte';</script><Counter request:initial={source} request:initial={other} />`, "Attributes need to be unique"},

@@ -44,7 +44,6 @@ type Island struct {
 	Props   json.RawMessage   `json:"props"`
 	Body    string            `json:"body"`
 	Request map[string]string `json:"request,omitempty"` // prop name to data source
-	Search  bool              `json:"search,omitempty"`  // bound to the search of shugo:catalog
 }
 
 // PageWithIslands is Page for a request that can change the input of an
@@ -412,7 +411,7 @@ func (r *renderer) island(value []byte) error {
 	if r.dry {
 		// During evaluation, use the native Svelte render as the reference
 		// for the build-produced Go program before publishing the record.
-		if island.Search || len(island.Request) > 0 {
+		if len(island.Request) > 0 {
 			body, err := IslandBody(r.site, island.ID, island.Props)
 			if err != nil {
 				return err
@@ -427,7 +426,7 @@ func (r *renderer) island(value []byte) error {
 		}
 		return nil
 	}
-	if r.replace != nil && (island.Search || len(island.Request) > 0) {
+	if r.replace != nil && len(island.Request) > 0 {
 		if err := r.replace(&island); err != nil {
 			return err
 		}

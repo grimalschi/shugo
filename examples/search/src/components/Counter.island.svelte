@@ -13,6 +13,6 @@
 </section>
 
 <style>
-  section { border: 1px solid var(--border); border-radius: 8px; padding: 1rem; }
+  section { border: 1px solid #d4d4d4; border-radius: 8px; padding: 1rem; }
   h2 { margin-top: 0; }
 </style>

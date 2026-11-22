@@ -23,9 +23,9 @@ type Server struct {
 	// compile.AssetsURL.
 	Public, Assets string
 	// Live, when set, tells open pages to reload after every update.
-	Live    *Live
-	Catalog *Catalog
-	Search  *Search
+	Live *Live
+	// Search answers the searches of the site from their published indices.
+	Search *Search
 	// Failed is called with every error that a visitor sees as a status 500.
 	Failed func(error)
 }
@@ -63,9 +63,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, target, http.StatusPermanentRedirect)
 		return
 	}
-	if s.Catalog != nil && address == catalogPath && s.searchCatalog(w, r) {
-		return
-	}
 	if s.Search != nil && s.searchIndex(w, r) {
 		return
 	}
@@ -74,7 +71,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer buffers.Put(buffer)
 	var replace replaceIsland
 	filtered := false
-	if (s.Catalog != nil || s.Search != nil) && r.URL.RawQuery != "" {
+	if s.Search != nil && r.URL.RawQuery != "" {
 		replace = s.forRequest(r.Context(), r.URL, &filtered)
 	}
 	page, err := s.Pages.render((*buffer)[:0], address, replace)
