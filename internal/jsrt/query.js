@@ -212,25 +212,21 @@ export class Reads {
   constructor() {
     this.asked = [];
     // settled tells that the readings are told: nothing more may be asked
-    // or read. handed tells that the rows went on to others with every
-    // column counted as read, and stay readable.
+    // or read.
     this.settled = false;
-    this.handed = false;
   }
 
   // text settles the readings and writes them for the Go side: a JSON list
   // of the number of a shape and the values of its key, one reading after
   // another; the shape tells how many values a key has.
   //
-  // It is asked for when the page or shared block is fully computed. whole
-  // tells that the rows go on to others who may read anything of them — a
-  // list of pages hands them to its pages — and counts every column as read.
-  text(whole = false) {
+  // It is asked for when the page, shared block or list of pages is fully
+  // computed.
+  text() {
     this.settled = true;
-    this.handed = whole;
     if (this.asked.length === 0) return "";
     const list = [];
-    for (const one of this.asked) one.settle(list, whole);
+    for (const one of this.asked) one.settle(list);
     return JSON.stringify(list);
   }
 
@@ -283,11 +279,9 @@ class Watcher {
     this.seen = seen;
   }
 
-  // note notes a column that is read. Rows handed on to others have every
-  // column counted already.
+  // note notes a column that is read.
   note(name) {
     const reads = this.reads;
-    if (reads.handed) return;
     if (!reads.mine()) {
       throw new Error(
         reads.late(`a row of the table ${this.table.name} is read`) +
@@ -331,9 +325,9 @@ class Asked {
   // settle adds the readings of the question to list: the rows that hold
   // its values, each row returned where rows count alone, and the rows its
   // joins looked for.
-  settle(list, whole) {
+  settle(list) {
     const { plan, values } = this;
-    const shape = this.seen === null ? plan.shape : plan.together(this.seen, whole);
+    const shape = this.seen === null ? plan.shape : plan.together(this.seen);
     if (plan.among === null) {
       list.push(shape);
       for (const at of plan.key) list.push(values[at]);
@@ -347,12 +341,12 @@ class Asked {
     }
     if (this.rows !== null) {
       for (const [key, seen] of this.rows) {
-        const each = plan.each(seen, whole);
+        const each = plan.each(seen);
         if (each !== -1) list.push(each, key);
       }
     }
     if (this.joined !== null) {
-      for (const [join, value, seen] of this.joined) list.push(join.shapeOf(seen, whole), value);
+      for (const [join, value, seen] of this.joined) list.push(join.shapeOf(seen), value);
     }
   }
 }
@@ -369,8 +363,8 @@ class Asked {
 function shaper(data, table, by, taken, always, covered = []) {
   const counted = taken.filter((column) => column !== table.key && !by.includes(column) && !covered.includes(column));
   const known = new Map();
-  return (seen, whole) => {
-    const all = whole || seen.has(everything);
+  return (seen) => {
+    const all = seen.has(everything);
     let read = "";
     for (let i = 0; i < counted.length; i++) if (all || seen.has(counted[i])) read += i + ",";
     let shape = known.get(read);

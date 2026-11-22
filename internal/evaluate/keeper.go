@@ -290,7 +290,7 @@ func (k *keeper) put(data []byte) error {
 		}
 		return nil
 	}
-	if known && k.check && !k.foreseen(user, route, u.shared) {
+	if known && k.check && !k.foreseen(user) {
 		k.report.Unseen = append(k.report.Unseen, u.String())
 	}
 
@@ -327,16 +327,12 @@ func (k *keeper) put(data []byte) error {
 }
 
 // foreseen tells whether a plain update would have computed a page or a
-// shared block: the journal reached it, or, for a page, reached a list of
-// pages that gives its pages more than their addresses.
-func (k *keeper) foreseen(user string, route int, shared bool) bool {
+// shared block: the journal reached it.
+func (k *keeper) foreseen(user string) bool {
 	if k.reached == nil {
 		return true
 	}
-	if _, reached := k.reached[user]; reached || shared {
-		return reached
-	}
-	_, reached := k.reached[store.RouteReader(route)]
+	_, reached := k.reached[user]
 	return reached
 }
 

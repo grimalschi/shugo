@@ -194,15 +194,12 @@ func (w *wire) list(routes []int, k *keeper) ([]listed, error) {
 				pages = append(pages, listed{route, string(path)})
 			}
 		case 'G':
-			fields := bytes.SplitN(body, []byte{2}, 3)
-			if len(fields) != 3 {
+			number, reads, found := bytes.Cut(body, []byte{2})
+			route, err := strconv.Atoi(string(number))
+			if !found || err != nil {
 				return errorf("a damaged note of a route")
 			}
-			route, err := strconv.Atoi(string(fields[0]))
-			if err != nil {
-				return errorf("a damaged note of a route")
-			}
-			return k.route(route, string(fields[1]) == "1", fields[2])
+			return k.route(route, reads)
 		default:
 			return errorf("a message of the kind %q where the pages were asked for", kind)
 		}

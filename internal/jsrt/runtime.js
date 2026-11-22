@@ -294,17 +294,19 @@ class Context {
     return query(this.#scope.reads, table);
   }
 
-  // paginate cuts the rows of a query into pages and returns the page whose
-  // number stands in the address, the way getStaticPaths({ paginate }) gives
-  // it in Astro: { data, total, currentPage, lastPage, url: { prev, next, … } }.
+  // paginate cuts a list into pages and returns the page whose number
+  // stands in the address, the way Astro describes it: { data, total,
+  // currentPage, lastPage, url: { prev, next, … } }. The list is a query,
+  // which asks the data database for that page alone, or an array.
   paginate(rows, { pageSize = 10 } = {}) {
-    if (!(rows instanceof Query)) throw new TypeError(`Shugo.paginate() takes a query: Shugo.paginate(Shugo.query("posts").order("date", "desc"), { pageSize: 10 })`);
+    const asked = rows instanceof Query;
+    if (!asked && !Array.isArray(rows)) throw new TypeError(`Shugo.paginate() takes a query or an array, and got ${describe(rows)}: Shugo.paginate(Shugo.query("posts").order("date", "desc"), { pageSize: 10 })`);
     const { route, params } = this.#page("paginate");
     const segment = pageSegment(route);
-    const total = rows.count();
+    const total = asked ? rows.count() : rows.length;
     const current = params.page === undefined ? 1 : Number(params.page);
     const start = (current - 1) * pageSize;
-    const found = rows.limit(pageSize).offset(start).all();
+    const found = asked ? rows.limit(pageSize).offset(start).all() : rows.slice(start, start + pageSize);
     return paged(route, segment, params, found, start, pageSize, total, current);
   }
 
@@ -607,7 +609,7 @@ class Run {
     this.modules = modules; // Map of file number → module
     this.send = send;
     this.files = new Map(site.files.map((file, number) => [file.path, number]));
-    this.pages = new Map(); // address → { index, route, entry }, once the pages are listed
+    this.pages = new Map(); // address → the route that has the page, once the pages are listed
     this.batch = [];
     this.batchSize = 0;
   }
@@ -615,28 +617,27 @@ class Run {
   // list finds the pages of routes: of the ones named, or of all. Every
   // route says which pages it has, and what it read from the data to know.
   // Among the routes listed together, a route that names more of an address
-  // comes earlier and takes it.
+  // comes earlier and takes it. An address a route gives twice is one page,
+  // as in SvelteKit: the page is computed from its address alone.
   list(wanted) {
     const routes = wanted.length > 0 ? wanted : this.site.routes.map((_, index) => index);
-    for (const [path, page] of this.pages) if (routes.includes(page.index)) this.pages.delete(path);
+    for (const [path, index] of this.pages) if (routes.includes(index)) this.pages.delete(path);
     let shadowed = 0;
     let lines = [];
     for (const index of routes) {
       const route = this.site.routes[index];
       if (route === undefined) throw new Error(`the shugo command asked for the pages of route ${index}, which this project's compiled code does not have: build the project again`);
       const reads = new Reads();
-      let props = false;
       try {
         for (const entry of during(reads, () => entries(route, this.modules.get(route.file), reads))) {
           const path = address(route, entry.params);
           const taken = this.pages.get(path);
-          if (taken !== undefined && taken.index === index) throw new Error(`getStaticPaths of ${route.pattern} returned the address ${path} twice`);
-          if (taken !== undefined && taken.index < index) {
+          if (taken === index) continue;
+          if (taken !== undefined && taken < index) {
             shadowed++;
             continue;
           }
-          props ||= entry.props != null && Object.keys(entry.props).length > 0;
-          this.pages.set(path, { index, route, entry });
+          this.pages.set(path, index);
           if (lines.push(index + "\x02" + path) === 4096) {
             this.send("P", lines.join("\x03"));
             lines = [];
@@ -645,9 +646,7 @@ class Run {
       } catch (error) {
         throw placed(error, `getStaticPaths of ${this.site.files[route.file].path}`);
       }
-      // Rows that the list gives to its pages are read by the pages later,
-      // so every column of what the list asked for counts as read.
-      this.send("G", index + "\x02" + (props ? 1 : 0) + "\x02" + reads.text(props));
+      this.send("G", index + "\x02" + reads.text());
     }
     if (lines.length > 0) this.send("P", lines.join("\x03"));
     return { shadowed };
@@ -710,28 +709,23 @@ class Run {
     this.emit(record);
   }
 
-  // page computes one page of a route: the page itself, then every layout
-  // around it, from the innermost. A page of a route that was listed in this
-  // run gets what the list gave it beside its address.
-  //
-  // The parameters are always read from the address. A page is computed now
-  // from a list, now from its address alone, and must come out the same:
-  // what getStaticPaths wrote as a number is a text in the address.
+  // page computes one page of a route from its address alone: the page
+  // itself, then every layout around it, from the innermost. The parameters
+  // are read from the address: what getStaticPaths wrote as a number is a
+  // text there.
   page(path, index) {
     const route = this.site.routes[index];
     if (route === undefined) throw new Error(`the page ${path} was asked for under route ${index}, which this project's compiled code does not have: build the project again`);
-    const listed = this.pages.get(path);
-    const props = listed !== undefined && listed.index === index ? listed.entry.props ?? {} : {};
     const record = new Record("p", path, index);
     const params = Object.freeze(parameters(route, path));
     const scope = { page: { params, path, route, origin: this.site.origin, url: undefined }, snippets: null, provided: new Map(), reads: record.reads, frame: null, props: {} };
-    during(record.reads, () => this.around(record, route, props, scope));
+    during(record.reads, () => this.around(record, route, scope));
     this.emit(record);
   }
 
   // around computes a page with its layouts into the record.
-  around(record, route, props, scope) {
-    let top = this.show(record, this.modules.get(route.file).default, props, null, scope);
+  around(record, route, scope) {
+    let top = this.show(record, this.modules.get(route.file).default, {}, null, scope);
     for (let i = route.layouts.length - 1; i >= 0; i--) {
       // A layout shows the page as its children. What the page, or a
       // layout inside this one, gave the head goes to the nearest layout
@@ -906,25 +900,17 @@ function paged(route, segment, params, rows, start, size, total, current) {
   };
 }
 
-// paginate is what getStaticPaths({ paginate }) receives: it cuts a list into
-// pages the way Astro does. Given the list, every page gets its part of it.
-// Given only how many items there are, the pages get their addresses alone,
-// and each asks for its part itself: Shugo.paginate(query, { pageSize }).
+// paginate is what getStaticPaths({ paginate }) receives: given how many
+// items there are, it says which pages a list cut into pages has. Every page
+// asks for its part itself: Shugo.paginate(query, { pageSize }).
 function paginator(route) {
-  return (list, { pageSize = 10, params = {}, props = {} } = {}) => {
+  return (total, { pageSize = 10, params = {} } = {}) => {
+    if (typeof total !== "number" || !Number.isInteger(total) || total < 0) {
+      throw new TypeError(`paginate() in getStaticPaths takes how many items there are, got ${describe(total)}: paginate(query("posts").count(), { pageSize: 10 }); every page takes its part with Shugo.paginate(Shugo.query("posts"), { pageSize: 10 })`);
+    }
     const segment = pageSegment(route);
-    const total = typeof list === "number" ? list : list.length;
     const last = Math.max(1, Math.ceil(total / pageSize));
-    return Array.from({ length: last }, (_, i) => {
-      const entry = { params: { ...params, page: pageNumber(segment, i + 1) } };
-      if (typeof list !== "number") {
-        const start = i * pageSize;
-        entry.props = { ...props, page: paged(route, segment, params, list.slice(start, start + pageSize), start, pageSize, total, i + 1) };
-      } else if (Object.keys(props).length > 0) {
-        entry.props = { ...props };
-      }
-      return entry;
-    });
+    return Array.from({ length: last }, (_, i) => ({ params: { ...params, page: pageNumber(segment, i + 1) } }));
   };
 }
 
@@ -935,10 +921,13 @@ function entries(route, module, reads) {
   if (typeof module.getStaticPaths !== "function") throw new Error(`${route.pattern} has parameters, so its script must export getStaticPaths`);
   const list = module.getStaticPaths({ paginate: paginator(route), query: (table) => query(reads, table) });
   if (typeof list?.then === "function") throw new Error(`getStaticPaths of ${route.pattern} waits (it is async or returns a promise): pages are computed without waiting; the data comes from the data database through query`);
-  if (!Array.isArray(list)) throw new Error(`getStaticPaths of ${route.pattern} must return a list of { params, props }, got ${describe(list)}`);
+  if (!Array.isArray(list)) throw new Error(`getStaticPaths of ${route.pattern} must return a list of { params }, got ${describe(list)}`);
   for (const entry of list) {
     if (entry === null || typeof entry !== "object" || entry.params === null || typeof entry.params !== "object") {
-      throw new Error(`getStaticPaths of ${route.pattern} must return a list of { params: { … }, props: { … } }, and one item is ${describe(entry)}`);
+      throw new Error(`getStaticPaths of ${route.pattern} must return a list of { params: { … } }, and one item is ${describe(entry)}`);
+    }
+    if (entry.props !== undefined) {
+      throw new Error(`getStaticPaths of ${route.pattern} gives its pages addresses alone: return { params: { … } }, and let every page ask for its data with Shugo.query, by Shugo.params`);
     }
   }
   return list;

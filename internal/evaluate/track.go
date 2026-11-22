@@ -414,22 +414,20 @@ func readingsOf(kept []byte) ([]reading, error) {
 	return out, nil
 }
 
-// route takes what the project's code said of the list of pages of a route:
-// whether the pages get more than their addresses from it, and what the
-// listing read from the data.
-func (k *keeper) route(index int, props bool, text []byte) error {
+// route takes what the listing of the pages of a route read from the data.
+func (k *keeper) route(index int, text []byte) error {
 	if index < 0 || index >= len(k.site.Routes) {
 		return errorf("the pages of route %d, which the site does not have", index)
 	}
-	was, kept, found, err := k.update.Route(index)
+	kept, found, err := k.update.Route(index)
 	if err != nil {
 		return err
 	}
 	reads, changed, err := k.read(store.RouteReader(index), kept, text)
-	if err != nil || (found && !changed && was == props) {
+	if err != nil || (found && !changed) {
 		return err
 	}
-	return k.update.PutRoute(index, props, reads)
+	return k.update.PutRoute(index, reads)
 }
 
 // fits tells whether an address can be of a page of the route.

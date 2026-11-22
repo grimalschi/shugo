@@ -286,8 +286,8 @@
 {{end}}
 
 <h3>route — page lists by route</h3>
-<table><tr><th>route</th><th>Supplies props</th><th>Reads</th></tr>
-{{range .Build.Look.Store.Routes}}<tr><td>{{.ID}}</td><td>{{.Props}}</td><td>{{range .Readings}}{{$sh := $store.Shape .Shape}}<div><a href="#shape-{{.Shape}}">shape {{.Shape}}</a>: {{$sh.Table}}{{if $sh.By}} where {{join $sh.By ", "}} = {{key .Key}}{{end}}; relevant columns: {{join $sh.Columns ", "}}</div>{{end}}</td></tr>{{end}}
+<table><tr><th>route</th><th>Reads</th></tr>
+{{range .Build.Look.Store.Routes}}<tr><td>{{.ID}}</td><td>{{range .Readings}}{{$sh := $store.Shape .Shape}}<div><a href="#shape-{{.Shape}}">shape {{.Shape}}</a>: {{$sh.Table}}{{if $sh.By}} where {{join $sh.By ", "}} = {{key .Key}}{{end}}; relevant columns: {{join $sh.Columns ", "}}</div>{{end}}</td></tr>{{end}}
 </table>
 
 <h3>gone — removed pages</h3>
@@ -422,7 +422,7 @@
 {{if $r.Units}}<p class="note">{{join $r.Units "; "}}</p>{{end}}
 {{if $r.Pages}}<p><b>JS listed {{counted (len $r.Pages) "page" "pages"}}:</b> {{join $r.Pages ", "}}</p>{{end}}
 {{if $r.Routes}}<table><tr><th style="width:8em">route</th><th>Reads by getStaticPaths</th></tr>
-{{range $r.Routes}}<tr><td><a href="#route-{{.Route}}">{{.Route}}</a>{{if .Props}}, supplies props{{end}}</td><td>{{range .Readings}}<div>{{.}}</div>{{else}}no database reads{{end}}</td></tr>{{end}}</table>{{end}}
+{{range $r.Routes}}<tr><td><a href="#route-{{.Route}}">{{.Route}}</a></td><td>{{range .Readings}}<div>{{.}}</div>{{else}}no database reads{{end}}</td></tr>{{end}}</table>{{end}}
 {{if $r.Records}}<p><b>JS returned {{counted (len $r.Records) "record" "records"}}:</b></p>
 <table><tr><th>record</th><th style="width:4em">Blocks</th><th>Renders shared blocks</th><th>Database reads</th></tr>
 {{range $r.Records}}<tr><td>{{.Kind}} <span class="mono">{{.Key}}</span></td><td>{{.Blocks}}</td><td class="mono">{{join .Shows ", "}}</td><td>{{range .Readings}}<div>{{.}}</div>{{end}}</td></tr>{{end}}</table>{{end}}

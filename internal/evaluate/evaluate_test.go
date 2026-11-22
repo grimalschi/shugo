@@ -195,15 +195,15 @@ func talk(stream []byte) *wire {
 }
 
 func TestList(t *testing.T) {
-	stream := append(frame('P', "0\x02/special\x031\x02/about"), frame('G', "1\x021\x02")...)
+	stream := append(frame('P', "0\x02/special\x031\x02/about"), frame('G', "1\x02")...)
 	stream = append(stream, frame('D', `{"shadowed":2}`)...)
 	var pages []listed
 	report, err := newLab(t).update(func(k *keeper) (err error) {
 		if pages, err = talk(stream).list(nil, k); err != nil {
 			return err
 		}
-		if props, _, found, err := k.update.Route(1); err != nil || !found || !props {
-			t.Errorf("what was said of the route is not kept: %v %v %v", props, found, err)
+		if _, found, err := k.update.Route(1); err != nil || !found {
+			t.Errorf("what was said of the route is not kept: %v %v", found, err)
 		}
 		return nil
 	})
@@ -286,7 +286,7 @@ func TestListRejects(t *testing.T) {
 		"a bad address":        append(frame('P', "0\x02about"), frame('D', "{}")...),
 		"a damaged summary":    append(frame('P', "0\x02/"), frame('D', "{")...),
 		"an unknown route":     append(frame('P', "9\x02/"), frame('D', "{}")...),
-		"a note of no route":   append(frame('G', "9\x020\x02"), frame('D', "{}")...),
+		"a note of no route":   append(frame('G', "9\x02"), frame('D', "{}")...),
 		"a damaged note":       append(frame('G', "1"), frame('D', "{}")...),
 	} {
 		_, err := newLab(t).update(func(k *keeper) error {

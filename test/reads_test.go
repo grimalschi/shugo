@@ -126,14 +126,15 @@ export const getStaticPaths = ({ query }) => query("products").all().map(({ slug
 console.log("listed " + Shugo.params.slug)
 </script>
 <p>{Shugo.params.slug}</p>
--- src/pages/handed/[slug].shugo --
+-- src/pages/garden/[slug].shugo --
 <script module>
-export const getStaticPaths = ({ query }) => query("products").where({ category: "c2" }).all().map((row) => ({ params: { slug: row.slug }, props: { row } }))
+export const getStaticPaths = ({ query }) => query("products").select("slug").where({ category: "c2" }).all().map(({ slug }) => ({ params: { slug } }))
 </script>
 <script>
-console.log("handed " + Shugo.params.slug)
+const row = Shugo.query("products").where({ slug: Shugo.params.slug }).first()
+console.log("garden " + Shugo.params.slug)
 </script>
-<p>{$props().row.title}</p>
+<p>{row.title}</p>
 `
 
 // A page depends on the columns that are read of the rows it asked for
@@ -150,7 +151,7 @@ func TestColumnsThatAreRead(t *testing.T) {
 	expect(t, s.page("/component"), `<ul><li>Jug</li></ul>`)
 	expect(t, s.page("/asking"), `<p>Jug</p>`)
 	expect(t, s.page("/joined"), `<p>Jug in Kitchen</p>`)
-	expect(t, s.page("/handed/vase"), `<p>Vase</p>`)
+	expect(t, s.page("/garden/vase"), `<p>Vase</p>`)
 
 	// A column nobody reads of the product: only who took the product as a
 	// whole depends on it, and a spread and JSON.stringify do. A function
@@ -185,19 +186,18 @@ func TestColumnsThatAreRead(t *testing.T) {
 	// that points at it is read by the join.
 	s.changed(`UPDATE categories SET position = 5 WHERE id = 'c1'`)
 	s.changed(`UPDATE categories SET title = 'Kitchenware' WHERE id = 'c1'`, "joined")
-	// The product moves into the category whose rows a list of pages hands
-	// to its pages: the list gains a page.
-	s.changed(`UPDATE products SET category = 'c2' WHERE id = 'p1'`, "handed jug", "handed vase", "joined", "spread", "together", "written")
+	// The product moves into the category a list of pages reads: the list
+	// gains a page, and the other pages of the list are not computed.
+	s.changed(`UPDATE products SET category = 'c2' WHERE id = 'p1'`, "garden jug", "joined", "spread", "together", "written")
 	expect(t, s.page("/joined"), `<p>Big jug in Garden</p>`)
 
-	// A list of pages that reads the addresses alone does not depend on a
-	// title. One that hands its rows to its pages depends on all of them:
-	// what a page reads of a row is read after the list is made.
-	s.changed(`UPDATE products SET title = 'Tall vase' WHERE id = 'p4'`, "handed jug", "handed vase")
-	expect(t, s.page("/handed/vase"), `<p>Tall vase</p>`)
-	s.changed(`UPDATE products SET note = 'fragile' WHERE id = 'p4'`, "handed jug", "handed vase")
-	// A product that gets another address: its page moves.
-	s.changed(`UPDATE products SET slug = 'pitcher' WHERE id = 'p1'`, "handed pitcher", "handed vase", "listed pitcher", "spread", "written")
+	// A list of pages reads the addresses alone and does not depend on a
+	// title; the page of the row does.
+	s.changed(`UPDATE products SET title = 'Tall vase' WHERE id = 'p4'`, "garden vase")
+	expect(t, s.page("/garden/vase"), `<p>Tall vase</p>`)
+	s.changed(`UPDATE products SET note = 'fragile' WHERE id = 'p4'`)
+	// A product that gets another address: its pages move.
+	s.changed(`UPDATE products SET slug = 'pitcher' WHERE id = 'p1'`, "garden pitcher", "listed pitcher", "spread", "written")
 	if s.has("/listed/jug") || !s.has("/listed/pitcher") {
 		t.Errorf("pages: %v", s.addresses())
 	}

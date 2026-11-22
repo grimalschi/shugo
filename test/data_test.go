@@ -413,18 +413,18 @@ func TestDataQueryMistakes(t *testing.T) {
 	}
 }
 
-// A route may give its pages their data. Then only the route knows what a
-// page shows, and all its pages are computed again when its list is.
-func TestDataFromGetStaticPaths(t *testing.T) {
+// A route gives its pages their addresses alone, and every page asks for its
+// own row: a change of a row computes the page of that row and no other.
+func TestPagesAskForTheirRows(t *testing.T) {
 	s := newSite(t, `
 -- shugo.json --
 {"data": "data/shop.db"}
 -- src/pages/items/[id].shugo --
 <script module>
-export const getStaticPaths = ({ query }) => query("products").select("title").all().map((item) => ({ params: { id: item.id }, props: { item } }))
+export const getStaticPaths = ({ query }) => query("products").select("id").all().map(({ id }) => ({ params: { id } }))
 </script>
 <script>
-const { item } = $props()
+const item = Shugo.query("products").select("title").get(Shugo.params.id)
 console.log("item " + item.id)
 </script>
 <h1>{item.title}</h1>
@@ -434,13 +434,13 @@ console.log("item " + item.id)
 	s.computed()
 	s.sql(`UPDATE products SET title = 'Carafe' WHERE id = 'p1'`)
 	report := s.update()
-	if got := s.computed(); len(got) != 4 || report.Data.Routes != 1 || report.Pages.Changed != 1 {
+	if got := s.computed(); len(got) != 1 || report.Data.Routes != 0 || report.Pages.Changed != 1 {
 		t.Errorf("computed %q, routes listed %d, pages changed %d", got, report.Data.Routes, report.Pages.Changed)
 	}
 	expect(t, s.page("/items/p1"), `<h1>Carafe</h1>`)
-	// A column the route did not take.
+	// A column nobody reads; a row that goes takes its page with it.
 	s.changed(`UPDATE products SET price = 99`)
-	s.changed(`DELETE FROM products WHERE id = 'p2'`, "item p1", "item p3", "item p4")
+	s.changed(`DELETE FROM products WHERE id = 'p2'`)
 	if s.has("/items/p2") {
 		t.Errorf("pages: %v", s.addresses())
 	}

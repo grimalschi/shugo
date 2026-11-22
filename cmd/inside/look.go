@@ -109,7 +109,6 @@ type showRow struct {
 
 type routeRow struct {
 	ID       int
-	Props    bool
 	Readings []reading
 }
 
@@ -304,13 +303,13 @@ func lookAtStore(path string) (storeLook, error) {
 	for _, r := range shows {
 		s.Shows = append(s.Shows, showRow{r[0].(int64), text(r[1])})
 	}
-	routes, err := all(db, "SELECT id, props, reads FROM route ORDER BY id")
+	routes, err := all(db, "SELECT id, reads FROM route ORDER BY id")
 	if err != nil {
 		return s, err
 	}
 	for _, r := range routes {
-		rr := routeRow{ID: int(r[0].(int64)), Props: r[1].(int64) != 0}
-		if rr.Readings, err = readings(bytesOf(r[2])); err != nil {
+		rr := routeRow{ID: int(r[0].(int64))}
+		if rr.Readings, err = readings(bytesOf(r[1])); err != nil {
 			return s, err
 		}
 		s.Routes = append(s.Routes, rr)

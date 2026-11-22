@@ -383,7 +383,7 @@ var (
 	}
 	fromJS = map[byte]string{
 		'P': "pages by route: route \x02 URL",
-		'G': "reads by the route's getStaticPaths: route \x02 supplies props \x02 reads",
+		'G': "reads by the route's getStaticPaths: route \x02 reads",
 		'S': "new read shape: ID in this exchange \x02 table, lookup columns, relevant columns",
 		'I': "build an index: table \x02 for rows (1) or counts (0) \x02 number of lookup columns \x02 columns",
 		'R': "records and reads for pages and shared blocks",
@@ -460,7 +460,6 @@ type round struct {
 
 type routeNote struct {
 	Route    string
-	Props    bool
 	Readings []string
 }
 
@@ -597,9 +596,8 @@ func rounds(requests, answers []frame) []round {
 					r.Pages = append(r.Pages, path+" (route "+route+")")
 				}
 			case "G":
-				fields := strings.SplitN(m.Body, "\x02", 3)
-				if len(fields) == 3 {
-					r.Routes = append(r.Routes, routeNote{Route: fields[0], Props: fields[1] == "1", Readings: readingsIn(fields[2], shapes)})
+				if route, reads, found := strings.Cut(m.Body, "\x02"); found {
+					r.Routes = append(r.Routes, routeNote{Route: route, Readings: readingsIn(reads, shapes)})
 				}
 			case "R":
 				for _, rec := range m.Records {

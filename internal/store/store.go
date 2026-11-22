@@ -31,7 +31,7 @@ import (
 
 // layout names the set of tables below. A store laid out in another way is
 // emptied: it holds nothing that a build cannot make again.
-const layout = "5"
+const layout = "6"
 
 const schema = `
 CREATE TABLE meta   (name TEXT PRIMARY KEY, value BLOB NOT NULL) WITHOUT ROWID;
@@ -39,7 +39,7 @@ CREATE TABLE page   (path TEXT PRIMARY KEY, hash BLOB NOT NULL, record BLOB NOT 
 CREATE TABLE shared (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, hash BLOB NOT NULL, record BLOB NOT NULL, reads BLOB NOT NULL, version INTEGER NOT NULL);
 CREATE TABLE gone   (path TEXT PRIMARY KEY, version INTEGER NOT NULL) WITHOUT ROWID;
 CREATE TABLE shows  (shared INTEGER NOT NULL, user TEXT NOT NULL, PRIMARY KEY (shared, user)) WITHOUT ROWID;
-CREATE TABLE route  (id INTEGER PRIMARY KEY, props INTEGER NOT NULL, reads BLOB NOT NULL);
+CREATE TABLE route  (id INTEGER PRIMARY KEY, reads BLOB NOT NULL);
 CREATE TABLE shape  (id INTEGER PRIMARY KEY, spec TEXT NOT NULL UNIQUE);
 CREATE TABLE reads  (shape INTEGER NOT NULL, key BLOB NOT NULL, reader TEXT NOT NULL, PRIMARY KEY (shape, key, reader)) WITHOUT ROWID;
 CREATE TABLE plan   (question TEXT PRIMARY KEY) WITHOUT ROWID;
@@ -679,20 +679,18 @@ func (u *Update) SetSharedReads(id int64, reads []byte) error {
 	return err
 }
 
-// Route returns what the store has of the list of pages of a route: whether
-// the route gave its pages more than their addresses, and what the listing
-// read from the data.
-func (u *Update) Route(route int) (props bool, reads []byte, found bool, err error) {
-	err = u.write.QueryRow("SELECT props, reads FROM route WHERE id = ?", route).Scan(&props, &reads)
+// Route returns what the listing of the pages of a route read from the data.
+func (u *Update) Route(route int) (reads []byte, found bool, err error) {
+	err = u.write.QueryRow("SELECT reads FROM route WHERE id = ?", route).Scan(&reads)
 	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil, false, nil
+		return nil, false, nil
 	}
-	return props, reads, err == nil, err
+	return reads, err == nil, err
 }
 
 // PutRoute keeps the same of a route.
-func (u *Update) PutRoute(route int, props bool, reads []byte) error {
-	_, err := u.write.Exec("INSERT INTO route (id, props, reads) VALUES (?, ?, ?) ON CONFLICT (id) DO UPDATE SET props = excluded.props, reads = excluded.reads", route, props, orEmpty(reads))
+func (u *Update) PutRoute(route int, reads []byte) error {
+	_, err := u.write.Exec("INSERT INTO route (id, reads) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET reads = excluded.reads", route, orEmpty(reads))
 	return err
 }
 
