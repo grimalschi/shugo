@@ -1,6 +1,6 @@
 # Templates
 
-Normal file `.svelte` the Official Parser Svelte 5. From his tree Shugo builds a markup program and a calculation code that registers data readings. The clean component can also enter the island graph, where Svelte compiles it for the browser. The entry point component for hydration has a suffix `.island.svelte`. [Svelte islands](scripts.md#svelte-islands)
+Normal file `.svelte` the Official Parser Svelte 5. From his tree Shugo builds a framework - markup with places for values - and a calculation code that marks data readings. The clean component can also enter the island graph, where Svelte compiles it for the browser. The entry point component for hydration has a suffix `.island.svelte`. [Svelte islands](scripts.md#svelte-islands)
 
 ## Decisions
 
