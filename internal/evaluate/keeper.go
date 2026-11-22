@@ -470,7 +470,7 @@ func numbers(list []byte) ([]int, error) {
 }
 
 // fits tells whether a record can be shown: its blocks make one tree, and
-// the values of every block fit its template.
+// every island in them is what an island needs.
 func (k *keeper) fits(rec *record.Record) error {
 	if err := rec.Check(); err != nil {
 		return err

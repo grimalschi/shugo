@@ -30,7 +30,8 @@ The top `<script>` of a regular `.svelte` file is performed when calculating the
 - The attributes of the tag itself are common attributes: `defer` is displayed as `defer=""`, `src={…}` is calculated.
 - The script files are put into `public/` and connected to the address.
 - A component with a script that is shown ten times will give ten identical scripts.
-- Event handlers in markup (`onclick={…}`) do not get into the page, as on the Svelte server: there is no one to perform them on the static page.
+- The second `<script>` at the top level of the file is the Svelte error: the top `<script>` of the component one, and that's its code.
+- Event handlers in markup (`onclick={…}`) do not get into the page: there is no one to perform them on the static page.
 
 The value from the data is transferred to the script via the attribute:
 
@@ -46,7 +47,7 @@ The value from the data is transferred to the script via the attribute:
 
 ## Svelte islands
 
-The page imports the island by name and passes it data as parameters. The file can contain standard runes, actions and handlers of Svelte. The assembly of the project with islands needs the `svelte@5.59.1` package.
+The page imports the island by name and passes it data as parameters. The file can contain standard runes, actions and Svelte handlers. The island compiles Svelte from the project package, so the assembly of the project with the islands needs the `svelte@5.59.1` package; ordinary pages do not need it: their Svelte is sewn into Shugo.
 
 ```svelte
 <script>
@@ -71,6 +72,17 @@ The suffix selects the boundary of hydration. A subsidiary of `*.island.svelte` 
 `request:initial={products}` binds the parameter `initial` to the output of URL. The `search` call registers the reading of the initial issuance during the calculation, including calls within components and `getStaticPaths`. The call when loading the module registers reading for the entire site. The normal parameter `initial={products}` transmits the result of the calculation step.
 
 When assembling Shugo prepares the program SSR from the output of Svelte. On request Go reads the published index and applies the program, including branches, lists and hydration tags. In the browser Svelte connects handlers to the received markup. [How the Islands Are Made](../docs/islands.md)
+
+### Tag island
+
+What the assembly checks:
+
+- The island is imported by default, right in the usual `.svelte` template: `import Catalog from "../components/Catalog.island.svelte"`. Named import and import not from the template is an error.
+- The island tag only transmits data: values that are translated into JSON and `{...parameters}`. Content, snippets and directives in the tag are error: directives are written inside the island file. Function in parameters is error when calculating the page.
+- `request:name={…}` stands only on the island tag, with one expression - the result of `search`. The same parameter is also a common attribute - an error.
+- The island inside `<svelte:head>`, `<svg>`, `<select>`, `<option>`, `<optgroup>`, `<textarea>` or `<template>` is an error: its wrapper needs a place in `<body>`.
+- The island is shown with its tag: `<svelte:component this={Catalog}>` is an error.
+- `<svelte:head>` in the island itself is a mistake when calculating a page: what you need in `<head>`, writes the page.
 
 ### Search by table
 

@@ -20,6 +20,8 @@ First Assembly Shop on 100,000 products, 21 November 2026 year, Bun, 8 cores:
 | storage record (Go) | 5.1 s |
 | total, with base indexes | 14.5 s |
 
+With the 22 November 2026 page year rendering of the Svelte, and the first build is almost the same: 14.6 s ([README booth](../../examples/catalog/README.md#results)).
+
 Updates after data changes calculate dozens of records, and they are not hindered by one process.
 
 ## Proposal

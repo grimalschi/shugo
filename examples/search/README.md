@@ -34,7 +34,7 @@ Deploying with `shugo serve` requires the Shugo executable, the published `_buil
 
 ## Benchmark with 100,000 products
 
-The benchmark added 99,995 synthetic rows to the example's five products. They used three categories, numeric prices, availability flags, and five common titles. A rare term appeared in about one row in 100. The benchmark ran on localhost with one sequential client and 30 warm requests per scenario.
+This benchmark ran on November 22, 2026, while Shugo still used its own template compiler. It added 99,995 synthetic rows to the example's five products. They used three categories, numeric prices, availability flags, and five common titles. A rare term appeared in about one row in 100. The benchmark ran on localhost with one sequential client and 30 warm requests per scenario.
 
 | Request | p50 | p95 | Response body |
 | --- | ---: | ---: | ---: |

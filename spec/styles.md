@@ -25,7 +25,7 @@ The document describes how to work with styles: component styles, common files C
 </style>
 ```
 
-The component styles rewrite Svelte itself:
+Component styles compile Svelte:
 
 - The element that selects a component selector receives the `svelte-…` class from the file path hash, and each selector requires this class. `.card` from this file will not affect the `.card` of another component.
 - A selector that does not select any component element, Svelte removes from styles and warns about this when assembling.
@@ -33,7 +33,7 @@ The component styles rewrite Svelte itself:
 - The `@keyframes` names get the component prefix; the `-global-` at the beginning of the name leaves it as is.
 - The component does not stylize the elements that came into it with a snippet: they belong to the template that wrote them.
 
-`<style>` inside the element or in `<svelte:head>` remains in the page as written, as in Svelte.
+`<style>` inside the element or in `<svelte:head>` remains in the page as written.
 
 ### General Style Files
 
@@ -49,6 +49,8 @@ The style file is connected by import to `<script>`. You can connect it in any `
 ### One stylesheet per site
 
 All connected files and styles of all components are collected into one `_build/assets/styles.<hash>.css` file. Order of Imports. A link to the file is added to the `<head>` of each page, in place of the `%shugo.head%` shell of the `src/site.html`, after having given the templates. The file name changes with the content, so the browser caches it forever.
+
+The exception is the `<svelte:options css="injected" />` component: its styles go not to the file, but to the `<style>` in the `<head>` of each page where it is shown.
 
 Fonts and images that styles link to via `url(…)` are copied alongside.
 

@@ -10,18 +10,17 @@ import (
 	"testing"
 )
 
-// The templates of Shugo are written as components of Svelte 5 and give the
-// HTML that the server renderer of Svelte gives for them. test/svelte holds
-// the reference components of the 30 tasks of the template trial, with what
-// Svelte 5.59.1 renders for every dataset of a task; SHUGO_SVELTE_TASK=03 runs the
-// tasks whose name has 03.
+// The templates of Shugo are components of Svelte 5, which Svelte renders;
+// the pages must come out of the blocks of Shugo as Svelte renders them.
+// test/svelte holds the reference components of the 30 tasks of the template
+// trial, with what Svelte 5.59.1 renders for every dataset of a task;
+// SHUGO_SVELTE_TASK=03 runs the tasks whose name has 03.
 //
 // Two differences are taken out before pages are compared. The class that
-// scopes the styles of a component is named after its file, which is not
-// the file Svelte compiled, and Shugo puts it on every element of the
-// component where Svelte puts it on those its selectors match. The marks of
-// hydration Svelte writes, <!--…--> and the <!> of a <select>, are taken out
-// of what it renders when the references are made, and here.
+// scopes the styles of a component is named after the path of its file, and
+// the references were compiled from another path. The marks of hydration
+// Svelte writes, <!--…--> and the <!> of a <select>, are taken out of what it
+// renders when the references are made; Shugo takes them out of its pages.
 func TestSvelteTasks(t *testing.T) {
 	tasks, err := filepath.Glob("svelte/*/task.json")
 	if err != nil {

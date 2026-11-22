@@ -4,7 +4,7 @@ Rantime is a server on Go that collects HTML pages from storage.
 
 ## Decisions
 
-- Rantime uses the project framework and saved values. With the 22 of November, the 2026 is saved it is the HTML that has rendered the Svelte. The project code does not execute and does not calculate anything. The only thing he reads on demand is the search for the island that is tied to it: from the published index, according to the address parameters. JavaScript is not working on the server: HTML is collecting Go under the SSR program, which the assembly prepares from the output of Svelte (22 solution November 2026 year).
+- Rantime uses the project framework and saved values. The project code does not execute and does not calculate anything. The only thing he reads on demand is the search for the island that is tied to it: from the published index, according to the address parameters. JavaScript is not working on the server: HTML island collects Go program SSR, which is prepared by the assembly from the output of Svelte (solution 22 November 2026 year). The *Changed by the decision of the author of the project 22 November 2026 year - templates renders Svelte ("okay, take a swelt"):* saved is the HTML that rendered the Svelte cut into blocks; the runtime sews a page from these blocks.
 - All pages and all data are known in advance. There are no pages that depend on cookies, API routes and processing forms. The query string changes only the islands associated with the search and the search address from which the browser island takes the same JSON issue.
 - The main mode is to assemble the page on the fly with each request. When data changes often, writing thousands of HTML files in advance makes no sense: the runtime collects a page from ready-made pieces very quickly.
 - The second mode is a one-time generation of all HTML-files of the site.
@@ -30,13 +30,13 @@ There are no copies of the site in the server memory. For each request, it:
 2. Reads the name of the build. Site frame - shell, routes, island programs - it parses once for each build and keeps in mind: updating data does not change it.
 3. Finds the page entry and its route number - one search by key. HTML lies inside the record.
 4. Writes the `src/site.html` shell to the `%shugo.head%` location, remembers this location and writes the shell further, to the `%shugo.body%`. The shell lies in the frame already cut through these locations.
-5. Writes HTML of the first block as it is, and puts what fills it in each hole ([Storage](storage.md#record)).
+5. Writes HTML block, which starts the show as is, and puts in each hole what fills it ([Storage](storage.md#record)).
 6. In the hole of the common block, it shows a record of it, also read by one search; the block shown on the page twice is read once.
 7. In the snippet hole inside the shared block shows the blocks that gave the place where this shared block stands: the reference to the shared block is written, what are these blocks.
-   In the island hole writes it HTML from the record, data for hydration and a link to its browser module. If the island is tied to a search through `request:`, and the address has search parameters, the server takes the index version from the same transaction, reads the issue by parameters and collects the HTML of the island anew on its SSR program.
-8. When the page is shown, it adds a body framework markupin development mode, this is a reboot scriptand the rest of the shell.
-9. What each block shown gave `<head>`, he memorized on the go. Now writes it in order, from `<title>` - only the last, adds a link to the styles and inserts it all into the memorable place of `%shugo.head%` ([Blocks](blocks.md#page-head)).
-10. Closes the transaction and returns the connection to the pool.
+8. In the island hole writes it HTML from the record, data for hydration and a link to its browser module. If the island is tied to a search through `request:`, and the address has search parameters, the server takes the index version from the same transaction, reads the issue by parameters and collects the HTML of the island anew on its SSR program.
+9. When the page is shown, it adds a body framework markupin development mode, this is a reboot scriptand the rest of the shell.
+10. What each block shown gave `<head>`, he memorized on the go. Now writes it in order, from `<title>` - only the last, adds a link to the styles and inserts it all into the memorable place of `%shugo.head%` ([Blocks](blocks.md#page-head)).
+11. Closes the transaction and returns the connection to the pool.
 
 The file is not in HTML, for example `/sitemap.xml` from the `src/pages/sitemap.xml.ts` module, the server recognizes by route: the module route has an extension. The record of such a file is one block with the text that returned `GET`; the server gives this text as it is, without shell and without head.
 
@@ -72,7 +72,7 @@ An update made by another process, the server sees from the next request.
 
 ### SQLite read performance
 
-The first version kept a copy of all the pages and after each update built it all over again: on 100,000 pages it is 0.2 s for each update, and the first request after the update waited for them. The author of the project decided not to keep a copy. How to read quickly, measured on copies of store storage in 100,000 products: 20,000 random pages in a row, one reading transaction per page, time per page. Two SQLite drivers: on the pure Go that stands now, and on C via cgo.
+The first version kept a copy of all the pages and after each update built it all over again: on 100,000 pages it is 0.2 s for each update, and the first request after the update waited for them. The author of the project decided not to keep a copy. How to read quickly, measured 21 November 2026 years, still on the value tapes, on copies of store storage in 100,000 products: 20,000 random pages, one reading transaction per page, time per page. Two SQLite drivers: on the pure Go that stands now, and on C via cgo.
 
 | How to read | Go Driver | C Driver |
 | --- | ---: | ---: |
@@ -88,7 +88,7 @@ Time determines the number of searches by key, not the number of SQL queries: to
 
 ### What Rantime Doesn't Trust
 
-The records came from a stage that executed the project code. HTML wrote Svelte in them and screened, as always: in the text of `&` and `<`, in the attribute of `"`; without shielding - only `{@html}`. Runtime takes this HTML as is, and checks the recording device:
+The records came from a stage that executed the project code. HTML wrote Svelte in them and screened: in the text of `&` and `<`, in the attribute of `"`; without screened - only `{@html}`. The text of the file is not in HTML, which returned `GET`, written as it is: it is the file. Rantime takes the recorded as is, and checks the recording device:
 
 - the record is read without trusting the lengths and when received is checked: blocks are folded into one tree, each shown in exactly one place ([Storage](storage.md#how-the-recording-can-not-come-together));
 - the island to which the request data is attached is checked when receiving: Go on its program gives the same HTML that Svelte, byte byte; island parameters and HTML, which Go collects on request, screens Go;
@@ -127,7 +127,7 @@ Measured on the store in 100,000 products, 104,202 pages, Bun disk ext4, one run
 
 After 21 changes the folder that the export updated in steps, the file is the same as the file with the export of the same base from scratch.
 
-Previously, exports collected HTML of all pages to compare with what lies on the disk, and cost 7 s after any change.
+Prior to 21 November 2026 year, exports collected HTML of all pages to compare with what lies on the disk and cost 7 s after any change.
 
 - The change that is visible on all pages overwrites all files — about 4.5 s. For disk files, this is not to be circumvented. `shugo serve` shows the same change from the next query.
 
@@ -139,16 +139,16 @@ How to make code editing in a large project not wait for the calculation of the 
 
 ### Speed
 
-Shop on 100,000 products, product page — 2.5 KB HTML:
+Store on 100,000 products, product page — 2.5 KB HTML, 22 November 2026 year:
 
 | What is measured | Result |
 | --- | ---: |
-| Assembling a page from storage | 58–67 µs |
-| Request to server whole, 8 clients in same process, 8 cores | 16–18 thousand requests per second |
-| Generate all 104,202 pages into files | 5.0 s |
+| Assembling a product page from storage | 64 µs |
+| Request to server whole, 8 clients in same process, 8 cores | about 16 thousand requests per second |
+| Generate all 104,202 pages into files | 3.5 s |
 
-With a copy in memory, the server gave 33–39 thousand requests per second: so much is the decision not to keep a copy. Details are in [README booth](../examples/catalog/README.md).
+21 November 2026 year, when the records were taped values, the server gave 16–18 thousand requests per second. With a copy of the site in memory, which was abandoned by 20 on November 2026 years, he gave 33–39 thousand: so much is the decision not to keep a copy. Details are in [README booth](../examples/catalog/README.md).
 
 ## Open questions
 
-- If you need to give more 16–18 thousand requests per second: cache the finished HTML in front of the server, which is reset to a list of pages with the new HTML from the update report.
+- If you need to give more 16 thousand requests per second: cache the finished HTML in front of the server, which is reset to a list of pages with the new HTML from the update report.

@@ -12,13 +12,13 @@ Here lies what Shugo does not have yet: proposals that are waiting for the decis
 | [Multiple JS processes for first build](parallel-build.md) | First Assembly Divides Calculation Between Processes by Number of Cores | postponed |
 | [Comparisons and windows in readings](range-queries.md) | Accurate update of comparison queries and `limit`: Reading boundaries and R*Tree index | postponed |
 
-Accepted and done 22 November 2026 years, so we left this folder: `query`, `paginate` and `page` from module `shugo` the National Museum [Templates](../../spec/templates.md#file-structure); shell `src/site.html` the National Museum [Layouts](../../spec/layouts.md#shell-srcsitehtml). Closed on the same day: compatibility with Svelte The basis was itself SvelteHis parser is picking up patterns. `.svelte`, TypeScript Written with `lang="ts"`The remaining differences are listed in [Templates](../../spec/templates.md#how-shugo-differs-from-svelte).
+Accepted and done 22 November 2026 years, so we left this folder: `query`, `paginate` and `page` from module `shugo` the National Museum [Templates](../../spec/templates.md#file-structure); shell `src/site.html` the National Museum [Layouts](../../spec/layouts.md#shell-srcsitehtml). Closed on the same day: compatibility with Svelte templates `.svelte` compile and render itself Svelte 5.59.1, TypeScript Written with `lang="ts"`And that little that Shugo does around Svelte In its own way, it is listed in [Templates](../../spec/templates.md#how-shugo-differs-from-svelte).
 
 ## Done and waiting for approval later
 
 These solutions are already working; the author of the project postponed their approval of 22 on November 2026.
 
 - **Breakdown into pages.** `paginate(number)` in `getStaticPaths` says what pages there are, `paginate(request)` in the page takes part of it; addresses `/blog`, `/blog/2` are [Dynamic pages](../../spec/dynamic-pages.md#pagination).
-- **Service symbols in meanings.** Symbols with 0–4 codes inside the values are screened when transferring from JS to Go rather than cut out; the value comes to the page as it was - [25](../../spec/decisions.md#25-service-symbols-in-values-are-shielded).
+- **Service symbols in meanings.** Symbols with codes 0–4 in that JS Translate Go, c 22 November 2026 the Year HTML records screened, not cut; text reaches the page as it was [25](../../spec/decisions.md#25-service-symbols-in-values-are-shielded).
 - **Details of `src/site.html` shell, files from modules and their export** — [36–38](../../spec/decisions.md#36-the-srcsitehtml-shell).
 - **Warning thresholds for the common component**, which shares almost nothing: 100 blocks and one and a half places on average [3](../../spec/decisions.md#3-which-blocks-are-shared).
