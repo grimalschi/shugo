@@ -38,6 +38,6 @@ Rules:
 
 ## Open questions
 
-- Routes as in SvelteKit: folder to address and file `+page` in it (`src/routes/blog/[slug]/+page.shugo`), `+error` instead of `404.shugo`, `[[non-binding]]` parameter, `[x=matcher]`. Comparison is in [the Question of Routes](open-questions.md).
+- Service files: `+layout`As in SvelteKitor `_layout`as in Fresh; folders with `+page`As in SvelteKit. Comparison — in [the Service Files](open-questions.md). Files SvelteKit `+page`, `+error` and `+server` The assembly does not accept and says that instead of them.
 - The optional parameter `[[lang]]` is in [proposal for internationalization](../docs/proposals/i18n.md).
 - Pages not in HTML: `sitemap.xml`, `robots.txt`, RSS. In SvelteKit they are written in a file on TypeScript (`+server.ts` with `prerender = true`), rather than a template: see [question](open-questions.md).

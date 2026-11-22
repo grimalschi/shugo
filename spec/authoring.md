@@ -100,7 +100,6 @@ Values are written as Svelte writes them:
 - `class` takes arrays and objects: `class={["card", { featured, sale: price < old }]}`. There are `class:name={cond}` and `style:color={value}`.
 - Values inside quotes work: `title="Order {id}"`. `{src}` is `src={src}`; `{...rest}` spreads an object.
 - Event handlers (`onclick`) and `bind:`, `use:`, `transition:` do nothing on a static page; `bind:value` writes the value.
-- Addresses in `href`, `src` and the like are checked: `javascript:` and other schemes that run code are replaced. Svelte does not do this.
 
 **Markup cannot stand inside `{…}`**: no `{items.map(item => <li>…</li>)}`. Use `{#each}` and `{#if}`.
 
@@ -377,4 +376,3 @@ Create `Intl.NumberFormat`, `Intl.DateTimeFormat` and the like once in a module,
 | TypeScript only with `lang="ts"` | also without it, but write `lang="ts"` so the file moves to Svelte as it is |
 | hydration, `$state` that changes, events | none: pages are static |
 | `<svelte:self>`, `<svelte:component>` | work, with the warnings of Svelte 5 |
-| `javascript:` addresses kept | replaced |

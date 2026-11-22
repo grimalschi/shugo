@@ -7,6 +7,7 @@
 - CLI messages and the specification use English so agents can read them and search for their wording. Confirmed November 21, 2026.
 - `shugo init` is needed: a new project with an example, `tsconfig.json`, types for the editor and a memo for the agent (21 solution November 2026 years). Not yet done.
 - Type check — a separate command `shugo check`, together with verification of component parameters (21 solution November 2026 year). Not yet done.
+- How `shugo` gets on the machine: ready files for all systems in releases on GitHub, npm package, which puts the finished file under the system, like esbuild, and Homebrew (22 solution November 2026 years). Not yet done.
 
 ## Implemented, pending approval
 
@@ -40,7 +41,7 @@ The option that the command does not use is an error ([27](decisions.md#27-comma
 | `export` | none | none | write to Files | none |
 | `dev` | if the project has changed | what changes have occurred | from storage | yes, and resets open pages |
 
-`dev` is `update` and `serve` together, plus tracking: after each file change, it makes `update` and says pages open in the browser to reboot. It calculates nothing of its own: the pages are the same as after `shugo update`.
+`dev` is `update` and `serve` together, plus tracking: after each file change, it makes `update` and tells the pages to reboot open in the browser. It does not calculate anything of its own: the pages are the same as after `shugo update`. You need it to work on the site: one command that is run once, and the site in the browser itself has time for code and data changes. The suggestion to make it truly different is to compute the page on demand, not the entire site, in [Live Reload](../docs/proposals/live-reload.md).
 
 ### When a team
 
@@ -121,4 +122,4 @@ Node indicates the location accurately. Bun sometimes points to a nearby string:
 
 ## Open questions
 
-- Installation: how the `shugo` gets on the machine. Hugo, also one file on Go, is distributed as follows: ready files for all systems in releases on GitHub, Homebrew, Snap, Winget, Scoop and Linux distribution packages, Docker image and `go install` for those who have Go. Through npm Hugo put other people's wrapping packages. esbuild is distributed by the npm package, which puts the finished file under the system. Tip: GitHub releases, npm package like esbuild — agents work in projects with `package.json` — and Homebrew.
+Oh, no.

@@ -17,6 +17,8 @@ Rantime is a server on Go that collects HTML pages from storage.
 - The server does not keep the site in memory: for each request, it gets from SQLite what the page needs. Storage requests should be optimized. Solved 20 November 2026 year. Confirmed by 21 November: there will be no copies in memory and as acceleration, including a copy that loads in the background after the first request runtime in the future can serve many sites.
 - The page that is no longer in the route list is deleted: the server responds to its 404 address, the export deletes its file. It was solved by 21 on November 2026 year.
 - After the first time, exports only write what has changed. The folder belongs to the export: a file corrected by hand in it lives until its page is changed. `/about` exports page writes in `about.html`, `/` in `index.html`, page for non-existent addresses in `404.html` as SvelteKit writes pages that build in advance. Solved 21 November 2026 year.
+- The server compresses the answers and responds 304 to the page that has not changed. Solved 22 November 2026 year.
+- Addresses in `href`, `src` and similar attributes are displayed as is in Svelte. Resolved by 22 on November 2026: the previous `javascript:` address change is canceled.
 
 ## Implemented, pending approval
 
@@ -40,7 +42,8 @@ The connections in the pool are twice as large as the cores; everyone has pre-pr
 
 | Request | Response |
 | --- | --- |
-| page Address | 200, HTML, `Cache-Control: no-cache` |
+| page Address | 200, HTML, `Cache-Control: no-cache`, `ETag` |
+| the address of the page with `If-None-Match`, where is its `ETag` | 304 without body |
 | address of the page with a slash at the end | 308 to address without slash |
 | address from `redirects` | 301 |
 | file from `public/` | file |
@@ -49,6 +52,14 @@ The connections in the pool are twice as large as the cores; everyone has pre-pr
 | not `GET` and not `HEAD` | 405 |
 
 An update made by another process, the server sees from the next request.
+
+### Compression and 304
+
+- `ETag` pages are the checksum of its HTML (CRC-64), weak: `W/"…"` because the page leaves compressed or not. The page has changed the label has changed. The browser that has the page asks with a tag (`If-None-Match`), and the same page gets 304 without a body.
+- Page and text file — `.css`, `.js`, `.svg`, `.json`, `.txt`, `.xml` and the like — from 1 KB go compressed gzip if the browser wrote that it understands. Less 1 KB, pictures and fonts as is. The answer to the request for a part of the file (`Range`) is as it is.
+- The answer that can come compressed is `Vary: Accept-Encoding` so that the cache in front of the server does not give the compressed to someone who did not ask.
+- Compression fast (gzip, level 1) and does not slow down the server: on the store page of the goods goes 1.1 KB instead of 2.5 KB, and the request with gzip takes 52 µs Against 59 µs without it - less data goes through the connection8 customers, 1,000 goods, `go test ./test/ -run xxx -bench Serve`).
+- Compressed answers are not stored: the server does not keep the site in memory. Brotli usually compresses HTML better than gzip, but there is no standard library Go; if necessary, it can be added in a separate package on pure Go.
 
 ### SQLite read performance
 
@@ -71,7 +82,6 @@ Time determines the number of searches by key, not the number of SQL queries: to
 Values came from the stage that executed the project code. Therefore:
 
 - text and attribute values are always screened, as in Svelte: in the text of `&` and `<`, in the attribute of `"`; without screening, only the value of `{@html}` is inserted;
-- address in `href`, `src` and similar attributes is replaced if it can execute the code ([14](../spec/decisions.md#14-addresses-in-links-are-checked)); Svelte does not do this;
 - attribute name from `{...attributes}` and tag name `<svelte:element>` are checked;
 - tape that does not match the template gives the answer 500, and not a corrupted page - as it happens, described in [Storage](storage.md#how-the-tape-can-not-fit-with-the-page);
 - the nesting of components is limited by 256 levels, the page size is 64 MB.
@@ -92,24 +102,23 @@ His work grows with the change, not with the site. Update for this nothing to no
 
 If there is no list, exports build all pages and do not delete anything. If the list is from another repository or version before the project is completely reassembled, the export builds all pages and removes `.html` files from the folder, which are not among the pages of the site or among the copied files. The rest of the files and folders whose name starts with a dot, it does not touch. The file with the previous content is not rewritten.
 
-Measured on the store in 100,000 products, 104,202 pages, Bun disk ext4; then each page was a folder with `index.html`. After each change — `shugo update`, then `shugo export`:
+Measured on the store in 100,000 products, 104,202 pages, Bun disk ext4, one run of 21 November 2026 year. After each change — `shugo update`, then `shugo export`:
 
 | What changed | Pages with new HTML | Update | Export |
 | --- | ---: | ---: | ---: |
-| First export to an empty folder | all | — | 7.1 s |
-| Nothing. | 0 | 0.42 s | 6 ms |
-| Price of one product | 7 | 28 ms | 8 ms |
-| Prices 20 products | 70 | 36 ms | 17 ms |
-| Last product removed: 88 pages, one file removed | 88 | 0.41 s | 32 ms |
-| Product name of the month: header on all pages | all | 0.12 s | 8.1 s |
+| First export to an empty folder | all | — | 5.0 s |
+| Nothing. | 0 | 0.16 s | 7 ms |
+| Price of one product | 7 | 29 ms | 8 ms |
+| Prices 20 products | 70 | 34 ms | 17 ms |
+| Last product removed: 88 pages, one file removed | 88 | 0.40 s | 36 ms |
+| Product name of the month: header on all pages | all | 0.12 s | 8.2 s |
 | Product added: counters in the menu on all pages | all | 0.48 s | 8.3 s |
 
 After 21 changes the folder that the export updated in steps, the file is the same as the file with the export of the same base from scratch.
 
 Previously, exports collected HTML of all pages to compare with what lies on the disk, and cost 7 s after any change.
 
-- The change that is visible on all pages overwrites all files — about 8 s when folders with `index.html`. For disk files, this is not to be circumvented. `shugo serve` shows the same change from the next request.
-- With folders HTML occupied 288 MB, and on disk - 838 MB: each file and each folder occupy on disk no less than 4 KB. With files of the type `about.html` same store: HTML - 260 MB, on disk - 424 MB, 104,204 file in 54 folders; first export to an empty folder - 3.5 s. Measurement of 21 November 2026 year, one run: `node scripts/generate.mjs 100000`, `shugo build`, `shugo export`, then `du`.
+- The change that is visible on all pages overwrites all files — about 8 s. For disk files, this is not to be circumvented. `shugo serve` shows the same change from the next query.
 
 ### Development Mode
 
@@ -119,17 +128,16 @@ How to make code editing in a large project not wait for the calculation of the 
 
 ### Speed
 
-Shop on 100,000 products, product page — 2.8 KB HTML:
+Shop on 100,000 products, product page — 2.5 KB HTML:
 
 | What is measured | Result |
 | --- | ---: |
 | Assembling a page from storage | 58–67 µs |
 | Request to server whole, 8 clients in same process, 8 cores | 16–18 thousand requests per second |
-| Generate all 104,202 pages into files | 3.5 s with `about.html` files (one run); 7.1 s when pages were folders |
+| Generate all 104,202 pages into files | 5.0 s |
 
 With a copy in memory, the server gave 33–39 thousand requests per second: so much is the decision not to keep a copy. Details are in [README booth](../examples/catalog/README.md).
 
 ## Open questions
 
-- Compression of answers and 304 response. Compression: the server gives HTML compressed gzip or brotli, if the browser can do it, - the network goes several times less. `ETag` and 304: the server marks the page with the version; the browser that already has the page asks "has it changed from this version", and the server replies "no" without the page itself. The version of the records is in storage. If a CDN is in front of the site, it usually does.
 - If you need to give more 16–18 thousand requests per second: cache the finished HTML in front of the server, which is reset to a list of pages with the new HTML from the update report.

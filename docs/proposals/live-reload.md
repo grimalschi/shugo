@@ -28,61 +28,50 @@ What is missing:
 
 ## Proposal
 
+The idea of the author of the project, 22 November 2026 years: in development mode, you do not need to calculate the entire site - each request can be processed separately. So the development modes SvelteKit and Astro work: the page is calculated when asked.
+
+### Page is calculated on request
+
+- `shugo dev` compiles the project and keeps the JS process running. It does not compute the entire site.
+- A request has come - this page is calculated, with the current code and current data, and given to the browser. Its record with what it read remains in the development mode store.
+- The next request of the same page is given from the repository, if since then neither the code nor the lines it has read have changed. Otherwise it is calculated again. There is no obsolete page: it is either checked or calculated anew.
+- Whether there is a page at the address says `getStaticPaths` of its route. It is calculated when first asked for the address of this route, and stored in the same way, until you change what you read.
+- Price: in the running process, the recording is calculated in tens of microseconds - the first assembly of the store calculates 204,000 records of pages and common blocks for 9.1 s, about 45 µs per record. The roads are just starting the process, 20–24 ms on Bun ([Change tracking](../change-tracking.md)), and it happens once.
+
+The error in the page that was not opened, the development mode will not show: it will find `shugo build` before laying out.
+
 ### What is restarted and when
 
 | What has changed | What is calculated | What the browser sees |
 | --- | --- | --- |
-| Templates and code: `.shugo`, `.ts` in `src/`, `shugo.json` | the whole site, the open pages are the first | open pages are reloaded as soon as they are calculated. |
-| Data | what the changed lines read, as it is now | reload only open pages whose HTML has changed |
+| Templates and code: `.shugo`, `.ts` in `src/`, `shugo.json` | compiling; pages - when asked | open pages are reloaded and re-computed |
+| Data | nothing at once; a page whose lines have changed when asked | reloads open pages that have read the changed lines |
 | Styles only: `.css` or `<style>` in template | nothing | new style file is replaced in open pages without rebooting |
 | Files in `public/` | nothing | reload all open pages |
 
-To know which pages are open, the page script calls its address when it connects: `/_shugo/live?path=/products/jug`. The list of pages with the new HTML update is already — this is `renderNames` in its report ([Command line](../../spec/cli.md)).
-
-### The code has changed: open page first
-
-The solution remains the same: after changing the code, the entire site is calculated, and the storage receives a new state with one transaction. Only the order changes:
-
-1. Compilation.
-2. The first to calculate the open pages. Once the page is calculated, the server shows it from memory, and the browser reboots.
-3. The rest of the pages are calculated by the next, in the background.
-4. If, while the background is running, the browser asks for a page that has not yet been calculated, it stands in the first queue, and the answer is waiting for it. The old code page is never shown: there are no outdated pages, there are only not yet calculated.
-5. When everything is calculated, the storage is written as a whole, as in `shugo update`. The calculation of another page has fallen - the storage remains the same, and the error is visible in the browser (below).
+To know which pages are open, the page script names its address when it connects: `/_shugo/live?path=/products/jug`.
 
 ### Styles Only: No Reset
 
-All styles of the site are collected in one file with a hash in the name, and a link to it framework inserts each page into `<head>` when assembling it HTML. The page entries on this file know nothing. Therefore, changing some styles does not require calculating any pages: it is enough to write a new link to the site program.
+All site styles are collected in one file with a hash in the name, and a link to it framework inserts each page into `<head>` when it collects it HTML. The page entries on this file know nothing. Changing some styles therefore does not require calculating any pages: open pages get the word `css` with a new address and replace `<link>` as in Vite.
 
-Now this does not happen: the name of the project assembly is made up of the entire program, together with a reference to styles, and the new name makes you calculate everything. The proposal is to count the reference to styles outside the assembly name. Then:
-
-- changed `.css` or only `<style>` component - the compiler sees that the code and pattern layout are the same, and updates only the link;
-- open pages get the word `css` with a new address and replace `<link>` without rebooting so does Vite.
+Now `.css` changes the build name, and everything is calculated anew: a link to styles is included in the site program. It must be considered outside the build name.
 
 ### Error in browser
 
-The compile or compute error is shown on top of the open page: the same text as in the terminal is the space in the project file and the lines of code around. There is a good page below to see what was on it. Fixed - the message disappears, the page is reloaded. So do Vite and SvelteKit.
-
-The page that was opened while the project is broken also shows this message, not silently the old version.
+The compile or compute error is shown on top of the open page: the same text as in the terminal is the space in the project file and the lines of code around. Fixed - the message disappears, the page is reloaded. So do Vite and SvelteKit. The page that was opened while the project is broken also shows a message, not silently an old version.
 
 ### Scrolling
 
 Before rebooting, the script remembers scrolling the page in `sessionStorage`, after downloading it returns it. The form status is not saved.
 
-### Speed
-
-- **Compilation** is a project based on examples of 15–50 ms. If it becomes visible on large projects, the compiler can store the result of each file under the hash of its contents and recompile only changed files.
-- **Launch JS** is a big part of the small upgrade price: on Bun one page costs 20–24 ms, almost all of it is process start; on Node - 80–90 ms ([Change tracking](../change-tracking.md)). After changing the data, the project code is the same, and the JS process can be kept running between updates. After changing the code, the process starts again: it has a new code.
-
 ### What is beyond the box
 
-- Replacement of components on the fly, without reboot (HMR). It can be taken from Svelte when the Svelte islets appear in the browser.
-- Replacing HTML pages without rebooting (morphdom and the like). A complete reboot is easier and not wrong; you can return to the substitution if the reboot becomes interfered with.
-- Calculate only open pages and do not calculate the rest. The remaining pages would be left from the old code - this is an outdated site.
+- Replacement of components on the fly, without reboot (HMR). It can be taken from Svelte when the islands of Svelte appear in the browser.
+- Replacing HTML pages without rebooting (morphdom and the like). A complete reboot is easier and not wrong.
 - Live Reload in `shugo serve`: This is a server for visitors.
 
 ## Open questions
 
-- Show an open page as soon as it is calculated, until the end of the calculation of the entire site, or wait for the whole site as now.
+- Development mode storage: separate file or the same `_build/store.db`. The separate one does not mix with the build for laying out, but `shugo serve` after `shugo dev` is then empty.
 - Error on top of last successful page or separate page with error instead.
-- Keep the JS process running between data updates in `shugo dev`.
-- Change styles without rebooting: is it worth changing what the build name is made of?

@@ -11,6 +11,7 @@ Component is the reusable part of the template: the cap, the product card, the f
 - The calling pattern can transfer the markup inside the component.
 - Component call is the block boundary: the block is stored and updated separately. As it is arranged in [Blocks and point update](../docs/blocks.md).
 - Functions and components are connected by explicit imports.
+- The component to which the object was transferred for example, a base line is calculated on each page where it is shown. Remember it by the content of the parameter is not necessary: so the page would depend on all columns of the line. Who needs a common unit, he transmits the key (solution 22 November 2026 year).
 
 ## Implemented, pending approval
 
@@ -158,5 +159,4 @@ As in Svelte 5: the component imports itself.
 ## Open questions
 
 - Checking the types of parameters during assembly: it is decided to do together with the `shugo check` command.
-- The component with the object in the parameter is now counted on each page. Remember it by the content of the parameter - discussed: [question](open-questions.md).
 - Warning when common blocks of one component become too many (`<Price value={n} />`).

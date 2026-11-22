@@ -90,7 +90,7 @@ On `Shugo.props`, `Shugo.slots` and `Astro.props` — error with a hint. The aut
 - `+layout.shugo` in the folder wraps all pages of this folder and nested; the nested layout turns out to be **inside** external, as in SvelteKit, Next.js and PocketPages. Replaces only Nuxt, where the page has one named layout.
 - The root layout itself is written by `<html>`, `<head>` and `<body>`; in SvelteKit, they are written by `src/app.html`.
 
-The author asked how it works in Svelte, the answer is in [questions](open-questions.md). Chain reset (`+page@.svelte` in SvelteKit) has been postponed.
+The author asked how it was done in SvelteThe answer in [questions](open-questions.md). Chain reset (`+page@.svelte` the City of London SvelteKit) postponed. Data from layout to page, how `load` the City of London `+layout.ts` SvelteKitNo, no, and no, no. The solution 22 November 2026 year. Layout that reads the address, [request to keep a separate record](../docs/proposals/layout-records.md).
 
 ## 10. Routes
 
@@ -134,7 +134,7 @@ The page that is missing from the list is removed from the storage, and the serv
 
 ## 14. Addresses in links are checked
 
-**Approved 21 November 2026 year.** Svelte does not do this: it is a conscious retreat, see [Templates](templates.md#how-shugo-differs-from-svelte).
+**22 November 2026 Year Cancelled:** addresses are displayed as is, as in Svelte. The statement from 21 November is withdrawn; below - as it was.
 
 **What's done.** In `href`, `src`, `action`, `formaction`, `poster`, `cite`, the value from the expression is replaced by `about:invalid#blocked` if its circuit can execute the code (`javascript:` and the like). Relating addresses are allowed, `http`, `https`, `mailto`, `tel`, `sms`, `ftp` and pictures in `data:`.
 
@@ -261,7 +261,7 @@ Export follows the previous one: in the folder, it leaves a list of which storag
 
 - Shugo is fixed on one version of Svelte, 5.59.1. The page matches what `render()` gives this version, bytes per byte, except for hydration tags and style class. Match check benchmarks from the real Svelte: 30 tasks in `test/svelte/`, template tests and random pages — [Shugo and Svelte](../docs/svelte.md).
 - Svelte version update new benchmarks and correction of discrepancies.
-- Indents: `javascript:` addresses are blocked (14 solution), hydration labels are not written, style class is put on all elements ([32](#32-style-class-on-all-component-elements)), `<svelte:head>` - only in the page and layout ([30](#30-sveltehead-and-title)), there are no availability warnings, runes are not checked.
+- Derogations: hydration labels are not written, style class is placed on all elements ([32](#32-style-class-on-all-component-elements)), `<svelte:head>` - only in the page and layout ([30](#30-sveltehead-and-title)), there are no availability warnings, runes are not checked. How to remove these deviations - [Svelte compatibility offer](../docs/proposals/svelte-compatibility.md).
 
 **Why so strict.** The template should be transferred to Svelte And then there will be islands. Svelte. If only Shugo Repetitive Svelte "about", the agent could not count on any of the rules: gaps at the edges of the blocks, `false` in the text, `class` from the array.
 
@@ -276,7 +276,7 @@ Export follows the previous one: in the folder, it leaves a list of which storag
 **Waiting for approval.**
 
 - The contents of `<svelte:head>` are at the end of `<head>`, which writes the page or the nearest layout, in the order of the document: external layouts, internal, page. `<title>` remains one - the last, and stands after the rest. So does Svelte.
-- `<svelte:head>` works only in the page and in the layout. In the usual component, this is an error: the general component, which is calculated once per entire site, does not have a page in which `<head>` to write.
+- `<svelte:head>` works only in the page and in the layout. In the usual component, this is an error: the common component, which is calculated once per entire site, does not have a page in which `<head>` to write. Allow it in components that are not common, in [the Compatibility Proposal](../docs/proposals/svelte-compatibility.md).
 
 ## 31. Snippets and common blocks
 
@@ -284,19 +284,19 @@ The **Waiting for approval.** Snippet without parameters, written inside the com
 
 ## 32. Style class on all component elements
 
-**Waiting for approval.** Svelte puts the `svelte-…` class only on elements that some selector chooses and throws out selectors that choose nothing. Shugo puts the class on all elements of the component and leaves all selectors.
+**Waiting for approval**; do as in Svelte — in [the Compatibility Proposal](../docs/proposals/svelte-compatibility.md). Svelte puts the class `svelte-…` only on the elements that selects any selector, and throws selectors that do not choose anything. Shugo puts the class on all components of the component and leaves all selectors.
 
 **Why not.** To select elements like Svelte, you need to parse selectors and match with a template, including blocks and dynamic classes, a noticeable part of the Svelte compiler. The page view does not change from this. The question is whether to do exactly in [Styles](styles.md#open-questions).
 
 ## 33. Extension `.shugo` and TypeScript
 
-**Waiting for approval.** Files remain `.shugo`. TypeScript is accepted in any `<script>`, and Svelte requires `lang="ts"`. Both questions are in [open](open-questions.md).
+**`.shugo` extension is still left** is the 22 solution of November 2026 year. TypeScript is accepted in any `<script>`, and Svelte requires `lang="ts"`: whether to require it — in [the Compatibility Proposal](../docs/proposals/svelte-compatibility.md).
 
 **Why `.shugo`.** File with `Shugo.query` and `getStaticPaths` is not a component of Svelte, and the real Svelte will not assemble it: its extension says this honestly. Price - the editor does not recognize the file without setting up.
 
 ## 34. What is checked the same as in Svelte
 
-**Waiting for approval.** Errors and warnings Sveltewhich change the appearance of the page or break it, Shugo Repeats: nesting elements, confused tags, outdated `<svelte:self>` and `<svelte:component>`, `<slot>` and `export let` the City of Svelte 4. Accessibility Warnings (`a11y_…`, them in Svelte A few dozen) not.
+**Waiting for approval**What to repeat again in [the Compatibility Proposal](../docs/proposals/svelte-compatibility.md). Errors and warnings Sveltewhich change the appearance of the page or break it, Shugo Repeats: nesting elements, confused tags, outdated `<svelte:self>` and `<svelte:component>`, `<slot>` and `export let` the City of Svelte 4. Accessibility Warnings (`a11y_…`, them in Svelte A few dozen) not.
 
 ## 35. Folder `src`
 

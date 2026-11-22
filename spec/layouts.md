@@ -8,6 +8,7 @@ Layout - general binding of pages: `<html>`, `<head>`, cap, footer and place for
 - Layouts are modeled after `+layout` from SvelteKit: the layout file is located in the folder with the pages and acts on them.
 - The layout works as a component, but it cannot be called.
 - The model can upload its data.
+- Data from page to page, how `load` the City of London `+layout.ts` SvelteKit, no: page asks the base itself (solution 22 November 2026 years).
 - The layout is written as a component Svelte 5 (Decision of the author 21 November 2026 Year: Page he gets snippet `children` and shows her `{@render children()}`How `+layout.svelte` the City of London SvelteKit; title and meta tags page writes in `<svelte:head>`. It replaces the old `<g-slot />` and `<title slot="head">`.
 
 ## Implemented, pending approval
@@ -83,10 +84,10 @@ Before `</head>`, a link to the site style file is added. In development mode, b
 
 ### The model is usually common.
 
-A layout that does not read the page address is considered once for the entire site: a page comes into it with a snippet and is stored in its record. If the layout reads `Shugo.url` or `Shugo.params` for example, to highlight the current menu item it is counted on each page anew, and changing what it read from the database calculates the entire site. See also [answer the menu question](open-questions.md).
+A layout that does not read the page address is considered once for the entire site: a page comes into it with a snippet and is stored in its record. If the layout reads `Shugo.url` or `Shugo.params` for example, to highlight the current menu item it is counted on each page anew, inside its record, and changing what it read from the database calculates all pages again. How to fix it - [offer to keep such a layout as a separate record](../docs/proposals/layout-records.md).
 
 ## Open questions
 
 - Reset chain: page or section without external layouts. In SvelteKit it is `+page@.svelte` and `+layout@.svelte`.
 - The framework of the document. B SvelteKit `<html>`, `<head>` and `<body>` Not in the script, but in `src/app.html`The root layout starts with the content. `<body>`B. Shugo they write a root layout. Go to `app.html` It is closer to SvelteKitbut another special file.
-- Whether to warn when assembling about a layout that reads the address and asks the base itself.
+- The layout that reads the address is a separate entry for each page: [proposal](../docs/proposals/layout-records.md).

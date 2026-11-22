@@ -8,6 +8,7 @@ Proposal on how pictures are reduced and compressed. While this is not: pictures
 - The compression lives inside the runtime and is built on libvips or another modern supported library.
 - The output format is WebP, AVIF or JPEG, depending on what the browser supports.
 - When generating the entire site into files, all images are compressed in advance and saved.
+- **Two modes** (Decision of the author 22 November 2026 years): built-in compression, where WebP is the recommended format, and, if desired, libvips, if it is installed in the system or associated with ShugoIt can be specified and used for acceleration.
 
 ## Measurements
 
@@ -61,8 +62,6 @@ Picture per second; each three widths:
 - AVIF with quality 63 gives about the same quality as JPEG 80 and WebP 79, with smaller size: 16, 25 and 20 KB for width 400.
 
 ## Proposal
-
-21 November 2026 year: internal compression tool, where WebP is the recommended format, and, if desired, libvips, if it is installed in the system or associated with Shugo, it can be specified and used for acceleration. The question was whether both regimes could be supported. You can; below how.
 
 ### Two modes
 
@@ -131,6 +130,29 @@ The choice of the header `Accept` is not needed: on static hosting it is not, an
 
 To not collect addresses with your hands, you need a function `Shugo.image("/photos/jug.jpg", { width: 800 })` The finished component that it produces `<picture>` with formats from settings, `srcset` for several widths, `width` and `height` against page jumps and `loading="lazy"`. An example of such a component — `<enhanced:img>` the City of London SvelteKit.
 
+### How to choose a format: options
+
+| Option | How | For | Against |
+| --- | --- | --- | --- |
+| WebP only | one address `…/jug.jpg.webp` in regular `<img>` | the easiest; equally on the server and on any hosting; WebP understand all browsers that are currently in use | AVIF on 15–20% is smaller with the same quality (measurements above) and it is not |
+| `<picture>` with AVIF and WebP | the browser takes the first format that understands | the lightest pictures | AVIF only with libvips; marking longer; component needed |
+| by the name `Accept` | one address, the server chooses the format | the markup does not change | does not work on static hosting; caches before the server confuse answers |
+
+**The Council:** is the default WebP only — in both modes; `<picture>` with AVIF is when the settings have `"avif"`, and it is only with libvips. The choice for `Accept` is not.
+
+### Where is the cache: options
+
+Compression of photos is tenths of a second, thousands of photos are minutes. The cache stores the finished files under the name from the source file hash, parameters and mode.
+
+| Option | For | Against |
+| --- | --- | --- |
+| `_build/images/` | next to everything Shugo writes | disappears with `_build/`, and everything is compressed again |
+| Own project folder outside of `_build/`, such as `.shugo-cache/images/`, not in git | is undergoing cleaning of `_build/`; you can see how much space it takes | each copy of the project has its own cache |
+| Shared user folder, `~/.cache/shugo/images/` | common to all projects and copies on the machine | grows without a host; on the build server it must be stored separately |
+| In Storage SQLite | one file | storage is inflated with pictures that the page server does not need |
+
+**The Council:** has its own project folder outside of `_build/`, and setting `"cache"` to `shugo.json` takes it anywhere — for example, in the build server cache.
+
 ### Export
 
 - Export finds `/_img/…` addresses in the collected pages: rantime knows which attributes contain addresses (`src`, `srcset`, `href`).
@@ -154,8 +176,8 @@ The third way remains possible: then the runtime only builds signed addresses. I
 - How `shugo` gets libvips: start with the `vipsthumbnail` command as suggested, or download the library immediately while running.
 - Address type: `/_img/w800/…` prefix as here, or file name ending; format last extension (`jug.jpg.webp`) or instead of original (`jug.webp`).
 - Finished image component: your own or write SvelteKit `<enhanced:img>`.
-- Where the cache is located: `_build/` is deleted at each complete assembly. Options are a user cache folder common to all projects on the machine, or a project folder of its own outside `_build/`.
-- The default format is built-in: only WebP or WebP and JPEG for very old browsers.
+- Format: only WebP by default, `<picture>` with AVIF at libvips - as advised above.
+- Cache: own project folder outside `_build/` with configuration, where to transfer it - as recommended above.
 
 ## Sources
 
