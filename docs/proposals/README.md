@@ -21,3 +21,5 @@ These solutions are already working; the author of the project postponed their a
 
 - **Breakdown into pages.** `paginate(number)` in `getStaticPaths` says what pages there are, `paginate(request)` in the page takes part of it; addresses `/blog`, `/blog/2` are [Dynamic pages](../../spec/dynamic-pages.md#pagination).
 - **Service symbols in meanings.** Symbols with 0–4 codes inside the values are screened when transferring from JS to Go rather than cut out; the value comes to the page as it was - [25](../../spec/decisions.md#25-service-symbols-in-values-are-shielded).
+- **Details of `src/site.html` shell, files from modules and their export** — [36–38](../../spec/decisions.md#36-the-srcsitehtml-shell).
+- **Warning thresholds for the common component**, which shares almost nothing: 100 blocks and one and a half places on average [3](../../spec/decisions.md#3-which-blocks-are-shared).

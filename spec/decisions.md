@@ -34,7 +34,7 @@ Decisions 1–27 taken during the assembly of the first version, 28–35 when sw
 
 ## 3. Which blocks are shared
 
-**Approved by the author of the project 22 November 2026 year** along with a warning when the common component shares almost nothing is [Components](components.md#decisions). Warning thresholds are selected without the author and wait for the statement: they are below, in the "Warning".
+**Approved by the author of the project 22 November 2026 year** along with a warning when the common component shares almost nothing is [Components](components.md#decisions). Warning thresholds are selected without the author; the author left them as is and postponed the statement (22 November 2026 years). They are below, in "Warning".
 
 **What's done.** The component is calculated and stored once if both conditions are met:
 - neither he nor the modules he imports take `page` or `paginate` from the `shugo` module (before 22 November 2026 years — did not read `Shugo.url` and `Shugo.params`);
@@ -306,7 +306,7 @@ The **Waiting for approval.** Snippet without parameters, written inside the com
 
 ## 36. The `src/site.html` shell
 
-**Waiting for approval.** Separate file with places `%shugo.head%` and `%shugo.body%` and name `site.html` — the author's decision. Details:
+**Left as is, the approval is delayed** by the author of the project 22 November 2026. Separate file with places `%shugo.head%` and `%shugo.body%` and the name `site.html` - the author's decision. Details:
 
 - No file - takes the shell of the framework: `<!doctype html>`, `<meta charset="utf-8">`, `<meta name="viewport" …>` and both places; `lang` is not in it.
 - Each place stands exactly once, the head is before the body. Otherwise, the assembly stops with an error that says what is wrong.
@@ -319,7 +319,7 @@ The **Waiting for approval.** Snippet without parameters, written inside the com
 
 ## 37. Files not in HTML: module with `GET`
 
-**Waiting for approval.** Module `src/pages/sitemap.xml.ts` with `GET` — Author's decision. Details:
+**Left as is, the approval is delayed** is the author of the project 22 November 2026 year. Module `src/pages/sitemap.xml.ts` with `GET` — the author's decision. Details:
 
 - `GET` nothing gets and returns the line. `async`The promise, `Response` and the object is a bug with a hint: for the object - `JSON.stringify`, for `Response` — return the text itself. Astro recording `GET({ params })` Error with a hint about `page.params`.
 - File type is an extension in the name before `.ts` or `.js`. Module without it (`data.ts`) - error: so in the page folder does not hide the code that does not give anything. A module whose name or folder starts with `_` is an import code; `.d.ts` is a type declaration, not a module.
@@ -333,7 +333,7 @@ The **Waiting for approval.** Snippet without parameters, written inside the com
 
 ## 38. Exporting module files
 
-**Waiting for approval.**
+**Left as is, the approval is delayed** is the author of the project 22 November 2026 year.
 
 - The module file is written under its address: `/sitemap.xml` - `sitemap.xml`, `/api/jug.json` - `api/jug.json`.
 - The repository remembers the route of the page that is missing, and the export deletes the file with the correct name: `api/jug.json`, not `api/jug.json.html`.
