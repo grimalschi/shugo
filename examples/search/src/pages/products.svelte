@@ -1,5 +1,5 @@
 <script>
-  import { search } from "shugo:search"
+  import { search } from "shugo"
   import Search from "../components/Search.island.svelte"
 </script>
 

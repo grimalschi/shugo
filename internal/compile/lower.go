@@ -572,9 +572,6 @@ func (l *lowerer) island(e *syntax.Element, ctx context) node {
 			c, _ := a.Expr()
 			out.props = append(out.props, prop{spread: &code{c.Text, c.Start}})
 		case syntax.Plain, syntax.Shorthand:
-			if a.Name == "shugoSearch" {
-				l.errorf(a.Start, "use request:initial={search(\"products\", options)} with search imported from \"shugo:search\"")
-			}
 			out.props = append(out.props, prop{name: a.Name, value: l.value(a)})
 		case syntax.Directive:
 			if a.Directive != "request" {

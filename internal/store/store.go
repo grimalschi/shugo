@@ -224,16 +224,14 @@ func (s *Store) reading() (*pooled, error) {
 
 // Names of what meta holds.
 const (
-	metaLayout         = "layout"  // how the tables are laid out
-	metaStore          = "store"   // which store this is: chosen at random when the tables are laid out
-	metaBuild          = "build"   // which compiled project the records belong to
-	metaSite           = "site"    // the skeleton of that project
-	metaVersion        = "version" // grows with every update
-	metaOrigin         = "origin"  // the version from which the store knows every change: see Mark
-	metaTotals         = "totals"  // how many pages and shared blocks there are
-	metaData           = "data"    // which state of the data database the records were computed from
-	metaCatalog        = "catalog" // basename of the immutable catalog projection
-	metaCatalogDefault = "catalogDefault"
+	metaLayout  = "layout"  // how the tables are laid out
+	metaStore   = "store"   // which store this is: chosen at random when the tables are laid out
+	metaBuild   = "build"   // which compiled project the records belong to
+	metaSite    = "site"    // the skeleton of that project
+	metaVersion = "version" // grows with every update
+	metaOrigin  = "origin"  // the version from which the store knows every change: see Mark
+	metaTotals  = "totals"  // how many pages and shared blocks there are
+	metaData    = "data"    // which state of the data database the records were computed from
 )
 
 // reader reads through one transaction, so everything it returns belongs to
@@ -276,12 +274,6 @@ func (r *reader) Build() (id string, site []byte, err error) {
 func (r *reader) BuildID() (string, error) {
 	build, _, err := r.blob(r.meta, metaBuild)
 	return string(build), err
-}
-
-// Catalog names the index published with this state of the store.
-func (r *reader) Catalog() (string, error) {
-	name, _, err := r.blob(r.meta, metaCatalog)
-	return string(name), err
 }
 
 // Mark names one state of one store. Versions are counted within a store,
@@ -764,10 +756,6 @@ func (u *Update) NewShape(spec string) (int64, error) {
 	return result.LastInsertId()
 }
 
-// CatalogResultShape is reserved for a read of the default catalog result.
-// Its key is empty. Database query shapes have positive SQLite row IDs.
-const CatalogResultShape int64 = 0
-
 // Read notes a reading of a reader; Unread, that the reader no longer makes it.
 func (u *Update) Read(shape int64, key []byte, reader string) error {
 	_, err := u.read.Exec(shape, orEmpty(key), reader)
@@ -789,19 +777,6 @@ func (u *Update) Data() (string, error) {
 // SetData notes the state of the data database the records were computed from.
 func (u *Update) SetData(state string) error {
 	_, err := u.write.Exec(put, metaData, []byte(state))
-	return err
-}
-
-func (u *Update) CatalogDefault() ([]byte, error) {
-	result, _, err := u.blob(u.meta, metaCatalogDefault)
-	return result, err
-}
-
-func (u *Update) SetCatalog(name string, result []byte) error {
-	if _, err := u.write.Exec(put, metaCatalog, []byte(name)); err != nil {
-		return err
-	}
-	_, err := u.write.Exec(put, metaCatalogDefault, orEmpty(result))
 	return err
 }
 

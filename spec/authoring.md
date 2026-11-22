@@ -187,7 +187,7 @@ A component is a `.svelte` file. Import it in the script and use it as a tag tha
 What the framework knows is imported from the module `shugo`, in any file: a page, a layout, a component, a module of `src/lib/`.
 
 ```ts
-import { query, paginate, page } from "shugo"
+import { query, paginate, page, search } from "shugo"
 ```
 
 | | |
@@ -198,6 +198,7 @@ import { query, paginate, page } from "shugo"
 | `page.url` | the address of the page, a `URL` |
 | `page.route.id` | the route: `/products/[slug]` |
 | `page.status` | 200, and 404 on `src/pages/404.svelte` |
+| `search("table", { … })` | a search of a table, for islands: see [Islands](#islands) |
 
 `page` is the `page` of `$app/state` in SvelteKit, with the fields a static page has. Props come from `$props()`. There is no global `Shugo` or `Astro`: writing one is an error that names the import.
 
@@ -415,7 +416,7 @@ A component named `*.island.svelte` is an island: the page shows its HTML, and i
 <!-- src/pages/catalog.svelte -->
 <script>
   import Catalog from "../components/Catalog.island.svelte"
-  import { search } from "shugo:search"
+  import { search } from "shugo"
 
   const products = search("products", {
     text: ["title", "description"],

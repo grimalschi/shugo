@@ -49,6 +49,7 @@ bin/shugo export examples/basic       # site to files: examples/basic/_build/dis
 | [examples/basic](examples/basic) | small site without database: `src/site.html` shell, layout, components, snippets, dynamic pages, `sitemap.xml` and `robots.txt` from modules |
 | [examples/catalog](examples/catalog/README.md) | store of any size with database and point update stand |
 | [examples/inside](examples/inside/README.md) | Shugo booth inside: all intermediate formats and connections in a small store |
+| [examples/search](examples/search/README.md) | Svelte islands: search by two tables with filters in the address and two islands without searching on one page |
 | [examples/tailwind](examples/tailwind) | styles through Tailwind |
 | `cmd/shugo` | `shugo` |
 | `cmd/inside` | booth program «Shugo inside» |

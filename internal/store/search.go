@@ -12,9 +12,10 @@ const (
 	metaSearchDefault = "search:default:"
 )
 
-// SearchResultShape uses a nonempty binding ID as its key. The legacy
-// catalog uses the empty key in the same reserved shape.
-const SearchResultShape = CatalogResultShape
+// SearchResultShape is the shape of a reading of the first results of a
+// search; its key is the ID of the search. The shapes of questions to the
+// data database are row numbers of SQLite, which start at 1.
+const SearchResultShape int64 = 0
 
 // SearchBinding identifies the index snapshot for one published search.
 type SearchBinding struct {

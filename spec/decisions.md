@@ -2,7 +2,7 @@
 
 Here is written what is decided without direct confirmation of the author of the project: where the answer was “don’t know”, “decision” or question before. Every decision has a reason. After approval, the decision is transferred to the “Decision” section of its document, after refusal redone. The numbers don’t change so that the links don’t break; every decision above tells you what happened to it.
 
-Decisions 1–27 taken during the assembly of the first version, 28–35 when switching to syntax Svelte 21 November 2026 years, 36–38 — 22 November 2026 The year when the shell appeared `src/site.html` Files are not HTML.
+Decisions 1–27 taken during the assembly of the first version, 28–35 when switching to syntax Svelte 21 November 2026 years, 36–38 — 22 November 2026 The year when the shell appeared `src/site.html` Files are not HTML, 39 Same time there was one search.
 
 ## 1. Data loading and expression are counted together, Go compares the result
 
@@ -342,3 +342,15 @@ The analysis of the usual templates is translated into the official parser Svelt
 - Export list `.shugo-export.json` lists the files of the modules. Export, which builds all pages again, removes from them those that the site no longer has; it finds pages in HTML by extension `.html`, as before.
 
 **Why not.** The page file name in HTML is output from the address, and the module file name is not: `/v1.2` can be both a `v1.2.html` page and a file. Without the route, exports would not know what to delete, and would leave an outdated file.
+
+## 39. Stand `examples/islands` removed
+
+**Waiting for approval.** The author agreed to leave one search, `search("table", { … })`, and transfer the stand `examples/islands` to it. It is impossible to translate it into one, so the stand is removed:
+
+- Price and availability signatures, discounts and filter by size built an old search on Go according to the store scheme, with options from the second table. General search gives columns of one table, and the SSR program on the island server does not calculate the expression: signatures would have to be put in the table ready. After the translation, the stand would become a copy of the product page from `examples/search`.
+- The islands without search — a counter and two islands on one page — went to `examples/search`, the `/counters` page.
+- The experimental reportsthe methods, checks, measurements, and history examinedare compressed into [Svelte islands](../docs/islands.md); the full text and measurement scripts remain in the git history, in the `islands` branch.
+- Old search tests that checked for common propertiesreader accuracy, route enumeration, module level search, write during calculationwere rewritten for general search.
+
+**What's lost.** Old search changed price right in the index by journal; general builds the table index anew when its column changes: on 100,000 products near 1.2 s.
+

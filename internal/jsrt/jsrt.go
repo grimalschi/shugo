@@ -18,9 +18,9 @@ var Source string
 //go:embed query.js
 var Query string
 
-//go:embed catalog.js
-var Catalog string
-
+// Search is the module of searches of tables: "shugo:search", which the
+// module shugo gives search from.
+//
 //go:embed search.js
 var Search string
 

@@ -63,7 +63,7 @@ All fields are optional. Unknown field is an error.
 | `site.json` | project framework: layout of templates with places for values and routes |
 | `sources.json` | from which files the project is assembled, with each hash, together with `src/site.html`, and versions of the frame and parser Svelte: according to it, `shugo update` understands that the project needs to be reassembled |
 | `assets/` | collected island styles and browser modules; files of previous builds are not deleted so that the server that still shows their pages finds them |
-| `search-*.sqlite` | published search indexes `search(…)`; `catalog-*.sqlite` — index `shugo:catalog` |
+| `search-*.sqlite` | `search(…)` Search Indexes |
 | `store.db` | storage |
 | `dist/` | site in files after `shugo export` |
 

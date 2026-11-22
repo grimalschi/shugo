@@ -36,10 +36,9 @@ const (
 // AssetsURL is where the files of the Assets folder are published.
 const AssetsURL = "/_assets/"
 
-const (
-	catalogModule = "shugo:catalog"
-	searchModule  = "shugo:search"
-)
+// searchModule is the framework's module of searches; a project takes
+// search from the module shugo.
+const searchModule = "shugo:search"
 
 // Result is a compiled project.
 type Result struct {
@@ -84,7 +83,7 @@ func Build(p *project.Project) (*Result, error) {
 	}
 	site := &skeleton.Site{
 		Origin: p.Config.Site, Redirects: p.Config.Redirects, Routes: routes, Shell: shell, Assets: []string{},
-		CatalogSearch: bundled.catalogSearch, Search: bundled.search,
+		Search: bundled.search,
 	}
 	if site.Origin == "" {
 		site.Origin = "http://localhost"
@@ -202,10 +201,11 @@ type sources struct {
 	Revision  int               `json:"revision"`
 }
 
-// The compiler can need a fresh build even when the page program format
-// and Svelte version stay the same. Revision 2 adds the search build protocol
-// to the generated bundle, along with the current compiler input tracking.
-const sourcesRevision = 2
+// The compiler can need a fresh build even when the format of the skeleton
+// and the version of Svelte stay the same. Revision 2 adds the search build
+// protocol to the generated bundle, along with the current compiler input
+// tracking; 3 takes search from the module shugo and drops shugo:catalog.
+const sourcesRevision = 3
 
 // sources hashes the files of the project that the compiled result depends on.
 func (b *builder) sources(bundled []string) sources {
@@ -467,13 +467,12 @@ func (b *builder) routes() ([]skeleton.Route, error) {
 
 // bundled is what the bundler made of the modules of all files.
 type bundled struct {
-	code, smap    []byte
-	files         []string        // the files of the project that went into the bundle
-	shared        map[string]bool // which files can be computed once for all pages
-	styles        []style         // the style sheets in the order they apply
-	warnings      []string
-	catalogSearch bool
-	search        bool
+	code, smap []byte
+	files      []string        // the files of the project that went into the bundle
+	shared     map[string]bool // which files can be computed once for all pages
+	styles     []style         // the style sheets in the order they apply
+	warnings   []string
+	search     bool
 }
 
 // bundle links the modules of all files, the code they import and the
@@ -511,29 +510,34 @@ func (b *builder) bundle(routes []skeleton.Route, islands *islandOutput) (*bundl
 
 	plugin := api.Plugin{Name: "shugo", Setup: func(build api.PluginBuild) {
 		rejectOldTemplates(build)
-		// shugo is the module the code of a project imports from, and so are
-		// shugo:search and shugo:catalog; the other shugo:… are the
-		// framework's own.
+		// shugo is the module the code of a project imports from; shugo:…
+		// are the framework's own, and the code generated from templates
+		// takes shugo:runtime. A search came from shugo:search, and from
+		// shugo:catalog in the experiment with islands, before 22 November
+		// 2026: such an import is told where search is now.
 		build.OnResolve(api.OnResolveOptions{Filter: `^shugo(:|$)`}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
 			path := args.Path
-			if path == "shugo" {
+			switch {
+			case path == "shugo":
 				path = shugoModule
+			case args.Namespace == "file" && (path == searchModule || path == "shugo:catalog"):
+				return api.OnResolveResult{}, fmt.Errorf(`search comes from the module shugo: import { search } from "shugo", and names its table: search("products", { … })`)
 			}
 			return api.OnResolveResult{Path: path, Namespace: "shugo"}, nil
 		})
 		build.OnLoad(api.OnLoadOptions{Filter: `.*`, Namespace: "shugo"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
-			contents := jsrt.Source
+			var contents string
 			switch args.Path {
+			case "shugo:runtime":
+				contents = jsrt.Source
 			case "shugo:entry":
 				contents = entry.String()
 			case "shugo:query":
 				contents = jsrt.Query
 			case shugoModule:
-				contents = `export { query, paginate, page } from "shugo:runtime";`
+				contents = "export { query, paginate, page } from \"shugo:runtime\";\nexport { search } from \"shugo:search\";"
 			case "shugo:wire":
 				contents = jsrt.Wire
-			case catalogModule:
-				contents = jsrt.Catalog
 			case searchModule:
 				contents = jsrt.Search
 			case "shugo:island-eval":
@@ -541,6 +545,8 @@ func (b *builder) bundle(routes []skeleton.Route, islands *islandOutput) (*bundl
 					return api.OnLoadResult{}, fmt.Errorf("the Svelte island evaluation module needs a %s import", project.IslandSuffix)
 				}
 				contents = islands.eval
+			default:
+				return api.OnLoadResult{}, fmt.Errorf(`there is no module %s: a project imports from "shugo"`, args.Path)
 			}
 			return api.OnLoadResult{Contents: &contents, Loader: api.LoaderJS, ResolveDir: root}, nil
 		})
@@ -694,7 +700,6 @@ func (b *builder) graph(metafile string, out *bundled) error {
 	}
 	// Esbuild's output graph excludes unused imports and tree-shaken code.
 	for _, file := range meta.Outputs {
-		out.catalogSearch = out.catalogSearch || file.Inputs["shugo:"+catalogModule].Bytes > 0
 		out.search = out.search || file.Inputs["shugo:"+searchModule].Bytes > 0
 	}
 	names := make([]string, 0, len(meta.Inputs))

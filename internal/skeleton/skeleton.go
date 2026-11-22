@@ -44,9 +44,8 @@ type Site struct {
 	// IslandPrograms holds the precompiled markup of request-bound islands
 	// and the component views they call. Keys are source-relative paths.
 	IslandPrograms map[string][]IslandOp `json:"islandPrograms,omitempty"`
-	// CatalogSearch prepares the legacy catalog default result during evaluation.
-	CatalogSearch bool `json:"catalogSearch,omitempty"`
-	// Search enables generic search requests while the project is evaluated.
+	// Search tells that the project searches tables: the indices of its
+	// searches are kept up to date while it is computed.
 	Search bool `json:"search,omitempty"`
 }
 

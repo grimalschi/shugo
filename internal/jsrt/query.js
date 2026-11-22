@@ -208,13 +208,13 @@ const comparisons = new Set(["=", "!=", "<", "<=", ">", ">=", "like", "in"]);
 // It belongs to that computation alone. A question asked, or a column read,
 // by another computation or after this one is over would leave nobody
 // depending on the answer; so both are refused, with what to do instead.
-let catalogAtModuleScope = false;
+// The searches asked for at the top of a module: their results are kept
+// in the module, so every computation may show them.
 let searchesAtModuleScope;
 
 export class Reads {
   constructor() {
     this.asked = [];
-    this.catalog = false;
     this.searches = undefined;
     // settled tells that the readings are told: nothing more may be asked
     // or read.
@@ -229,16 +229,14 @@ export class Reads {
   // computed.
   text() {
     this.settled = true;
-    const catalog = this.catalog || catalogAtModuleScope;
-    if (this.asked.length === 0 && !catalog && !this.searches && !searchesAtModuleScope) return "";
-    // Wire shape -1 reads the default search result and has no key.
-    const list = catalog ? [-1] : [];
-    // Wire shape -2 names one generic search by its declaration ID.
+    if (this.asked.length === 0 && !this.searches && !searchesAtModuleScope) return "";
+    // A reading of a search is -1 and the ID of the search.
+    const list = [];
     if (searchesAtModuleScope) {
-      for (const id of searchesAtModuleScope) list.push(-2, id);
+      for (const id of searchesAtModuleScope) list.push(-1, id);
     }
     if (this.searches) {
-      for (const id of this.searches) if (!searchesAtModuleScope?.has(id)) list.push(-2, id);
+      for (const id of this.searches) if (!searchesAtModuleScope?.has(id)) list.push(-1, id);
     }
     for (const one of this.asked) one.settle(list);
     return JSON.stringify(list);
@@ -264,17 +262,9 @@ export class Reads {
 // runs at a time and is all there is to know.
 let computing = null;
 
-// The default search result is a build input of the computation that asks
-// for it, including a list of pages or a shared block.
-export function readCatalog() {
-  if (computing?.mine()) {
-    computing.catalog = true;
-  } else {
-    // Module-level values can be shared by any consumer of the bundle.
-    catalogAtModuleScope = true;
-  }
-}
-
+// readSearch notes that the computation running now shows the first
+// results of a search: it is computed again when they change. Asked at the
+// top of a module, the search belongs to every computation.
 export function readSearch(id) {
   if (computing?.mine()) {
     (computing.searches ??= new Set()).add(id);

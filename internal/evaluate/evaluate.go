@@ -25,7 +25,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/grimalschi/shugo/internal/catalog"
 	"github.com/grimalschi/shugo/internal/compile"
 	"github.com/grimalschi/shugo/internal/data"
 	"github.com/grimalschi/shugo/internal/project"
@@ -69,18 +68,11 @@ type Report struct {
 	// Warnings tell what the run found worth knowing about the project,
 	// such as a component that is kept apart for nothing.
 	Warnings []string `json:"warnings,omitempty"`
-	// CatalogRecomputed reports that the new default search result required
-	// reevaluating pages whose build may have embedded that result.
-	CatalogRecomputed bool `json:"catalogRecomputed,omitempty"`
-	// CatalogPrices counts prices updated in the existing catalog projection.
-	CatalogPrices int `json:"catalogPrices,omitempty"`
-	// SearchIndexes counts the distinct generic indices built in this update.
+	// SearchIndexes counts the indices of searches built in this update.
 	SearchIndexes int `json:"searchIndexes,omitempty"`
-	// SearchRetries counts attempts discarded while evaluating generic searches.
+	// SearchRetries counts attempts discarded because the data database
+	// changed while the searches and the pages were computed.
 	SearchRetries int `json:"searchRetries,omitempty"`
-	// CatalogRetries counts attempts discarded because the source advanced
-	// while the catalog and pages were being evaluated.
-	CatalogRetries int `json:"catalogRetries,omitempty"`
 	// Time is how long every step took, in milliseconds.
 	Time map[string]float64 `json:"time"`
 }
@@ -139,31 +131,29 @@ type Options struct {
 // Run brings the store up to date with the project. If it fails, the store
 // stays as it was.
 func Run(p *project.Project, compiled *compile.Result, st *store.Store, options Options) (*Report, error) {
-	if !compiled.Site.CatalogSearch && !compiled.Site.Search {
+	if !compiled.Site.Search {
 		return run(p, compiled, st, options)
 	}
+	// The indices of searches and the pages read the data database on
+	// connections of their own: a write between those reads could leave
+	// them at two states of the data, so the run starts over.
 	started := time.Now()
 	const attempts = 3
 	for retry := range attempts {
 		report, err := run(p, compiled, st, options)
-		if errors.Is(err, catalogSourceMoved) {
+		if errors.Is(err, sourceMoved) {
 			continue
 		}
 		if err == nil && retry > 0 {
-			if compiled.Site.CatalogSearch {
-				report.CatalogRetries = retry
-			}
-			if compiled.Site.Search {
-				report.SearchRetries = retry
-			}
+			report.SearchRetries = retry
 			report.Time["total"] = float64(time.Since(started).Microseconds()) / 1000
 		}
 		return report, err
 	}
-	return nil, fmt.Errorf("the source database changed during all %d search update attempts; retry once it settles", attempts)
+	return nil, fmt.Errorf("the data database changed during all %d attempts to compute the searches; update again once it settles", attempts)
 }
 
-var catalogSourceMoved = errors.New("the source database changed during search evaluation")
+var sourceMoved = errors.New("the data database changed while the searches were computed")
 
 func run(p *project.Project, compiled *compile.Result, st *store.Store, options Options) (*Report, error) {
 	started := time.Now()
@@ -212,19 +202,7 @@ func run(p *project.Project, compiled *compile.Result, st *store.Store, options 
 		}
 	}()
 	if compiled.Site.Search && p.Data() == "" {
-		return nil, errors.New("shugo:search needs a data database in shugo.json")
-	}
-	if compiled.Site.CatalogSearch && p.Data() == "" {
-		return nil, errors.New("shugo:catalog search() needs a data database in shugo.json")
-	}
-	if !compiled.Site.CatalogSearch && (options.Whole || kept != compiled.ID) {
-		if name, err := u.Catalog(); err != nil {
-			return nil, err
-		} else if name != "" {
-			if err := u.SetCatalog("", nil); err != nil {
-				return nil, err
-			}
-		}
+		return nil, errors.New(`search() reads a table of the data database, and this project names none. Name it in shugo.json: { "data": "data/site.db" }`)
 	}
 	if !compiled.Site.Search && kept != compiled.ID {
 		if err := clearSearch(u); err != nil {
@@ -338,7 +316,7 @@ func shared(w *worker, k *keeper) error {
 // tell what has changed since the records were computed.
 func tracked(w *worker, k *keeper, path string, whole bool, took func(string)) error {
 	var opened os.FileInfo
-	if k.site.CatalogSearch || k.site.Search {
+	if k.site.Search {
 		// Search projections and evaluation open their own connections
 		// using this path. The journal belongs to the file we open here.
 		opened, _ = os.Stat(path)
@@ -357,11 +335,7 @@ func tracked(w *worker, k *keeper, path string, whole bool, took func(string)) e
 	}
 	var journal string
 	var at int64
-	// A previous build may have published data from different journal
-	// positions. Reconcile both pages and catalog once during migration.
-	var legacyCatalogPending bool
-	fmt.Sscanf(state, "%s %d %t", &journal, &at, &legacyCatalogPending)
-	whole = whole || (k.site.CatalogSearch && legacyCatalogPending)
+	fmt.Sscanf(state, "%s %d", &journal, &at)
 	k.report.Data = &DataReport{}
 
 	var changes []data.Change
@@ -380,7 +354,6 @@ func tracked(w *worker, k *keeper, path string, whole bool, took func(string)) e
 			return err
 		}
 	}
-	var prepared catalogPreparation
 	if k.site.Search {
 		took("data")
 		w.search, err = prepareSearch(w.project, k.update, source, changes, whole)
@@ -388,20 +361,6 @@ func tracked(w *worker, k *keeper, path string, whole bool, took func(string)) e
 			return err
 		}
 		took("search")
-	}
-	if k.site.CatalogSearch {
-		took("data")
-		plan := catalog.UpdatePlan{Rebuild: whole}
-		if !whole {
-			plan = catalog.PlanUpdate(source, changes)
-		}
-		prepared, err = w.prepareCatalog(k.update, plan)
-		if err != nil {
-			return err
-		}
-		defer prepared.discard()
-		k.report.CatalogPrices = prepared.prices
-		took("catalog")
 	}
 	if whole {
 		k.report.Data.Whole = true
@@ -413,14 +372,6 @@ func tracked(w *worker, k *keeper, path string, whole bool, took func(string)) e
 		readers, err = k.shapes.reached(changes)
 		if err != nil {
 			return err
-		}
-		if prepared.changed {
-			if err := k.update.Readers(store.CatalogResultShape, nil, func(reader string) {
-				readers[reader] = struct{}{}
-				k.report.CatalogRecomputed = true
-			}); err != nil {
-				return err
-			}
 		}
 		if w.search != nil {
 			for _, id := range w.search.changed {
@@ -441,29 +392,26 @@ func tracked(w *worker, k *keeper, path string, whole bool, took func(string)) e
 	if err != nil {
 		return err
 	}
-	if k.site.CatalogSearch || k.site.Search {
+	if k.site.Search {
 		// Journal deltas, search projections and page scripts can
 		// read on different connections. Any write in this window may
 		// have made one of those reads see a different source generation.
 		current, err := os.Stat(path)
 		if errors.Is(err, os.ErrNotExist) {
-			return catalogSourceMoved
+			return sourceMoved
 		}
 		if err != nil {
 			return err
 		}
 		if opened == nil || !os.SameFile(opened, current) {
-			return catalogSourceMoved
+			return sourceMoved
 		}
 		moved, err := source.Moved(now)
 		if err != nil {
 			return err
 		}
 		if moved {
-			return catalogSourceMoved
-		}
-		if err := prepared.publish(k.update); err != nil {
-			return err
+			return sourceMoved
 		}
 	}
 	k.report.Data.Position = now

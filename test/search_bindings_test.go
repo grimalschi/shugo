@@ -14,13 +14,13 @@ func TestSearchBindingsShareIndexAndTrackTheirReaders(t *testing.T) {
 {"data":"data/shop.db"}
 -- src/pages/cups.svelte --
 <script>
-  import { search } from "shugo:search"
+  import { search } from "shugo"
   const cups = search("products", { text: ["title"], where: { category: "cups" }, pageSize: 1 })
 </script>
 <a href={cups.endpoint}>{cups.hits[0].title}</a>
 -- src/pages/plates.svelte --
 <script>
-  import { search } from "shugo:search"
+  import { search } from "shugo"
   const plates = search("products", { text: ["title"], where: { category: "plates" }, pageSize: 2 })
 </script>
 <a href={plates.endpoint}>{plates.hits[0].title}</a>
@@ -90,7 +90,7 @@ func TestSearchDuringModuleInitialization(t *testing.T) {
 -- shugo.json --
 {"data":"data/shop.db"}
 -- src/lib/articles.js --
-import { search } from "shugo:search";
+import { search } from "shugo";
 export const articles = search("articles", { fields: ["title"] });
 -- src/pages/index.svelte --
 <script>
@@ -120,7 +120,7 @@ func TestSearchBindingRemovedWhenThePageStopsSearching(t *testing.T) {
 -- src/pages/[slug].svelte --
 <script module>
   import { query } from "shugo"
-  import { search } from "shugo:search"
+  import { search } from "shugo"
   export const getStaticPaths = () => [{ params: { slug: "articles" } }]
 </script>
 <script>

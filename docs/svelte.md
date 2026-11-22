@@ -1,6 +1,6 @@
 # Shugo and Svelte
 
-Ordinary `.svelte` Shugo the Official Parser Svelte 5.59.1. The markup program and the code for reading are built from the resulting tree. To `.island.svelte` Svelte It also compiles browser code, and Shugo prepares the program SSR with hydration marks. [Templates](../spec/templates.md) · [SSR Islands on Go](../examples/islands/GO-SSR.md)
+Ordinary `.svelte` Shugo the Official Parser Svelte 5.59.1. The markup program and the code for reading are built from the resulting tree. To `.island.svelte` Svelte It also compiles browser code, and Shugo prepares the program SSR with hydration marks. [Templates](../spec/templates.md) · [Svelte islands](islands.md)
 
 ## How Shugo repeats Svelte
 
@@ -29,22 +29,13 @@ The document around the Svelte page does not write: `render()` gives the head an
 - **Random pages.** `TestRandomPages` writes pages at random and considers them HTML as its model on Go, independent of the Shugo code. The model is checked with Svelte 5.59.1 on 400 random pages: matched all. In the course of reconciliation, two discrepancies of Shugo with Svelte were found and corrected: `class` and `style` without value.
 - Before comparing, Svelte removes hydration tags, and the style class is removed from both: Svelte considers it from a different file path and does not put it on all elements ([Styles](../spec/styles.md)).
 
-When updating Svelte synchronously change the built-in compiler, the package version in the island stand and benchmark tests. [Built-in compiler](../internal/syntax/vendor/README.md)
+When updating Svelte synchronously change the built-in compiler, the version of the package in `examples/search` and `test/svelte` and benchmark tests. [Built-in compiler](../internal/syntax/vendor/README.md)
 
 ## Cost of analysis and small changes
 
 For example, `examples/basic` cold build from the new catalog took 43 ms with the former parser and 152 ms with the official. The compilation phase was taken by 20 and 130 ms respectively. These are the medians of seven alternate runs on Bun.
 
-Below is the full time `shugo update` on the island stand and a complete re-creation of the FTS5 image. For each action, the median of three repetitions is specified. When editing data, compilation is skipped.
-
-| Edit | 1 000 | 100 000 |
-| --- | ---: | ---: |
-| Field not in the search projection | 15 ms | 14 ms |
-| Price of goods from the first issue | 107 ms | 4.80 s |
-| Indexed description of goods outside the first issue | 64 ms | 4.76 s |
-| Adding HTML to one template | 0.63 s | 5.99 s |
-
-From 4.80 s price updates on a large base, 4.76 s took a new snapshot of the index. After editing the description, zero pages were recalculated. Changing the template in this stand starts the complete build, including the index. [Catalog Stand](../examples/islands/GO-SSR.md)
+How much does it cost to update a site with a search - changing the column outside the index and inside it - in [Svelte](islands.md#search).
 
 ## Test: How models write templates without documentation
 

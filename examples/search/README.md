@@ -2,6 +2,8 @@
 
 One Svelte island serves both products and articles. The products page uses column names directly. The articles page binds the same form fields to section, reading time, and publication status. Each result set has its own API endpoint. [Products](src/pages/products.svelte) · [Articles](src/pages/articles.svelte) · [Search island](src/components/Search.island.svelte)
 
+The `/counters` page contains two islands that use no search. Each has its own state, and the page loads the island module once. [Counter](src/components/Counter.island.svelte) · [Page](src/pages/counters.svelte) · [How islands work](../../docs/islands.md)
+
 Run the example from the repository root. The seed command expects a new database for this example.
 
 ```sh

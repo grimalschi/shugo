@@ -19,6 +19,7 @@ Normal file `.svelte` the Official Parser Svelte 5. From his tree Shugo builds a
 - Templates are `.svelte` files, the island is `.island.svelte`; their official parser Svelte 5.59.1 (22 solution November 2026 year). Prior to that, the files were called `.shugo`, and Shugo parsed them with its parser.
 - An error in expression shows a row and column in the `.svelte` file.
 - Data and page address are taken by import from the module `shugo`: `import { query, paginate, page } from "shugo"`; `page` How to `page` the City of `$app/state` the City of London SvelteKitGlobal facility `Shugo` No, and the transition time with two records is also (decision 22 November 2026 years).
+- `search` for islands is also from the `shugo` module; recording `shugo:search` is a hint error (22 solution November 2026 year).
 
 ## Implemented, pending approval
 
@@ -67,6 +68,7 @@ Normal file `.svelte` the Official Parser Svelte 5. From his tree Shugo builds a
   | `page.params` | address options: `{ slug: "jug" }` for `/products/[slug]` |
   | `page.route.id` | route: `/products/[slug]` |
   | `page.status` | 200, and the page `404.svelte` — 404 |
+  | `search(table, { … })` | search by table for islands, see [Page scripts](scripts.md#search-by-table) |
 
   The query belongs to what is being calculated: a page or a common component. Outside of computing for example, at the top level of a module it is an error with an explanation. The component that takes `page` or `paginate`, either by itself or through imported modules, is calculated for each page separately, see. [Components](components.md#common-components). Writing `Shugo.query` and `Astro.params` is an error with a hint of what to import.
 - `await` no: the page is calculated without waiting, because `query` responds immediately. What is expected and done once - for example, code highlighting - is expected at the top level of the module from `src/lib/`.
