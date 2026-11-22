@@ -1,6 +1,6 @@
 # Storage
 
-Storage is what remains between the computation stage and the runtime: the project program and the values of all pages.
+Storage is what remains between the computation stage and the runtime: the project framework and the values of all pages.
 
 ## Decisions
 
@@ -28,9 +28,9 @@ The reasons are in [20](../spec/decisions.md#20-storage).
 | `route` | route number | that read the list of route pages and whether it distributes `props` |
 | `shape`, `reads` | type of reading; view, search values and reader | reads Expanded for Search: Those who read the changed line are found ([Change tracking](change-tracking.md)) |
 | `plan` | question to the database | questions for which the project database already has an index |
-| `meta` | name | project program, build name, storage version, its random name, the beginning of the history of changes, the results, to which line of the log data are taken into account |
+| `meta` | name | project framework, build name, storage version, its random name, the beginning of the history of changes, the results, to which line of the log data are taken into account |
 
-The project program is located in the storage next to the records and changes with them with one transaction. Rantime does not need other build files.
+The project framework lies in the storage next to the records and changes with them with one transaction. Rantime does not need other build files.
 
 The version grows with each update. The version of the record is the one in which the record was last changed; it is written by the update itself along with the record, there are no other marks. Exports find what has changed since last time: [Runtime](runtime.md#export). A complete reassembly of the project begins anew: `origin` in `meta` is the version with which the repository knows all the changes.
 
@@ -85,7 +85,7 @@ What remains is a limitation: all values are text. If the runtime needs to disti
 
 ### How the tape can not “fit” with the page
 
-Rantime follows the pattern program and takes values from the tape in order. The program says: here is the text, here is the branch number, here is the number of elements. The tape does not converge if the branch number is not in place of the number, values are less or more than the template reads, or blocks inside are not so much as calls of components and snippets calculated on the spot.
+Rantime follows the frame of the template and takes values from the tape in order. The framework says: here is the text, here is the branch number, here is the number of elements. The tape does not converge if the branch number is not in place of the number, values are less or more than the template reads, or blocks inside are not so much as calls of components and snippets calculated on the spot.
 
 When working properly, this does not happen. But the tape writes a stage that performs the project code, and this stage does not trust the runtime. Therefore, there are two checks: when accepting a record and when assembling a page. In the second case, the runtime responds with an error, and not with a corrupted HTML.
 

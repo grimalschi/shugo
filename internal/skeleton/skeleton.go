@@ -1,8 +1,8 @@
-// Package program is what the compiler makes of a project for the runtime:
+// Package skeleton is what the compiler makes of a project for the runtime:
 // the markup of every template with the places where values go. It holds no
 // expression and no code of the project, so the runtime can show any page
 // without running anything the project's author wrote.
-package program
+package skeleton
 
 import (
 	"bytes"
@@ -12,7 +12,7 @@ import (
 )
 
 // Version changes when an older runtime could not read the format any more,
-// or this one an older format: 2 is the program of Svelte templates, with
+// or this one an older format: 2 is the skeleton of Svelte templates, with
 // snippets and <svelte:element>; 3 writes addresses as they are, as Svelte
 // does, and has no operation of its own for them.
 const Version = 3
@@ -116,7 +116,7 @@ func (o Op) MarshalJSON() ([]byte, error) {
 }
 
 // marshal writes JSON without escaping "<", ">" and "&": markup is most of
-// what a program holds.
+// what a skeleton holds.
 func marshal(value any) ([]byte, error) {
 	var out bytes.Buffer
 	encoder := json.NewEncoder(&out)
@@ -131,7 +131,7 @@ func (o *Op) UnmarshalJSON(data []byte) error {
 	var parts []json.RawMessage
 	var kind string
 	if err := json.Unmarshal(data, &parts); err != nil || len(parts) == 0 || json.Unmarshal(parts[0], &kind) != nil || len(kind) != 1 {
-		return fmt.Errorf("program: damaged operation %.40s", data)
+		return fmt.Errorf("skeleton: damaged operation %.40s", data)
 	}
 	*o = Op{Kind: Kind(kind[0])}
 	parts = parts[1:]
@@ -139,7 +139,7 @@ func (o *Op) UnmarshalJSON(data []byte) error {
 	optional := o.Kind == Render && len(parts) > 0 && len(parts[0]) > 0 && parts[0][0] == '"'
 	if o.hasText() || optional {
 		if len(parts) == 0 || json.Unmarshal(parts[0], &o.Text) != nil {
-			return fmt.Errorf("program: operation %q has no text", kind)
+			return fmt.Errorf("skeleton: operation %q has no text", kind)
 		}
 		parts = parts[1:]
 	}
@@ -177,13 +177,13 @@ func (o Op) check() error {
 	case If:
 		want = max(1, len(o.Bodies))
 	default:
-		return fmt.Errorf("program: unknown operation %q", rune(o.Kind))
+		return fmt.Errorf("skeleton: unknown operation %q", rune(o.Kind))
 	}
 	if len(o.Bodies) != want {
-		return fmt.Errorf("program: operation %q has %d bodies", rune(o.Kind), len(o.Bodies))
+		return fmt.Errorf("skeleton: operation %q has %d bodies", rune(o.Kind), len(o.Bodies))
 	}
 	if o.Kind == Render && o.Text != "" && o.Text != Last {
-		return fmt.Errorf("program: a render with the text %q", o.Text)
+		return fmt.Errorf("skeleton: a render with the text %q", o.Text)
 	}
 	return nil
 }
@@ -203,7 +203,7 @@ func Decode(data []byte) (*Site, error) {
 		return nil, err
 	}
 	if site.Version != Version {
-		return nil, fmt.Errorf("program: the project was compiled for format %d, this runtime reads format %d", site.Version, Version)
+		return nil, fmt.Errorf("skeleton: the project was compiled for format %d, this runtime reads format %d", site.Version, Version)
 	}
 	return site, nil
 }

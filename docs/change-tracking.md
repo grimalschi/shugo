@@ -258,7 +258,7 @@ Go compares prints to saved ones. The template is only run where the print has c
 
 | Stage | Who performs | What does |
 | --- | --- | --- |
-| 1. Compilation | Go | three things are done from each `.shugo` file: data code for `load.mjs`, template for `render.mjs` and tree of pattern dependencies; the program for the runtime remains as is |
+| 1. Compilation | Go | from each `.shugo` file does three things: data code for `load.mjs`, template for `render.mjs` and tree of pattern dependencies; frame for runtime remains as is |
 | 2. Downloading data | JS, `load.mjs` | executes the data code of all pages and common blocks and counts the fingerprint of each |
 | 3. Comparison | Go | compares the prints to saved ones and names pages and shared blocks that have changed or appeared |
 | 4. Calculating Expressions | JS, `render.mjs` | executes templates of only named pages and blocks |

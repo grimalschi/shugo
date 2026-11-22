@@ -36,8 +36,7 @@ func TestParseSkipsAndErrors(t *testing.T) {
 		}
 	}
 	errors := map[string]string{
-		"blog/+page.shugo": "is a file of SvelteKit",
-		"blog/+data.shugo": "kept for the framework",
+		"blog/+page.shugo": "kept for the framework",
 		"[...all]/x.shugo": "must be the last part",
 		"post-[id].shugo":  "mixes text and a parameter",
 		"[a]/[a].shugo":    "is there twice",

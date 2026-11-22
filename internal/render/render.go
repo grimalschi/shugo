@@ -12,8 +12,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/grimalschi/shugo/internal/program"
 	"github.com/grimalschi/shugo/internal/record"
+	"github.com/grimalschi/shugo/internal/skeleton"
 )
 
 // Source gives the renderer the shared blocks that records name.
@@ -29,7 +29,7 @@ const (
 )
 
 // Page appends the HTML of a page to dst.
-func Page(dst []byte, site *program.Site, rec *record.Record, src Source) ([]byte, error) {
+func Page(dst []byte, site *skeleton.Site, rec *record.Record, src Source) ([]byte, error) {
 	r := renderer{site: site, src: src, out: dst, start: len(dst)}
 	if err := r.show(rec, rec.Top, nil); err != nil {
 		return dst, err
@@ -40,7 +40,7 @@ func Page(dst []byte, site *program.Site, rec *record.Record, src Source) ([]byt
 // Check tells whether the values of one block fit its template: whether
 // showing the block would read exactly its values and exactly as many
 // components as it has. The blocks inside it are not looked at.
-func Check(site *program.Site, b *record.Block) error {
+func Check(site *skeleton.Site, b *record.Block) error {
 	ops, ok := site.Part(b.File, b.Part)
 	if !ok {
 		return fmt.Errorf("there is no template %d, part %d", b.File, b.Part)
@@ -50,7 +50,7 @@ func Check(site *program.Site, b *record.Block) error {
 }
 
 type renderer struct {
-	site  *program.Site
+	site  *skeleton.Site
 	src   Source
 	out   []byte
 	start int
@@ -117,7 +117,7 @@ func (r *renderer) show(rec *record.Record, at int, from *frame) error {
 
 // run goes through the operations of a block and checks that they took all
 // of its values and all of its children.
-func (r *renderer) run(ops []program.Op, c *cursor) error {
+func (r *renderer) run(ops []skeleton.Op, c *cursor) error {
 	if err := r.ops(ops, c); err != nil {
 		return fmt.Errorf("%s: %w", r.site.Files[c.block.File].Path, err)
 	}
@@ -158,28 +158,28 @@ func (c *cursor) number(limit int) (int, error) {
 	return n, nil
 }
 
-func (r *renderer) ops(ops []program.Op, c *cursor) error {
+func (r *renderer) ops(ops []skeleton.Op, c *cursor) error {
 	for i := range ops {
 		op := &ops[i]
 		switch op.Kind {
-		case program.Markup:
+		case skeleton.Markup:
 			r.out = append(r.out, op.Text...)
 
-		case program.Text:
+		case skeleton.Text:
 			value, err := c.next()
 			if err != nil {
 				return err
 			}
 			r.out = appendEscaped(r.out, value, false)
 
-		case program.HTML:
+		case skeleton.HTML:
 			value, err := c.next()
 			if err != nil {
 				return err
 			}
 			r.out = append(r.out, value...)
 
-		case program.Attr:
+		case skeleton.Attr:
 			value, err := c.next()
 			if err != nil {
 				return err
@@ -188,7 +188,7 @@ func (r *renderer) ops(ops []program.Op, c *cursor) error {
 				return err
 			}
 
-		case program.Spread:
+		case skeleton.Spread:
 			count, err := c.number(len(c.rest))
 			if err != nil {
 				return err
@@ -210,7 +210,7 @@ func (r *renderer) ops(ops []program.Op, c *cursor) error {
 				}
 			}
 
-		case program.If:
+		case skeleton.If:
 			taken, err := c.number(len(op.Bodies))
 			if err != nil {
 				return err
@@ -221,7 +221,7 @@ func (r *renderer) ops(ops []program.Op, c *cursor) error {
 				}
 			}
 
-		case program.For:
+		case skeleton.For:
 			count, err := c.number(maxOutput)
 			if err != nil {
 				return err
@@ -240,7 +240,7 @@ func (r *renderer) ops(ops []program.Op, c *cursor) error {
 				}
 			}
 
-		case program.Call:
+		case skeleton.Call:
 			if c.child >= len(c.block.Children) {
 				return errors.New("the block has fewer components than its template shows")
 			}
@@ -252,16 +252,16 @@ func (r *renderer) ops(ops []program.Op, c *cursor) error {
 				return err
 			}
 
-		case program.Render:
+		case skeleton.Render:
 			value, err := c.next()
 			if err != nil {
 				return err
 			}
-			if err := r.snippet(value, c, op.Text == program.Last); err != nil {
+			if err := r.snippet(value, c, op.Text == skeleton.Last); err != nil {
 				return err
 			}
 
-		case program.Element:
+		case skeleton.Element:
 			tag, err := c.next()
 			if err != nil {
 				return err
@@ -276,7 +276,7 @@ func (r *renderer) ops(ops []program.Op, c *cursor) error {
 			if err := r.ops(op.Bodies[0], c); err != nil {
 				return err
 			}
-			if program.IsVoid(string(tag)) {
+			if skeleton.IsVoid(string(tag)) {
 				r.out = append(r.out, "/>"...)
 				continue
 			}
@@ -286,7 +286,7 @@ func (r *renderer) ops(ops []program.Op, c *cursor) error {
 			}
 			r.out = append(append(append(r.out, "</"...), tag...), '>')
 
-		case program.Mount:
+		case skeleton.Mount:
 			r.out = append(r.out, r.site.Mounts[op.Text]...)
 
 		default:

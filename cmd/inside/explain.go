@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/grimalschi/shugo/internal/data"
-	"github.com/grimalschi/shugo/internal/program"
 	"github.com/grimalschi/shugo/internal/record"
+	"github.com/grimalschi/shugo/internal/skeleton"
 )
 
 func uvarint(b []byte) (uint64, int) { return binary.Uvarint(b) }
@@ -26,7 +26,7 @@ type byteRow struct {
 
 // annotate goes through a record as record.Decode does and tells what
 // every few bytes mean.
-func annotate(data []byte, site *program.Site) []byteRow {
+func annotate(data []byte, site *skeleton.Site) []byteRow {
 	var out []byteRow
 	at := 0
 	take := func(n int, meaning string) {
@@ -104,7 +104,7 @@ type walkStep struct {
 
 // walk goes through the template of a block as the renderer does and tells,
 // for every operation, which value of the tape it takes.
-func walk(site *program.Site, rec *record.Record, at int, values []string, sharedOwner bool) ([]walkStep, error) {
+func walk(site *skeleton.Site, rec *record.Record, at int, values []string, sharedOwner bool) ([]walkStep, error) {
 	b := &rec.Blocks[at]
 	ops, ok := site.Part(b.File, b.Part)
 	if !ok {
@@ -119,7 +119,7 @@ func walk(site *program.Site, rec *record.Record, at int, values []string, share
 }
 
 type walker struct {
-	site   *program.Site
+	site   *skeleton.Site
 	rec    *record.Record
 	block  *record.Block
 	values []string
@@ -151,29 +151,29 @@ func (w *walker) add(depth int, op, what, value string, place int) {
 	w.out = append(w.out, walkStep{Depth: depth, Op: op, What: what, Value: value, Place: place})
 }
 
-func (w *walker) ops(ops []program.Op, depth int) error {
+func (w *walker) ops(ops []skeleton.Op, depth int) error {
 	for _, op := range ops {
 		switch op.Kind {
-		case program.Markup:
+		case skeleton.Markup:
 			w.add(depth, "r", "unchanged markup", op.Text, 0)
-		case program.Text, program.HTML:
+		case skeleton.Text, skeleton.HTML:
 			value, place, err := w.take()
 			if err != nil {
 				return err
 			}
 			what := "text: escaped"
-			if op.Kind == program.HTML {
+			if op.Kind == skeleton.HTML {
 				what = "rendered HTML: inserted as-is"
 			}
 			w.add(depth, string(rune(op.Kind)), what, value, place)
-		case program.Attr:
+		case skeleton.Attr:
 			value, place, err := w.take()
 			if err != nil {
 				return err
 			}
 			sign := map[byte]string{'=': "attribute with a value", '-': "no attribute", '+': "attribute name only"}[firstByte(value)]
 			w.add(depth, "a", fmt.Sprintf("attribute %s — %s", op.Text, sign), value, place)
-		case program.Spread:
+		case skeleton.Spread:
 			count, place, err := w.number()
 			if err != nil {
 				return err
@@ -191,7 +191,7 @@ func (w *walker) ops(ops []program.Op, depth int) error {
 				w.add(depth+1, "s", "name", name, p1)
 				w.add(depth+1, "s", "value", value, p2)
 			}
-		case program.If:
+		case skeleton.If:
 			taken, place, err := w.number()
 			if err != nil {
 				return err
@@ -202,7 +202,7 @@ func (w *walker) ops(ops []program.Op, depth int) error {
 					return err
 				}
 			}
-		case program.For:
+		case skeleton.For:
 			count, place, err := w.number()
 			if err != nil {
 				return err
@@ -220,14 +220,14 @@ func (w *walker) ops(ops []program.Op, depth int) error {
 					return err
 				}
 			}
-		case program.Call:
+		case skeleton.Call:
 			child, err := w.nextChild()
 			if err != nil {
 				return err
 			}
 			w.add(depth, "c", "component: next nested block", "", 0)
 			w.link(child)
-		case program.Render:
+		case skeleton.Render:
 			value, place, err := w.take()
 			if err != nil {
 				return err
@@ -254,12 +254,12 @@ func (w *walker) ops(ops []program.Op, depth int) error {
 					}
 				}
 				what := fmt.Sprintf("{@render %s()}: snippet supplied by the caller; %s", name, where)
-				if op.Text == program.Last {
+				if op.Text == skeleton.Last {
 					what += "; only the last block is shown because the page has one <title>"
 				}
 				w.add(depth, "n", what, value, place)
 			}
-		case program.Element:
+		case skeleton.Element:
 			tag, place, err := w.take()
 			if err != nil {
 				return err
@@ -272,12 +272,12 @@ func (w *walker) ops(ops []program.Op, depth int) error {
 			if err := w.ops(op.Bodies[0], depth+1); err != nil {
 				return err
 			}
-			if !program.IsVoid(tag) {
+			if !skeleton.IsVoid(tag) {
 				if err := w.ops(op.Bodies[1], depth+1); err != nil {
 					return err
 				}
 			}
-		case program.Mount:
+		case skeleton.Mount:
 			w.add(depth, "m", fmt.Sprintf("framework insertion point «%s» on every page", op.Text), w.site.Mounts[op.Text], 0)
 		}
 	}
@@ -311,14 +311,14 @@ func firstByte(s string) byte {
 	return s[0]
 }
 
-// opNames explains the operations of a program.
+// opNames explains the operations of a skeleton.
 var opNames = map[string]string{
 	"r": "markup", "t": "text", "h": "rendered HTML", "a": "attribute",
 	"s": "spread attributes", "i": "conditional", "f": "loop", "c": "component", "n": "{@render}",
 	"e": "<svelte:element>", "m": "insertion point",
 }
 
-// opLine is one operation of a program as the report lists it.
+// opLine is one operation of a skeleton as the report lists it.
 type opLine struct {
 	Depth int
 	Code  string
@@ -327,25 +327,25 @@ type opLine struct {
 	Takes int // how many values it takes from the tape, when that is known
 }
 
-// listOps writes out a part of a program.
-func listOps(ops []program.Op, depth int) []opLine {
+// listOps writes out a part of a skeleton.
+func listOps(ops []skeleton.Op, depth int) []opLine {
 	var out []opLine
 	for _, op := range ops {
 		code := string(rune(op.Kind))
 		line := opLine{Depth: depth, Code: code, Name: opNames[code], Text: op.Text}
 		switch op.Kind {
-		case program.Text, program.HTML, program.Attr, program.If, program.For, program.Render, program.Element:
+		case skeleton.Text, skeleton.HTML, skeleton.Attr, skeleton.If, skeleton.For, skeleton.Render, skeleton.Element:
 			line.Takes = 1
 		}
 		out = append(out, line)
 		for i, body := range op.Bodies {
 			label := ""
 			switch op.Kind {
-			case program.If:
+			case skeleton.If:
 				label = fmt.Sprintf("branch %d", i+1)
-			case program.For:
+			case skeleton.For:
 				label = map[int]string{0: "loop body", 1: "{:else}: empty list fallback"}[i]
-			case program.Element:
+			case skeleton.Element:
 				label = map[int]string{0: "attributes", 1: "content"}[i]
 			}
 			out = append(out, opLine{Depth: depth + 1, Name: label})

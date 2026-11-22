@@ -38,6 +38,6 @@ Rules:
 
 ## Open questions
 
-- Service files: `+layout`As in SvelteKitor `_layout`as in Fresh; folders with `+page`As in SvelteKit. Comparison — in [the Service Files](open-questions.md). Files SvelteKit `+page`, `+error` and `+server` The assembly does not accept and says that instead of them.
+- Service files: `+layout`, as in SvelteKit, or `_layout`, as in Fresh; folders with `+page`, as in SvelteKit. Compare in [the Service Files](open-questions.md).
 - The optional parameter `[[lang]]` is in [proposal for internationalization](../docs/proposals/i18n.md).
 - Pages not in HTML: `sitemap.xml`, `robots.txt`, RSS. In SvelteKit they are written in a file on TypeScript (`+server.ts` with `prerender = true`), rather than a template: see [question](open-questions.md).

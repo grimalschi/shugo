@@ -55,7 +55,7 @@ All fields are optional. Unknown field is an error.
 | File | What is it |
 | --- | --- |
 | `eval.mjs`, `eval.mjs.map` | the entire JS project for the calculation stage and source map |
-| `site.json` | project program: templates and routes |
+| `site.json` | project framework: layout of templates with places for values and routes |
 | `sources.json` | from which files the project is collected, with each hash: `shugo update` understands that the project has changed |
 | `assets/` | collected Styles |
 | `store.db` | storage |

@@ -9,7 +9,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/grimalschi/shugo/internal/program"
+	"github.com/grimalschi/shugo/internal/skeleton"
 	"github.com/grimalschi/shugo/internal/syntax"
 )
 
@@ -36,7 +36,7 @@ type (
 	markup struct{ text string }
 	// output writes the result of an expression: as text, or as markup for {@html}.
 	output struct {
-		kind program.Kind
+		kind skeleton.Kind
 		expr code
 	}
 	// constant is {@const name = value}: code that runs at its place and shows nothing.
@@ -44,7 +44,7 @@ type (
 	// attribute is an attribute whose value is computed: written by the
 	// rules of Svelte, and left out where they say so.
 	attribute struct {
-		kind    program.Kind // Attr, or URL for an address
+		kind    skeleton.Kind // Attr, or URL for an address
 		name    string
 		value   value
 		boolean bool
@@ -430,9 +430,9 @@ func (l *lowerer) node(n syntax.Node, ctx context) []node {
 					l.errorf(n.Start, "text cannot stand right inside <%s>: <%s> only allows <%s>", ctx.ancestors[0].name, ctx.ancestors[0].name, strings.Join(rule.only, ">, <"))
 				}
 			}
-			return []node{output{program.Text, code{n.Code.Text, n.Code.Start}}}
+			return []node{output{skeleton.Text, code{n.Code.Text, n.Code.Start}}}
 		case syntax.HTMLTag:
-			return []node{output{program.HTML, code{n.Code.Text, n.Code.Start}}}
+			return []node{output{skeleton.HTML, code{n.Code.Text, n.Code.Start}}}
 		case syntax.RenderTag:
 			return l.render(n)
 		}
@@ -743,16 +743,16 @@ func (l *lowerer) attributes(e *syntax.Element, name, hash string, svg bool, ctx
 				v := value{parts: []valuePart{{expr: &code{c.Text, c.Start}}}}
 				switch {
 				case a.Name == "value" && name == "textarea":
-					var n node = output{program.Text, code{c.Text, c.Start}}
+					var n node = output{skeleton.Text, code{c.Text, c.Start}}
 					content = &n
 				case a.Name == "value" && name == "select":
 					selectValue = &v
 				case a.Name == "this" || a.Name == "group":
 				case a.Name == "innerHTML":
-					var n node = output{program.HTML, code{c.Text, c.Start}}
+					var n node = output{skeleton.HTML, code{c.Text, c.Start}}
 					content = &n
 				case a.Name == "textContent" || a.Name == "innerText":
-					var n node = output{program.Text, code{c.Text, c.Start}}
+					var n node = output{skeleton.Text, code{c.Text, c.Start}}
 					content = &n
 				default:
 					plain = append(plain, entry{name: a.Name, value: v})
@@ -818,7 +818,7 @@ func (l *lowerer) attributes(e *syntax.Element, name, hash string, svg bool, ctx
 			out = append(out, markup{" " + attrName + `="` + escapeAttr(text) + `"`})
 			continue
 		}
-		out = append(out, attribute{kind: program.Attr, name: attrName, value: en.value, boolean: !svg && booleanAttribute(attrName)})
+		out = append(out, attribute{kind: skeleton.Attr, name: attrName, value: en.value, boolean: !svg && booleanAttribute(attrName)})
 	}
 	if !classDone && (len(classes) > 0 || hash != "") {
 		out = append(out, l.classAttr(value{parts: nil}, classes, hash))
@@ -855,7 +855,7 @@ func (l *lowerer) classAttr(v value, classes []directive, hash string) node {
 		}
 		return markup{` class="` + escapeAttr(text) + `"`}
 	}
-	return attribute{kind: program.Attr, name: "class", value: v, class: true, directives: classes, hash: hash}
+	return attribute{kind: skeleton.Attr, name: "class", value: v, class: true, directives: classes, hash: hash}
 }
 
 // styleAttr lowers the style of an element with its directives.
@@ -873,7 +873,7 @@ func (l *lowerer) styleAttr(v value, styles []directive) node {
 		text = strings.Join(strings.Fields(text), " ")
 		return markup{` style="` + escapeAttr(text) + `"`}
 	}
-	return attribute{kind: program.Attr, name: "style", value: v, style: true, directives: styles}
+	return attribute{kind: skeleton.Attr, name: "style", value: v, style: true, directives: styles}
 }
 
 // isEvent tells an attribute that handles an event in the browser: onclick.

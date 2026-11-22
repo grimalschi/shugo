@@ -52,13 +52,13 @@ The name of the shared block is composed of the file path and parameters: `compo
 
 **Why is the key not needed?** Key is needed when you compare the input data: the block recognizes the "own" element. Shugo compares the results. If you remove the fifth product from the list, the tapes of the others do not change and are not rewritten - without keys.
 
-## 5. The program of the whole project is one file, the rantime is common
+## 5. The framework of the entire project is one file, the rantime is common
 
-**The approach is approved by 21 November 2026 year:** program instead of Go-code project. The author asks for another name for the "pattern program" - options in [questions](open-questions.md).
+**The approach is approved by 21 November 2026 year:** frame instead of Go-code project. The name "frame" instead of "pattern program" approved 22 November 2026 year; in the code is a package `skeleton`.
 
-**What's done.** The compiler writes `_build/site.json`: templates of all files and routes. When calculating, this program is put in the storage next to the values. Rantime only needs a storage file and static files. Go code is not generated.
+**What's done.** The compiler writes `_build/site.json`: templates of all files and routes. When calculating this frame is put in the storage next to the values. Rantime only needs a storage file and static files. Go code is not generated.
 
-**Why not.** Answer to the question "page code or the whole project": the entire project, one file that the rantime reads once. The program and values change in a single transaction, so the server never sees new patterns with old values. The program is data, not code, so anything that runs Go is safe in itself: the worst thing that can happen is the wrong HTML.
+**Why not.** Answer to the question "page code or the whole project": the entire project, one file that the rantime reads once. The framework and values change with one transaction, so the server never sees new patterns with old values. The framework is data, not code, so anything that runs Go is safe in itself: the worst thing that can happen is the wrong HTML.
 
 **That's postponed.** Go-code generation as optional acceleration. The page assembly now takes microseconds, the win would be 12–15% from them.
 
@@ -183,7 +183,7 @@ Report `build`, `update` and `export` can be obtained in JSON (`-json`). JS-runt
 
 **21 November 2026 Year Approved**, along with a strict failed update: the update that fell is considered completely failed. The driver of SQLite remains on the pure Go.
 
-**What's done.** One file SQLite: records pages and shared blocks with feeds inside, who is what common block shows who read what from the project database, missing pages, service data with the project program - [Storage](../docs/storage.md#tables). The server reads the page entirely from one state. Update is one transaction.
+**What's done.** One file SQLite: records pages and shared blocks with ribbons inside, who is what common block shows who read what from the project database, missing pages, service data with the project framework - [Storage](../docs/storage.md#tables). The server reads the page entirely from one state. Update is one transaction.
 
 The driver is `modernc.org/sqlite`, without cgo. It is hidden behind the `store` package, you can replace it in one place.
 

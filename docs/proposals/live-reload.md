@@ -55,7 +55,7 @@ To know which pages are open, the page script names its address when it connects
 
 All site styles are collected in one file with a hash in the name, and a link to it framework inserts each page into `<head>` when it collects it HTML. The page entries on this file know nothing. Changing some styles therefore does not require calculating any pages: open pages get the word `css` with a new address and replace `<link>` as in Vite.
 
-Now `.css` changes the build name, and everything is calculated anew: a link to styles is included in the site program. It must be considered outside the build name.
+Now `.css` changes the build name, and everything is calculated anew: a link to styles is included in the site framework. It must be considered outside the build name.
 
 ### Error in browser
 

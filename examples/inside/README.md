@@ -1,6 +1,6 @@
 # Inside Shugo
 
-This small shop shows what passes between the stages of the framework: the source files, the JavaScript and template program that the compiler generates, the project database and its journal, the messages between Go and JavaScript, the stored records and their relationships, and what each update changes.
+This small shop shows what passes between the stages of the framework: the source files, the JavaScript and template skeleton that the compiler generates, the project database and its journal, the messages between Go and JavaScript, the stored records and their relationships, and what each update changes.
 
 ```sh
 go build -o bin/shugo ./cmd/shugo          # from the repository root

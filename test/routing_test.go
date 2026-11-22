@@ -137,8 +137,7 @@ func TestProjectMistakes(t *testing.T) {
 	cases := []struct{ name, files, want string }{
 		{"a parameter without getStaticPaths", "-- src/pages/[id].shugo --\n<p>x</p>", "src/pages/[id].shugo:1:1: the name of this page has a parameter"},
 		{"two pages of one address", "-- src/pages/a.shugo --\n<p>1</p>\n-- src/pages/a/index.shugo --\n<p>2</p>", "give the same addresses"},
-		{"an unknown + file", "-- src/pages/+config.shugo --\n<p>x</p>", "names that start with + are kept for the framework"},
-		{"a page of SvelteKit", "-- src/pages/about/+page.shugo --\n<p>x</p>", "+page is a file of SvelteKit: in Shugo a page is a file named after its address"},
+		{"an unknown + file", "-- src/pages/+page.shugo --\n<p>x</p>", "names that start with + are kept for the framework"},
 		{"a snippet nobody gave", "-- src/pages/index.shugo --\n<script>\nlet { children } = $props()\n</script>\n{@render children()}", "{@render …} shows a snippet, and this is undefined"},
 		{"a missing parameter", "-- src/pages/[id].shugo --\n<script module>\nexport const getStaticPaths = () => [{ params: {} }]\n</script>\n<p>x</p>", `returned params without "id"`},
 		{"an address twice", "-- src/pages/[id].shugo --\n<script module>\nexport const getStaticPaths = () => [{ params: { id: \"a\" } }, { params: { id: \"a\" } }]\n</script>\n<p>x</p>", "returned the address /a twice"},

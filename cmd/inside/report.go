@@ -29,7 +29,7 @@ type report struct {
 
 type sourceFile struct {
 	Path, Source, Module string
-	Number               int // the number of the file in the program; -1 for files that are not templates
+	Number               int // the number of the file in the skeleton; -1 for files that are not templates
 	Shared               bool
 	Outlets              []string
 	Parts                []partView

@@ -19,7 +19,7 @@ The document describes what the page is built of and how the change in data reac
 ### Page records
 
 - **Block** is one display of one template: a page, layout, component or snippet.
-- **Tape** is the value of block expressions in the order of the template. There is no markup in the tape: it lies in the project program, one for all template impressions.
+- **Tape** — block expression values in the order of the template. There is no markup in the tape: it lies in the project framework, one for all template impressions.
 - **Page Record** is a list of its blocks. The block has its template, its tape, the blocks inside it and the snippets that the caller gave it.
 - **Shared block** is a component that shows the same thing on any page. It has its own record under the name; pages link to that name.
 

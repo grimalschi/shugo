@@ -1,13 +1,13 @@
 // Package compile turns the sources of a project into what the next stages
 // run: one JavaScript bundle that computes the values of every template,
 // reading the data database of the project through Shugo.query, and the
-// program the runtime puts those values into.
+// skeleton the runtime puts those values into.
 package compile
 
 import (
 	"strings"
 
-	"github.com/grimalschi/shugo/internal/program"
+	"github.com/grimalschi/shugo/internal/skeleton"
 	"github.com/grimalschi/shugo/internal/sourcemap"
 	"github.com/grimalschi/shugo/internal/syntax"
 )
@@ -18,7 +18,7 @@ type unit struct {
 	role   role
 	module *module
 	// parts are the operations of the template and of every snippet in it.
-	parts  [][]program.Op
+	parts  [][]skeleton.Op
 	styles []string // the <style> of the file, scoped to its elements
 	// outlets are where the file shows what pages give to layouts: "head"
 	// for a layout with <head>; provided are what the file gives, with the

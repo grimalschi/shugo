@@ -12,21 +12,21 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/grimalschi/shugo/internal/program"
+	"github.com/grimalschi/shugo/internal/skeleton"
 	"github.com/grimalschi/shugo/internal/store"
 )
 
 // A site of two templates: a page with text and a component, and a leaf
 // with text.
-var site = &program.Site{
-	Files: []program.File{
-		{Path: "page.shugo", Parts: [][]program.Op{{{Kind: program.Text}, {Kind: program.Call}}}},
-		{Path: "leaf.shugo", Parts: [][]program.Op{{{Kind: program.Text}}}},
+var site = &skeleton.Site{
+	Files: []skeleton.File{
+		{Path: "page.shugo", Parts: [][]skeleton.Op{{{Kind: skeleton.Text}, {Kind: skeleton.Call}}}},
+		{Path: "leaf.shugo", Parts: [][]skeleton.Op{{{Kind: skeleton.Text}}}},
 	},
-	Routes: []program.Route{
-		{File: 0, Pattern: "/special", Segments: []program.Segment{{Text: "special"}}},
-		{File: 0, Pattern: "/[slug]", Segments: []program.Segment{{Param: "slug"}}},
-		{File: 0, Pattern: "/[...rest]", Segments: []program.Segment{{Rest: "rest"}}},
+	Routes: []skeleton.Route{
+		{File: 0, Pattern: "/special", Segments: []skeleton.Segment{{Text: "special"}}},
+		{File: 0, Pattern: "/[slug]", Segments: []skeleton.Segment{{Param: "slug"}}},
+		{File: 0, Pattern: "/[...rest]", Segments: []skeleton.Segment{{Rest: "rest"}}},
 	},
 }
 
@@ -529,9 +529,9 @@ func TestValidPath(t *testing.T) {
 
 func TestFits(t *testing.T) {
 	special, slug, rest := &site.Routes[0], &site.Routes[1], &site.Routes[2]
-	nested := &program.Route{Segments: []program.Segment{{Text: "docs"}, {Rest: "path"}, {Text: "edit"}}}
+	nested := &skeleton.Route{Segments: []skeleton.Segment{{Text: "docs"}, {Rest: "path"}, {Text: "edit"}}}
 	for _, c := range []struct {
-		route *program.Route
+		route *skeleton.Route
 		path  string
 		fits  bool
 	}{

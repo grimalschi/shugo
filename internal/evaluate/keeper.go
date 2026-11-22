@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/grimalschi/shugo/internal/program"
 	"github.com/grimalschi/shugo/internal/record"
 	"github.com/grimalschi/shugo/internal/render"
+	"github.com/grimalschi/shugo/internal/skeleton"
 	"github.com/grimalschi/shugo/internal/store"
 )
 
@@ -20,7 +20,7 @@ import (
 // data, so that at the end it can drop what nothing shows any more and tell
 // on which pages the HTML differs.
 type keeper struct {
-	site   *program.Site
+	site   *skeleton.Site
 	update *store.Update
 	report *Report
 	limit  int // how many names a report lists
@@ -88,7 +88,7 @@ type met struct {
 	known bool // the store had its record before the run
 }
 
-func newKeeper(site *program.Site, u *store.Update, report *Report, limit int) (*keeper, error) {
+func newKeeper(site *skeleton.Site, u *store.Update, report *Report, limit int) (*keeper, error) {
 	totals, err := u.Totals()
 	if err != nil {
 		return nil, err

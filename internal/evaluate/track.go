@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/grimalschi/shugo/internal/data"
-	"github.com/grimalschi/shugo/internal/program"
+	"github.com/grimalschi/shugo/internal/skeleton"
 	"github.com/grimalschi/shugo/internal/store"
 	"slices"
 	"strconv"
@@ -433,7 +433,7 @@ func (k *keeper) route(index int, props bool, text []byte) error {
 }
 
 // fits tells whether an address can be of a page of the route.
-func fits(route *program.Route, path string) bool {
+func fits(route *skeleton.Route, path string) bool {
 	var parts []string
 	if path != "/" {
 		parts = strings.Split(path[1:], "/")

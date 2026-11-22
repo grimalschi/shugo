@@ -1,4 +1,4 @@
-package program
+package skeleton
 
 import (
 	"reflect"

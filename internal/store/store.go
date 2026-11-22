@@ -1,4 +1,4 @@
-// Package store keeps what the runtime shows pages from: the program of the
+// Package store keeps what the runtime shows pages from: the skeleton of the
 // site and the record of every page and of every shared block, with the
 // values of its blocks inside. All of it is one SQLite file, so that a
 // server reads one consistent state while an update writes the next one.
@@ -227,7 +227,7 @@ const (
 	metaLayout  = "layout"  // how the tables are laid out
 	metaStore   = "store"   // which store this is: chosen at random when the tables are laid out
 	metaBuild   = "build"   // which compiled project the records belong to
-	metaSite    = "site"    // the program of that project
+	metaSite    = "site"    // the skeleton of that project
 	metaVersion = "version" // grows with every update
 	metaOrigin  = "origin"  // the version from which the store knows every change: see Mark
 	metaTotals  = "totals"  // how many pages and shared blocks there are
@@ -261,7 +261,7 @@ func (r *reader) blob(statement *sql.Stmt, key any) ([]byte, bool, error) {
 }
 
 // Build returns the name of the compiled project the records were computed
-// by, and its program. The name is empty for a store that holds nothing yet.
+// by, and its skeleton. The name is empty for a store that holds nothing yet.
 func (r *reader) Build() (id string, site []byte, err error) {
 	if id, err = r.BuildID(); err != nil || id == "" {
 		return id, nil, err
@@ -864,7 +864,7 @@ func (u *Update) SetTotals(t Totals) error {
 	return err
 }
 
-// SetBuild names the compiled project the records belong to and keeps its program.
+// SetBuild names the compiled project the records belong to and keeps its skeleton.
 func (u *Update) SetBuild(id string, site []byte) error {
 	if _, err := u.write.Exec(put, metaBuild, []byte(id)); err != nil {
 		return err

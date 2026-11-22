@@ -1,6 +1,6 @@
 // Command inside walks a small project through every stage of Shugo and
 // writes what lies between the stages into one HTML page: the sources, the
-// JavaScript and the program the compiler makes of them, the data database
+// JavaScript and the skeleton the compiler makes of them, the data database
 // with its journal, the conversation of shugo with the JavaScript side, the
 // records of the store and how they lead to the data, and what every update
 // changes. It is a stand for looking inside, not a part of the framework.

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/grimalschi/shugo/internal/program"
 	"github.com/grimalschi/shugo/internal/record"
+	"github.com/grimalschi/shugo/internal/skeleton"
 )
 
 // memory is a source kept in a test.
@@ -31,32 +31,32 @@ func tape(values ...string) record.Tape {
 	return t
 }
 
-func op(kind program.Kind, text string, bodies ...[]program.Op) program.Op {
-	return program.Op{Kind: kind, Text: text, Bodies: bodies}
+func op(kind skeleton.Kind, text string, bodies ...[]skeleton.Op) skeleton.Op {
+	return skeleton.Op{Kind: kind, Text: text, Bodies: bodies}
 }
 
-func markup(text string) program.Op { return op(program.Markup, text) }
+func markup(text string) skeleton.Op { return op(skeleton.Markup, text) }
 
 // A site of three templates:
 //
 //	0, the page:   <main> {text} <a href={…} {...attrs}> if/else-if, a loop, <Card>children</Card> </main>
 //	1, the card:   <section> {@render children()} {@render footer?.()} </section>
 //	2, the header: <header> {text} </header>
-var site = &program.Site{Files: []program.File{
-	{Path: "page.shugo", Parts: [][]program.Op{
+var site = &skeleton.Site{Files: []skeleton.File{
+	{Path: "page.shugo", Parts: [][]skeleton.Op{
 		{
-			markup("<main>"), op(program.Text, ""),
-			markup("<a"), op(program.Attr, "href"), op(program.Attr, "class"), op(program.Spread, ""), markup(">"),
-			op(program.If, "", []program.Op{markup("one")}, []program.Op{markup("two:"), op(program.Text, "")}),
-			op(program.For, "", []program.Op{markup("<li>"), op(program.Text, ""), markup("</li>")}),
-			op(program.Call, ""), op(program.Call, ""), op(program.HTML, ""), markup("</main>"),
+			markup("<main>"), op(skeleton.Text, ""),
+			markup("<a"), op(skeleton.Attr, "href"), op(skeleton.Attr, "class"), op(skeleton.Spread, ""), markup(">"),
+			op(skeleton.If, "", []skeleton.Op{markup("one")}, []skeleton.Op{markup("two:"), op(skeleton.Text, "")}),
+			op(skeleton.For, "", []skeleton.Op{markup("<li>"), op(skeleton.Text, ""), markup("</li>")}),
+			op(skeleton.Call, ""), op(skeleton.Call, ""), op(skeleton.HTML, ""), markup("</main>"),
 		},
-		{markup("<b>"), op(program.Text, ""), markup("</b>")}, // put into the card
+		{markup("<b>"), op(skeleton.Text, ""), markup("</b>")}, // put into the card
 	}},
-	{Path: "card.shugo", Parts: [][]program.Op{{
-		markup("<section>"), op(program.Render, ""), op(program.Render, ""), markup("</section>"),
+	{Path: "card.shugo", Parts: [][]skeleton.Op{{
+		markup("<section>"), op(skeleton.Render, ""), op(skeleton.Render, ""), markup("</section>"),
 	}}},
-	{Path: "header.shugo", Parts: [][]program.Op{{markup("<header>"), op(program.Text, ""), markup("</header>")}}},
+	{Path: "header.shugo", Parts: [][]skeleton.Op{{markup("<header>"), op(skeleton.Text, ""), markup("</header>")}}},
 }}
 
 // page builds a record of the page with its card and a shared header.

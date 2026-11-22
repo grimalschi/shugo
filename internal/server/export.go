@@ -95,7 +95,7 @@ func Export(pages *Pages, public, assets, dir string) (Exported, error) {
 
 	// All the pages come from one state of the store.
 	err := pages.store.View(func(v *store.View) error {
-		site, err := pages.program(v)
+		site, err := pages.skeleton(v)
 		if err != nil {
 			return err
 		}

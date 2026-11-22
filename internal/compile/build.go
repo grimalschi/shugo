@@ -19,16 +19,16 @@ import (
 	"github.com/evanw/esbuild/pkg/api"
 
 	"github.com/grimalschi/shugo/internal/jsrt"
-	"github.com/grimalschi/shugo/internal/program"
 	"github.com/grimalschi/shugo/internal/project"
 	"github.com/grimalschi/shugo/internal/route"
+	"github.com/grimalschi/shugo/internal/skeleton"
 	"github.com/grimalschi/shugo/internal/syntax"
 )
 
 // The files a compiled project consists of, under the output folder.
 const (
 	Bundle  = "eval.mjs"     // the code of the project: computes the values of the pages it is asked for
-	Site    = "site.json"    // the program of the site: templates and routes
+	Site    = "site.json"    // the skeleton of the site: templates and routes
 	Assets  = "assets"       // style sheets, published under AssetsURL
 	Sources = "sources.json" // what the project was compiled from
 )
@@ -38,7 +38,7 @@ const AssetsURL = "/_assets/"
 
 // Result is a compiled project.
 type Result struct {
-	Site *program.Site
+	Site *skeleton.Site
 	// ID changes whenever the compiled project does.
 	ID       string
 	Warnings []string
@@ -65,13 +65,13 @@ func Build(p *project.Project) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	site := &program.Site{Origin: p.Config.Site, Redirects: p.Config.Redirects, Routes: routes}
+	site := &skeleton.Site{Origin: p.Config.Site, Redirects: p.Config.Redirects, Routes: routes}
 	if site.Origin == "" {
 		site.Origin = "http://localhost"
 	}
 	var warnings []string
 	for i, path := range paths {
-		site.Files = append(site.Files, program.File{Path: path, Parts: b.units[i].parts, Outlets: b.units[i].outlets, Shared: bundled.shared[path]})
+		site.Files = append(site.Files, skeleton.File{Path: path, Parts: b.units[i].parts, Outlets: b.units[i].outlets, Shared: bundled.shared[path]})
 		warnings = append(warnings, b.units[i].warnings...)
 	}
 
@@ -123,7 +123,7 @@ func Load(p *project.Project) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	site, err := program.Decode(data)
+	site, err := skeleton.Decode(data)
 	if err != nil {
 		return nil, err
 	}
@@ -257,9 +257,9 @@ func (b *builder) compile() error {
 }
 
 // routes makes a route of every page and finds the layouts around it.
-func (b *builder) routes() ([]program.Route, error) {
+func (b *builder) routes() ([]skeleton.Route, error) {
 	var errs Errors
-	var out []program.Route
+	var out []skeleton.Route
 	segments := map[int][]route.Segment{} // by file
 	shapes := map[string]string{}
 	for id, path := range b.paths {
@@ -278,18 +278,18 @@ func (b *builder) routes() ([]program.Route, error) {
 		}
 		shapes[route.Shape(parsed)] = path
 
-		r := program.Route{File: id, Pattern: route.Pattern(parsed), Segments: []program.Segment{}, Layouts: []int{}}
+		r := skeleton.Route{File: id, Pattern: route.Pattern(parsed), Segments: []skeleton.Segment{}, Layouts: []int{}}
 		dynamic := false
 		for _, s := range parsed {
 			switch s.Kind {
 			case route.Param:
-				r.Segments = append(r.Segments, program.Segment{Param: s.Name})
+				r.Segments = append(r.Segments, skeleton.Segment{Param: s.Name})
 				dynamic = true
 			case route.Rest:
-				r.Segments = append(r.Segments, program.Segment{Rest: s.Name})
+				r.Segments = append(r.Segments, skeleton.Segment{Rest: s.Name})
 				dynamic = true
 			default:
-				r.Segments = append(r.Segments, program.Segment{Text: s.Name})
+				r.Segments = append(r.Segments, skeleton.Segment{Text: s.Name})
 			}
 		}
 		if dynamic && !u.paths {
@@ -314,7 +314,7 @@ func (b *builder) routes() ([]program.Route, error) {
 	if len(errs) > 0 {
 		return nil, errs
 	}
-	route.Sort(out, func(r program.Route) []route.Segment { return segments[r.File] })
+	route.Sort(out, func(r skeleton.Route) []route.Segment { return segments[r.File] })
 	return out, nil
 }
 
@@ -354,12 +354,12 @@ type bundled struct {
 
 // bundle links the modules of all files, the code they import and the
 // library of the framework into one file.
-func (b *builder) bundle(routes []program.Route) (*bundled, error) {
+func (b *builder) bundle(routes []skeleton.Route) (*bundled, error) {
 	root := b.project.Root
 	// The entry names the module of every file: a page is computed from its
 	// route, and a shared block from its name alone, so any file may be what
 	// a computation starts from. The rest of what the run needs to know is
-	// in the program of the site.
+	// in the skeleton of the site.
 	//
 	// Pages and layouts come first, in their order: style sheets apply in
 	// the order of imports, and that order starts from the pages.

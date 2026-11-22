@@ -17,7 +17,7 @@ project Database ──► calculation (Bun or Node): eval.mjs reads lines via S
                                          └──► export: pages files that have changed
 ```
 
-1. **Compilation.** Two things are obtained from each template: JS, which counts the values of expressions, and the program is a markup with places for these values. The compiler parses the markup according to the rules of Svelte: spaces, nesting of elements, component styles.
+1. **Compilation.** Two things are obtained from each template: JS, which counts the values of expressions, and the frame is a markup with places for these values. The compiler parses the markup according to the rules of Svelte: spaces, nesting of elements, component styles.
 2. **Calculation.** JS executes the code of pages without waiting: the request to the database responds immediately. Each line that the request returned remembers which columns it read — in the page code, in the template, in functions, in components. Go compares the result to the storage and records only differences. A component called with simple parameters is calculated once and stored in a separate record: pages link to it.
 3. **Update.** Triggers in the database write each changed line to the journal. `shugo update` reads the journal, finds who has read the changed columns of these lines, and calculates only them.
 4. **Server.** There are no copies of the site in memory. For each request, the server reads from the storage the page record and the records of common blocks that it shows - one search per record, all from one state - and collects HTML.

@@ -13,7 +13,7 @@ import (
 
 // The random test writes pages at random, builds them, and compares every
 // page with HTML that this file works out by itself, straight from the tree
-// of the page and the data, without JavaScript, values or programs. Then it
+// of the page and the data, without JavaScript, values or skeletons. Then it
 // changes the data at random several times: after every update the pages
 // must again be what the data says.
 //
