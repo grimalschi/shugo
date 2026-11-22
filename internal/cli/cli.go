@@ -158,9 +158,7 @@ func (c *command) rebuild(st *store.Store) error {
 	if err != nil {
 		return err
 	}
-	for _, warning := range compiled.Warnings {
-		fmt.Fprintln(c.stderr, "warning:", warning)
-	}
+	c.warn(compiled.Warnings)
 	compiledIn := time.Since(started)
 	// A build computes everything: what the pages read from elsewhere than
 	// the data database is read again.
@@ -168,10 +166,18 @@ func (c *command) rebuild(st *store.Store) error {
 	if err != nil {
 		return err
 	}
+	c.warn(report.Warnings)
 	report.Time["compile"] = float64(compiledIn.Microseconds()) / 1000
 	report.Time["total"] += report.Time["compile"]
 	c.noted(report)
 	return c.print(report, func() string { return summary("built", report) })
+}
+
+// warn tells what is worth knowing and does not stop the command.
+func (c *command) warn(warnings []string) {
+	for _, warning := range warnings {
+		fmt.Fprintln(c.stderr, "warning:", warning)
+	}
 }
 
 // noted keeps where the journal of the data database stood when the site
@@ -209,6 +215,7 @@ func (c *command) renew(st *store.Store) error {
 	if err != nil {
 		return err
 	}
+	c.warn(report.Warnings)
 	c.noted(report)
 	if err := c.print(report, func() string { return summary("updated", report) }); err != nil {
 		return err

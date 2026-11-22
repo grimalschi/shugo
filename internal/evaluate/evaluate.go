@@ -65,6 +65,9 @@ type Report struct {
 	// show something that Shugo does not see them read.
 	Checked bool     `json:"checked,omitempty"`
 	Unseen  []string `json:"unseen,omitempty"`
+	// Warnings tell what the run found worth knowing about the project,
+	// such as a component that is kept apart for nothing.
+	Warnings []string `json:"warnings,omitempty"`
 	// Time is how long every step took, in milliseconds.
 	Time map[string]float64 `json:"time"`
 }
