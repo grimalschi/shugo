@@ -36,9 +36,11 @@ class Record {
   }
 
   // A block is one template being shown: a page, a layout, a component, or
-  // a snippet (a part of the template it is written in).
+  // a snippet (a part of the template it is written in). A block of a
+  // template keeps the blocks of what its <svelte:head> gives the head of
+  // the page, and of the <title> in it.
   block(file, part) {
-    const block = { index: this.blocks.length, file, part, values: [], children: [], snippets: null, shared: null };
+    const block = { index: this.blocks.length, file, part, values: [], children: [], head: [], title: [], snippets: null, shared: null };
     this.blocks.push(block);
     return block;
   }
@@ -57,9 +59,9 @@ class Record {
 //   page      the page being computed: { params, url }; null inside a shared block
 //   snippets  the snippets without parameters the caller gave, computed:
 //             Map of name → blocks; null for none
-//   provided  what the page gives to its layouts: Map of name → blocks; null inside a shared block
 //   reads     where the queries to the data database leave their readings
-//   frame     the component being shown: { outer } — the frame of its caller
+//   frame     the component being shown: { outer, block } — the frame of its
+//             caller and the block of its template
 //   props     what $props() gives: the parameters and the snippets
 
 // Writer is "$$" in generated code: it writes the values of one block.
@@ -214,30 +216,13 @@ class Writer {
     values.push(`c${depth(this.scope.frame, info.scope.frame)}`);
   }
 
-  // <svelte:head> of a page or a layout: markup for the <head> of the page,
-  // under "head", and its <title> under "title".
+  // <svelte:head> of a page or a layout, under "head", and a <title> in it,
+  // under "title": markup for the <head> of the page. It stays with the
+  // block of the template; the Go side puts the head of the page together.
   provide(name, part, body) {
     const block = this.record.block(this.block.file, part);
     body(new Writer(this.run, this.record, block, this.scope));
-    const provided = this.scope.provided;
-    if (provided === null) throw new Error("<svelte:head> was computed inside a block that is shared by all pages. This should not happen: please report it");
-    if (provided.has(name)) provided.get(name).push(block.index);
-    else provided.set(name, [block.index]);
-  }
-
-  // The end of the <head> a page or a layout writes, where what was given
-  // the head is shown in the order of the document: what this template gave
-  // itself, then what the templates inside it gave. They come to the Go side
-  // as snippets of the template's own block.
-  outlet(name) {
-    const own = this.scope.provided?.get(name) ?? [];
-    const given = this.scope.snippets?.get(name);
-    if (own.length > 0) {
-      this.scope.provided.delete(name);
-      const block = this.scope.frame.block;
-      (block.snippets ??= new Map()).set(name, [...own, ...(given ?? [])]);
-    }
-    this.block.values.push(own.length > 0 || given !== undefined ? `f0:${name}` : "-");
+    this.scope.frame.block[name].push(block.index);
   }
 }
 
@@ -688,23 +673,25 @@ class Run {
     const block = record.block(target.file, 0);
     block.snippets = snippets;
     const frame = { outer: scope.frame, block };
-    const inner = { page: scope.page, snippets, provided: scope.provided, reads: scope.reads, frame, props: propsOf(props, snippets, frame) };
+    const inner = { page: scope.page, snippets, reads: scope.reads, frame, props: propsOf(props, snippets, frame) };
     target.render(new Writer(this, record, block, inner), new Context(inner));
     return block.index;
   }
 
   // block computes a shared block from its name alone: the name holds the
-  // file, the parameters and the names of the snippets the caller gave.
+  // file, the parameters and the names of the snippets the caller gave, and,
+  // for a layout kept for one page, that page.
   block(name) {
     const { path, props, snippets } = unnamed(name);
     const target = this.modules.get(this.files.get(path))?.default;
     if (target === undefined) throw new Error(`there is no file ${path} to compute the shared block from`);
+    const page = this.pageOf(props);
     const record = new Record("s", name, 0);
     const block = record.block(target.file, 0);
     // Inside a shared block only the names of the snippets the caller gave
     // matter: what they show belongs to the place the block is used at.
     const frame = { outer: null, block };
-    const inner = { page: null, snippets, provided: null, reads: record.reads, frame, props: propsOf(props, snippets, frame) };
+    const inner = { page, snippets, reads: record.reads, frame, props: propsOf(props, snippets, frame) };
     during(record.reads, () => target.render(new Writer(this, record, block, inner), new Context(inner)));
     this.emit(record);
   }
@@ -714,36 +701,42 @@ class Run {
   // are read from the address: what getStaticPaths wrote as a number is a
   // text there.
   page(path, index) {
-    const route = this.site.routes[index];
-    if (route === undefined) throw new Error(`the page ${path} was asked for under route ${index}, which this project's compiled code does not have: build the project again`);
+    if (this.site.routes[index] === undefined) throw new Error(`the page ${path} was asked for under route ${index}, which this project's compiled code does not have: build the project again`);
     const record = new Record("p", path, index);
-    const params = Object.freeze(parameters(route, path));
-    const scope = { page: { params, path, route, origin: this.site.origin, url: undefined }, snippets: null, provided: new Map(), reads: record.reads, frame: null, props: {} };
-    during(record.reads, () => this.around(record, route, scope));
+    const scope = { page: this.pageOf({ "@route": index, "@path": path }), snippets: null, reads: record.reads, frame: null, props: {} };
+    during(record.reads, () => this.around(record, index, scope));
     this.emit(record);
   }
 
-  // around computes a page with its layouts into the record.
-  around(record, route, scope) {
+  // pageOf returns the page a shared block is kept for: the route and the
+  // address its name holds as "@route" and "@path", which it takes out of
+  // the parameters. null for a block kept once for all pages. Its
+  // parameters are read from the address: what getStaticPaths wrote as a
+  // number is a text there.
+  pageOf(props) {
+    if (!Object.hasOwn(props, "@route")) return null;
+    const index = props["@route"];
+    const path = props["@path"];
+    delete props["@route"];
+    delete props["@path"];
+    const route = this.site.routes[index];
+    if (route === undefined || typeof path !== "string") throw new Error(`a block of the page ${path} under route ${index}, which this project's compiled code does not have: build the project again`);
+    return { params: Object.freeze(parameters(route, path)), path, route, origin: this.site.origin, url: undefined };
+  }
+
+  // around computes a page into the record, and names its layouts. A layout
+  // shows the page as its children and is kept apart from it: once for the
+  // whole site, or, when it reads the page it is around, once for every
+  // page. Then a change of what the layout reads computes the layout and
+  // not the pages, and a change of a page computes the page alone.
+  around(record, index, scope) {
+    const route = this.site.routes[index];
     let top = this.show(record, this.modules.get(route.file).default, {}, null, scope);
     for (let i = route.layouts.length - 1; i >= 0; i--) {
-      // A layout shows the page as its children. What the page, or a
-      // layout inside this one, gave the head goes to the nearest layout
-      // that writes the <head>.
-      const layout = this.modules.get(route.layouts[i]).default;
-      const inner = scope.provided;
+      const file = this.site.files[route.layouts[i]];
+      const page = file.shared ? {} : { "@route": index, "@path": scope.page.path };
       const snippets = new Map([["children", [top]]]);
-      for (const name of this.site.files[layout.file].outlets ?? []) {
-        if (inner.has(name)) {
-          snippets.set(name, inner.get(name));
-          inner.delete(name);
-        }
-      }
-      scope.provided = new Map();
-      top = this.show(record, layout, {}, snippets, scope);
-      // What goes on outwards keeps the order of the document: what this
-      // layout gave comes before what the templates inside it gave.
-      for (const [name, blocks] of inner) scope.provided.set(name, [...(scope.provided.get(name) ?? []), ...blocks]);
+      top = record.use(sharedName(file.path, page, snippets), snippets).index;
     }
     record.top = top;
   }
@@ -814,7 +807,7 @@ function encode(record) {
     lines.push(
       block.shared !== null
         ? "u\x02" + block.shared + "\x02" + snippetsOf(block.snippets)
-        : "b\x02" + block.file + "\x02" + block.part + "\x02" + block.children.join(",") + "\x02" + snippetsOf(block.snippets) + "\x02" + valuesOf(block.values),
+        : "b\x02" + block.file + "\x02" + block.part + "\x02" + block.children.join(",") + "\x02" + block.head.join(",") + "\x02" + block.title.join(",") + "\x02" + snippetsOf(block.snippets) + "\x02" + valuesOf(block.values),
     );
   }
   return lines.join("\x01");

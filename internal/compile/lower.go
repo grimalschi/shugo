@@ -125,9 +125,6 @@ type (
 	// what stands in <svelte:head> under "head", and its <title> under
 	// "title".
 	provide struct{ piece }
-	// outlet is the place in the <head> of a layout or a page where what
-	// was provided is shown.
-	outlet struct{ name string }
 	// mount is a place where the framework adds markup of its own.
 	mount struct{ name string }
 	// selected says whether an <option> is the chosen one of its <select>.
@@ -226,11 +223,10 @@ type lowerer struct {
 	// hash is the class that scopes the <style> of the component to its own
 	// elements; empty when it has none.
 	hash string
-	// outlets are where what pages give to layouts is shown: "head".
-	outlets []string
-	// provided are what the template gives to the layouts around it, each
-	// with the place it does so.
-	provided map[string]int
+	// head is where the first <svelte:head> of the template stands, -1 for
+	// none; writesHead tells that the template writes the <head> of a page.
+	head       int
+	writesHead bool
 	// selects counts the <select> elements met, to name their variables.
 	selects int
 }
@@ -407,7 +403,9 @@ func (l *lowerer) hoisted(n syntax.Node, ctx context) []node {
 			l.errorf(n.Start, "<svelte:head> works in pages and in +layout files for now")
 			return nil
 		}
-		l.provides("head", n.Start)
+		if l.head < 0 {
+			l.head = n.Start
+		}
 		return []node{provide{piece{"head", l.fragment(n.Children, context{head: true})}}}
 	}
 	return nil
@@ -583,16 +581,6 @@ func (l *lowerer) value(a syntax.Attr) value {
 	return out
 }
 
-// provides notes that the template gives markup to the <head> of the page.
-func (l *lowerer) provides(name string, at int) {
-	if l.provided == nil {
-		l.provided = map[string]int{}
-	}
-	if _, seen := l.provided[name]; !seen {
-		l.provided[name] = at
-	}
-}
-
 // html5 lowers an element of HTML.
 func (l *lowerer) html5(e *syntax.Element, ctx context) []node {
 	name := e.Name
@@ -602,14 +590,12 @@ func (l *lowerer) html5(e *syntax.Element, ctx context) []node {
 	}
 	if name == "title" && ctx.head && !svg {
 		// A page has one title, as in Svelte: of the titles in <svelte:head>
-		// the last in the order of the document, the page's before its
-		// layouts', and it stands after the rest of the head.
-		l.provides("title", e.Start)
+		// the last in the order of the document, after the rest of the head.
 		ctx.head = false
 		return []node{provide{piece{"title", l.html5(e, ctx)}}}
 	}
-	if name == "head" && l.role != component && !slices.Contains(l.outlets, "head") {
-		l.outlets = append(l.outlets, "head", "title")
+	if name == "head" && l.role != component {
+		l.writesHead = true
 	}
 	if !svg {
 		l.placed(name, e.Start, ctx.ancestors)
@@ -655,11 +641,8 @@ func (l *lowerer) html5(e *syntax.Element, ctx context) []node {
 	default:
 		out = append(out, l.fragment(e.Children, inner)...)
 	}
-	// What pages give the head, then the framework's own markup, end the
-	// head; the framework's own markup ends the body.
-	if name == "head" && l.role != component {
-		out = append(out, outlet{"head"}, outlet{"title"})
-	}
+	// The end of the head gets what the templates of the page give it, then
+	// the framework's own markup; the end of the body that markup alone.
 	if name == "head" || name == "body" {
 		out = append(out, mount{name})
 	}

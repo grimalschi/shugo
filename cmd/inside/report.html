@@ -176,7 +176,7 @@
 {{range .Files}}{{if ge .Number 0}}
 <div class="card" id="{{anchor "file" .Path}}">
   <h3>{{.Path}}</h3>
-  <p><span class="pill">file {{.Number}}</span>{{if .Shared}}<span class="pill">eligible for a shared block</span>{{else}}<span class="pill">renders in place</span>{{end}}{{if .Outlets}}<span class="pill">renders content supplied by pages: {{join .Outlets ", "}}</span>{{end}}</p>
+  <p><span class="pill">file {{.Number}}</span>{{if .Shared}}<span class="pill">eligible for a shared block</span>{{else}}<span class="pill">renders in place</span>{{end}}</p>
   <div class="grid">
     <div><h4>Source</h4><pre>{{.Source}}</pre></div>
     <div><h4>JS that evaluates expressions</h4><pre>{{.Module}}</pre></div>
@@ -316,7 +316,7 @@
 <p>Page <b>{{.Story.Path}}</b>. The server loads the page record and starts at the root block. For each block, it follows the template skeleton, copying markup and taking the next value from the tape for each expression. The tables below show which operations consume which values.</p>
 {{range .Story.Blocks}}
 <div class="card"><h4>Block {{.Index}}: {{if .Use}}reference to <a href="#shared-{{.Shared}}">shared block {{.Shared}}</a> {{.SharedName}}{{else}}{{.File}}, part {{.Part}}, value tape: {{counted (len .Values) "value" "values"}}{{end}}</h4>
-{{if .Snippets}}<p class="note">Caller-supplied snippets: {{join .Snippets "; "}}</p>{{end}}
+{{if .Snippets}}<p class="note">Caller-supplied snippets and head content from this template: {{join .Snippets "; "}}</p>{{end}}
 {{if .Walk}}<table><tr><th style="width:4em">Op.</th><th>What it does</th><th style="width:4em">Tape index</th><th>value</th></tr>
 {{range .Walk}}<tr><td style="{{pad .Depth}}"><span class="op">{{.Op}}</span></td><td>{{.What}}{{if .Link}} <a href="#{{.Link}}">→</a>{{end}}</td><td>{{if .Place}}{{.Place}}{{end}}</td><td class="mono pre">{{if .Place}}<span class="val">{{visible .Value}}</span>{{else}}{{visible .Value}}{{end}}</td></tr>{{end}}
 </table>{{end}}

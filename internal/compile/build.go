@@ -71,7 +71,7 @@ func Build(p *project.Project) (*Result, error) {
 	}
 	var warnings []string
 	for i, path := range paths {
-		site.Files = append(site.Files, skeleton.File{Path: path, Parts: b.units[i].parts, Outlets: b.units[i].outlets, Shared: bundled.shared[path]})
+		site.Files = append(site.Files, skeleton.File{Path: path, Parts: b.units[i].parts, Shared: bundled.shared[path]})
 		warnings = append(warnings, b.units[i].warnings...)
 	}
 
@@ -318,27 +318,24 @@ func (b *builder) routes() ([]skeleton.Route, error) {
 	return out, nil
 }
 
-// provided checks that what a page gives the head, <svelte:head>, is shown:
-// by the page itself if it writes the <head>, or by one of its layouts; the
-// same for every layout and the layouts around it.
+// provided checks that what a page and its layouts give the head of the
+// page in <svelte:head> has a <head> to go to: one that the page or one of
+// its layouts writes.
 func (b *builder) provided(page *unit, layouts []int) Errors {
-	var errs Errors
-	check := func(u *unit, around []int) {
-		at, provides := u.provided["head"]
-		if !provides {
-			return
-		}
-		shown := slices.Contains(u.outlets, "head")
-		for _, layout := range around {
-			shown = shown || slices.Contains(b.units[layout].outlets, "head")
-		}
-		if !shown {
-			errs = append(errs, u.file.Errorf(at, `<svelte:head> gives markup to the <head> of the page, and neither this file nor a layout around it writes a <head>`))
+	units := []*unit{page}
+	for _, layout := range layouts {
+		units = append(units, b.units[layout])
+	}
+	for _, u := range units {
+		if u.writesHead {
+			return nil
 		}
 	}
-	check(page, layouts)
-	for i, layout := range layouts {
-		check(b.units[layout], layouts[:i])
+	var errs Errors
+	for _, u := range units {
+		if u.head >= 0 {
+			errs = append(errs, u.file.Errorf(u.head, `<svelte:head> gives markup to the <head> of the page, and neither the page nor a layout around it writes a <head>`))
+		}
 	}
 	return errs
 }

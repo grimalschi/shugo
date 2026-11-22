@@ -72,6 +72,8 @@ func annotate(data []byte, site *skeleton.Site) []byteRow {
 				take(size, "    «"+visible(string(data[at:min(at+size, len(data))]))+"»")
 			}
 			list("nested blocks")
+			list("<svelte:head> blocks from the template")
+			list("<title> blocks from <svelte:head>")
 		}
 		snippets := number("  parameterless snippets supplied by the caller: %d")
 		for s := 0; s < snippets; s++ {
@@ -253,11 +255,7 @@ func (w *walker) ops(ops []skeleton.Op, depth int) error {
 						where = "its blocks are in the record of the page that shows this shared block"
 					}
 				}
-				what := fmt.Sprintf("{@render %s()}: snippet supplied by the caller; %s", name, where)
-				if op.Text == skeleton.Last {
-					what += "; only the last block is shown because the page has one <title>"
-				}
-				w.add(depth, "n", what, value, place)
+				w.add(depth, "n", fmt.Sprintf("{@render %s()}: snippet supplied by the caller; %s", name, where), value, place)
 			}
 		case skeleton.Element:
 			tag, place, err := w.take()
@@ -278,7 +276,11 @@ func (w *walker) ops(ops []skeleton.Op, depth int) error {
 				}
 			}
 		case skeleton.Mount:
-			w.add(depth, "m", fmt.Sprintf("framework insertion point «%s» on every page", op.Text), w.site.Mounts[op.Text], 0)
+			what := fmt.Sprintf("framework insertion point «%s» on every page", op.Text)
+			if op.Text == "head" {
+				what = "end of <head>: the server inserts the page templates' <svelte:head> content in render order, keeps the last <title>, then appends its own markup"
+			}
+			w.add(depth, "m", what, w.site.Mounts[op.Text], 0)
 		}
 	}
 	return nil

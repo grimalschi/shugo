@@ -30,8 +30,11 @@ const (
 
 // Page appends the HTML of a page to dst.
 func Page(dst []byte, site *skeleton.Site, rec *record.Record, src Source) ([]byte, error) {
-	r := renderer{site: site, src: src, out: dst, start: len(dst)}
+	r := renderer{site: site, src: src, out: dst, start: len(dst), headAt: -1}
 	if err := r.show(rec, rec.Top, nil); err != nil {
+		return dst, err
+	}
+	if err := r.putHead(); err != nil {
 		return dst, err
 	}
 	return r.out, nil
@@ -57,6 +60,20 @@ type renderer struct {
 	depth int
 	// dry tells to read the values of one block without showing anything.
 	dry bool
+	// head is what the templates of the page give its <head>, in the order
+	// they are shown, and title the last <title> among it. headAt is where
+	// the <head> of the page ends in out; -1 until it is met.
+	head   []given
+	title  *given
+	headAt int
+}
+
+// given is blocks of a record that a template gives the head of the page,
+// with the template they are written in.
+type given struct {
+	rec    *record.Record
+	blocks []int
+	frame  *frame
 }
 
 // frame is a component being shown, as seen from inside its template: the
@@ -111,8 +128,50 @@ func (r *renderer) show(rec *record.Record, at int, from *frame) error {
 	if !ok {
 		return fmt.Errorf("there is no template %d, part %d", c.block.File, c.block.Part)
 	}
+	if c.block.Part == 0 {
+		// What the template gives the head waits until the page is shown.
+		if len(c.block.Head) > 0 {
+			r.head = append(r.head, given{c.rec, c.block.Head, c.frame})
+		}
+		if n := len(c.block.Title); n > 0 {
+			r.title = &given{c.rec, c.block.Title[n-1:], c.frame}
+		}
+	}
 	c.rest = c.block.Values
 	return r.run(ops, &c)
+}
+
+// putHead puts what the templates of the page give its head at the end of
+// the <head>, as Svelte does: in the order the templates were shown, and of
+// the titles the last one, after the rest. A page without a <head> has
+// nowhere to put it.
+func (r *renderer) putHead() error {
+	if r.headAt < 0 {
+		return nil
+	}
+	body := len(r.out)
+	// A component inside <svelte:head> may give the head too: the list grows
+	// while it is shown.
+	for i := 0; i < len(r.head); i++ {
+		for _, at := range r.head[i].blocks {
+			if err := r.show(r.head[i].rec, at, r.head[i].frame); err != nil {
+				return err
+			}
+		}
+	}
+	if t := r.title; t != nil {
+		if err := r.show(t.rec, t.blocks[0], t.frame); err != nil {
+			return err
+		}
+	}
+	if len(r.out)-r.start > maxOutput {
+		return errors.New("the page is too large")
+	}
+	// The head was written after the page: it moves to its place.
+	head := append([]byte(nil), r.out[body:]...)
+	copy(r.out[r.headAt+len(head):], r.out[r.headAt:body])
+	copy(r.out[r.headAt:], head)
+	return nil
 }
 
 // run goes through the operations of a block and checks that they took all
@@ -257,7 +316,7 @@ func (r *renderer) ops(ops []skeleton.Op, c *cursor) error {
 			if err != nil {
 				return err
 			}
-			if err := r.snippet(value, c, op.Text == skeleton.Last); err != nil {
+			if err := r.snippet(value, c); err != nil {
 				return err
 			}
 
@@ -287,6 +346,9 @@ func (r *renderer) ops(ops []skeleton.Op, c *cursor) error {
 			r.out = append(append(append(r.out, "</"...), tag...), '>')
 
 		case skeleton.Mount:
+			if op.Text == "head" && r.headAt < 0 {
+				r.headAt = len(r.out)
+			}
 			r.out = append(r.out, r.site.Mounts[op.Text]...)
 
 		default:
@@ -320,8 +382,8 @@ func (r *renderer) attribute(name string, value []byte) error {
 // "c" and a number, the next child block, a snippet computed where it was
 // rendered, which belongs to the component that many levels out; "f", a
 // number, ":" and a name, what the caller of the component that many levels
-// out gave under that name; with last, only the last block of it.
-func (r *renderer) snippet(value []byte, c *cursor, last bool) error {
+// out gave under that name.
+func (r *renderer) snippet(value []byte, c *cursor) error {
 	if len(value) == 0 {
 		return errors.New("an empty value stands where a snippet is expected")
 	}
@@ -360,11 +422,7 @@ func (r *renderer) snippet(value []byte, c *cursor, last bool) error {
 		return fmt.Errorf("the snippet %s is shown where no component gave it", name)
 	}
 	// What the caller gave was written in the template of the caller.
-	blocks := f.block.Snippet(name)
-	if last && len(blocks) > 0 {
-		blocks = blocks[len(blocks)-1:]
-	}
-	for _, given := range blocks {
+	for _, given := range f.block.Snippet(name) {
 		if err := r.show(f.rec, given, f.outer); err != nil {
 			return err
 		}

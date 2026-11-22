@@ -645,3 +645,59 @@ console.log("loose " + item.id)
 	s.changed(`UPDATE products SET price = 12 WHERE id = 'p1'`, "exact p1")
 	s.sameAsBuilt()
 }
+
+// A layout that reads the address of the page it is around is kept apart
+// from the page, once for every page: a change of what the layout reads
+// computes the layouts and no page, and a change of a page computes the page
+// and not its layout. Its <svelte:head> and the page's still make one head,
+// in the order of the document, with the last <title>.
+func TestLayoutKeptForEveryPage(t *testing.T) {
+	s := newSite(t, `
+-- shugo.json --
+{"data": "data/shop.db"}
+-- src/pages/+layout.shugo --
+<script>
+let { children } = $props()
+const menu = Shugo.query("categories").order("id").all()
+console.log("layout " + Shugo.url.pathname)
+</script>
+<svelte:head><title>Shop</title><meta name="menu" content={menu.length}></svelte:head>
+<html><head><meta charset="utf-8"></head><body><nav>{#each menu as item}<a href="/{item.id}" class:active={Shugo.url.pathname === "/" + item.id}>{item.title}</a>{/each}</nav>{@render children()}</body></html>
+-- src/pages/[id].shugo --
+<script module>
+export const getStaticPaths = ({ query }) => query("categories").select("id").all().map(({ id }) => ({ params: { id } }))
+</script>
+<script>
+const category = Shugo.query("categories").get(Shugo.params.id)
+const count = Shugo.query("products").where({ category: category.id }).count()
+console.log("page " + category.id)
+</script>
+<svelte:head><title>{category.title}</title></svelte:head>
+<h1>{category.title}: {count}</h1>
+`)
+	s.sql(queryRows)
+	report := s.build()
+	if report.Shared.Total != 2 {
+		t.Errorf("shared blocks: %d, want a layout for each of the 2 pages", report.Shared.Total)
+	}
+	s.computed()
+	expect(t, s.page("/c1"), `<html><head><meta charset="utf-8"/><meta name="menu" content="2"/><title>Kitchen</title></head><body><nav><a href="/c1" class="active">Kitchen</a><a href="/c2">Garden</a></nav><h1>Kitchen: 3</h1></body></html>`)
+
+	// The menu: every layout, no page.
+	s.changed(`UPDATE categories SET title = 'Yard' WHERE id = 'c2'`, "layout /c1", "layout /c2", "page c2")
+	expect(t, s.page("/c1"), `<html><head><meta charset="utf-8"/><meta name="menu" content="2"/><title>Kitchen</title></head><body><nav><a href="/c1" class="active">Kitchen</a><a href="/c2">Yard</a></nav><h1>Kitchen: 3</h1></body></html>`)
+	// A page: the page, not its layout.
+	s.changed(`UPDATE products SET category = 'c2' WHERE id = 'p3'`, "page c1", "page c2")
+	expect(t, s.page("/c2"), `<html><head><meta charset="utf-8"/><meta name="menu" content="2"/><title>Yard</title></head><body><nav><a href="/c1">Kitchen</a><a href="/c2" class="active">Yard</a></nav><h1>Yard: 2</h1></body></html>`)
+	// A page that goes takes its layout with it. The change reached that
+	// layout too, and it is computed like any shared block the change
+	// reaches: that nothing shows it any more is known only at the end.
+	s.changed(`DELETE FROM products WHERE category = 'c2'; DELETE FROM categories WHERE id = 'c2'`, "layout /c1", "layout /c2")
+	if s.has("/c2") {
+		t.Errorf("pages: %v", s.addresses())
+	}
+	if report := s.update(); report.Shared.Total != 1 {
+		t.Errorf("shared blocks after the page went: %d", report.Shared.Total)
+	}
+	s.sameAsBuilt()
+}

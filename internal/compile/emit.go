@@ -19,8 +19,6 @@ type emitter struct {
 	m *module
 	// parts are the operations of the template and of every snippet in it.
 	parts [][]skeleton.Op
-	// provides tells that the template gives markup to the layouts around it.
-	provides bool
 }
 
 func (e *emitter) nodes(list []node) []skeleton.Op {
@@ -83,17 +81,9 @@ func (e *emitter) nodes(list []node) []skeleton.Op {
 		case dynamic:
 			ops = append(ops, e.dynamic(n))
 		case provide:
-			e.provides = true
 			e.m.add("$$.provide(%s, %d, ($$) => {", quote(n.name), len(e.parts))
 			e.part(n.body)
 			e.m.add("});")
-		case outlet:
-			e.m.add("$$.outlet(%s);", quote(n.name))
-			op := skeleton.Op{Kind: skeleton.Render}
-			if n.name == "title" {
-				op.Text = skeleton.Last
-			}
-			ops = append(ops, op)
 		case mount:
 			ops = append(ops, skeleton.Op{Kind: skeleton.Mount, Text: n.name})
 		}

@@ -39,25 +39,25 @@ func frame(kind byte, body string) []byte {
 // What the JavaScript side sends for a page with a leaf inside it.
 func pageRecord(path, text string) string {
 	return "p\x02" + path + "\x021\x020\x02" +
-		"\x01b\x020\x020\x021\x02\x02\x00" + text +
-		"\x01b\x021\x020\x02\x02\x02\x00leaf"
+		"\x01b\x020\x020\x021\x02\x02\x02\x02\x00" + text +
+		"\x01b\x021\x020\x02\x02\x02\x02\x02\x00leaf"
 }
 
 // The same page showing a shared block in place of its own leaf.
 func pageWith(path, text, shared string) string {
 	return "p\x02" + path + "\x021\x020\x02" +
-		"\x01b\x020\x020\x021\x02\x02\x00" + text +
+		"\x01b\x020\x020\x021\x02\x02\x02\x02\x00" + text +
 		"\x01u\x02" + shared + "\x02"
 }
 
 // A shared block: a leaf, or a page of the first template that shows
 // another shared block.
 func leafRecord(name, text string) string {
-	return "s\x02" + name + "\x020\x020\x02\x01b\x021\x020\x02\x02\x02\x00" + text
+	return "s\x02" + name + "\x020\x020\x02\x01b\x021\x020\x02\x02\x02\x02\x02\x00" + text
 }
 
 func wrapRecord(name, text, shared string) string {
-	return "s\x02" + name + "\x020\x020\x02\x01b\x020\x020\x021\x02\x02\x00" + text + "\x01u\x02" + shared + "\x02"
+	return "s\x02" + name + "\x020\x020\x02\x01b\x020\x020\x021\x02\x02\x02\x02\x00" + text + "\x01u\x02" + shared + "\x02"
 }
 
 // A lab is a store with updates run against it by hand.
@@ -249,16 +249,17 @@ func TestComputeRejects(t *testing.T) {
 		"a page twice":                     frame('R', good+"\x03"+good),
 		"an unknown template":              frame('R', strings.Replace(good, "b\x021\x020", "b\x027\x020", 1)),
 		"an unknown part":                  frame('R', strings.Replace(good, "b\x021\x020", "b\x021\x025", 1)),
-		"a child that is not":              frame('R', strings.Replace(good, "\x021\x02\x02\x00home", "\x024\x02\x02\x00home", 1)),
-		"a child twice":                    frame('R', strings.Replace(good, "\x021\x02\x02\x00home", "\x021,1\x02\x02\x00home", 1)),
-		"a block shown nowhere":            frame('R', good+"\x01b\x021\x020\x02\x02\x02\x00orphan"),
+		"a child that is not":              frame('R', strings.Replace(good, "\x021\x02\x02\x02\x02\x00home", "\x024\x02\x02\x02\x02\x00home", 1)),
+		"a child twice":                    frame('R', strings.Replace(good, "\x021\x02\x02\x02\x02\x00home", "\x021,1\x02\x02\x02\x02\x00home", 1)),
+		"a block shown nowhere":            frame('R', good+"\x01b\x021\x020\x02\x02\x02\x02\x02\x00orphan"),
 		"values that do not fit":           frame('R', strings.Replace(good, "\x00home", "\x00home\x00more", 1)),
 		"no values":                        frame('R', strings.Replace(good, "\x00home", "", 1)),
 		"values without their mark":        frame('R', strings.Replace(good, "\x00home", "home", 1)),
 		"a damaged escape":                 frame('R', strings.Replace(good, "\x00home", "\x00ho\x04Ze", 1)),
 		"an escape cut short":              frame('R', strings.Replace(good, "\x00home", "\x00home\x04", 1)),
-		"a negative child":                 frame('R', strings.Replace(good, "\x021\x02\x02\x00home", "\x02-1\x02\x02\x00home", 1)),
-		"damaged slots":                    frame('R', strings.Replace(good, "\x021\x02\x02\x00home", "\x021\x02=\x02\x00home", 1)),
+		"a negative child":                 frame('R', strings.Replace(good, "\x021\x02\x02\x02\x02\x00home", "\x02-1\x02\x02\x02\x02\x00home", 1)),
+		"damaged snippets":                 frame('R', strings.Replace(good, "\x021\x02\x02\x02\x02\x00home", "\x021\x02\x02\x02=\x02\x00home", 1)),
+		"damaged heads":                    frame('R', strings.Replace(good, "\x021\x02\x02\x02\x02\x00home", "\x021\x02x\x02\x02\x02\x00home", 1)),
 		"a shared block of a use":          frame('R', "s\x02name\x020\x020\x02\x01u\x02other\x02"),
 		"a damaged error":                  frame('E', "{"),
 		"a message of a gigabyte+":         {0xff, 0xff, 0xff, 0x7f, 'R'},

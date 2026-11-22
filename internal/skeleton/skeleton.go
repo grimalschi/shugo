@@ -14,8 +14,9 @@ import (
 // Version changes when an older runtime could not read the format any more,
 // or this one an older format: 2 is the skeleton of Svelte templates, with
 // snippets and <svelte:element>; 3 writes addresses as they are, as Svelte
-// does, and has no operation of its own for them.
-const Version = 3
+// does, and has no operation of its own for them; 4 puts the head of a page
+// together where the <head> ends, and layouts show no head of their own.
+const Version = 4
 
 // Site is a whole compiled project.
 type Site struct {
@@ -39,9 +40,6 @@ type File struct {
 	// called with the same parameters: it reads nothing of the page it is on.
 	// Such a block is computed and kept once for the whole site.
 	Shared bool `json:"shared,omitempty"`
-	// Outlets are the names of what pages give to layouts that the template
-	// shows: "head" for a layout with a <head>, where <svelte:head> goes.
-	Outlets []string `json:"outlets,omitempty"`
 	// Parts are the template itself and then every snippet written in it,
 	// and what stands in its <svelte:head>.
 	Parts [][]Op `json:"parts"`
@@ -81,17 +79,13 @@ const (
 	Mount   Kind = 'm' // write markup the framework adds
 )
 
-// Last is the text of a Render that shows the last block alone.
-const Last = "last"
-
 // Op is one step of showing a template. Every step except Markup, Call and
 // Mount takes the next value the block has computed.
 type Op struct {
 	Kind Kind
-	// Text is the markup of Markup and the name of Attr and Mount.
-	// A Render with the text Last shows only the last block of a snippet
-	// the caller gave: the <title> of a page, which Svelte takes from the
-	// last <title> in <svelte:head>.
+	// Text is the markup of Markup and the name of Attr and Mount. Mount
+	// "head" stands where the <head> ends: what the templates give the head
+	// of the page goes there, before the framework's own markup.
 	Text string
 	// Bodies are the branches of If; the body of For and what it shows for
 	// no items; the attributes and the content of Element.
@@ -99,8 +93,7 @@ type Op struct {
 }
 
 // On the wire an operation is a list: its kind, then its text if it has one,
-// then its bodies: ["r","<p>"], ["t"], ["a","href"], ["i",[…],[…]],
-// ["n","last"].
+// then its bodies: ["r","<p>"], ["t"], ["a","href"], ["i",[…],[…]].
 func (o Op) MarshalJSON() ([]byte, error) {
 	parts := []any{string(rune(o.Kind))}
 	if o.hasText() {
@@ -135,9 +128,7 @@ func (o *Op) UnmarshalJSON(data []byte) error {
 	}
 	*o = Op{Kind: Kind(kind[0])}
 	parts = parts[1:]
-	// The text of a Render is there or not; a body is never a string.
-	optional := o.Kind == Render && len(parts) > 0 && len(parts[0]) > 0 && parts[0][0] == '"'
-	if o.hasText() || optional {
+	if o.hasText() {
 		if len(parts) == 0 || json.Unmarshal(parts[0], &o.Text) != nil {
 			return fmt.Errorf("skeleton: operation %q has no text", kind)
 		}
@@ -153,14 +144,11 @@ func (o *Op) UnmarshalJSON(data []byte) error {
 	return o.check()
 }
 
-// hasText tells whether the operation is written with its text: always for
-// the kinds that need one, and for a Render that shows the last block.
+// hasText tells whether the operation is written with its text.
 func (o Op) hasText() bool {
 	switch o.Kind {
 	case Markup, Attr, Mount:
 		return true
-	case Render:
-		return o.Text != ""
 	}
 	return false
 }
@@ -181,9 +169,6 @@ func (o Op) check() error {
 	}
 	if len(o.Bodies) != want {
 		return fmt.Errorf("skeleton: operation %q has %d bodies", rune(o.Kind), len(o.Bodies))
-	}
-	if o.Kind == Render && o.Text != "" && o.Text != Last {
-		return fmt.Errorf("skeleton: a render with the text %q", o.Text)
 	}
 	return nil
 }

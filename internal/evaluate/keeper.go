@@ -345,11 +345,12 @@ func (k *keeper) noted(changes *Changes, name string, known bool) {
 	}
 }
 
-// block reads one block: "b", its file, its part, its children, the
-// snippets its caller gave it and its values; or "u", the name of a shared
-// block and the snippets this place gave it.
+// block reads one block: "b", its file, its part, its children, the blocks
+// of its <svelte:head> and of its <title>, the snippets its caller gave it
+// and its values; or "u", the name of a shared block and the snippets this
+// place gave it.
 func (k *keeper) block(data []byte) (record.Block, error) {
-	fields := bytes.SplitN(data, []byte{2}, 6)
+	fields := bytes.SplitN(data, []byte{2}, 8)
 	var b record.Block
 	var snippets []byte
 	switch {
@@ -367,22 +368,24 @@ func (k *keeper) block(data []byte) (record.Block, error) {
 			k.next = append(k.next, name)
 		}
 		b.Use, b.Shared, snippets = true, shown.id, fields[2]
-	case len(fields) == 6 && string(fields[0]) == "b":
-		var err1, err2, err3 error
+	case len(fields) == 8 && string(fields[0]) == "b":
+		var err1, err2, err3, err4, err5 error
 		b.File, err1 = strconv.Atoi(string(fields[1]))
 		b.Part, err2 = strconv.Atoi(string(fields[2]))
 		b.Children, err3 = numbers(fields[3])
-		if err1 != nil || err2 != nil || err3 != nil {
+		b.Head, err4 = numbers(fields[4])
+		b.Title, err5 = numbers(fields[5])
+		if err1 != nil || err2 != nil || err3 != nil || err4 != nil || err5 != nil {
 			return b, errDamaged
 		}
 		if _, ok := k.site.Part(b.File, b.Part); !ok {
 			return b, errorf("a block of template %d, part %d, which the site does not have", b.File, b.Part)
 		}
-		values, err := tape(fields[5])
+		values, err := tape(fields[7])
 		if err != nil {
 			return b, err
 		}
-		snippets, b.Values = fields[4], values
+		snippets, b.Values = fields[6], values
 	default:
 		return b, errDamaged
 	}
