@@ -249,7 +249,7 @@ func summary(verb string, r *evaluate.Report) string {
 		out.WriteString("\n  the project was compiled anew, so everything was computed from scratch")
 	}
 	if r.CatalogRecomputed {
-		out.WriteString("\n  the first catalog result changed, so the pages were recomputed")
+		out.WriteString("\n  recomputed the readers of the changed default catalog result")
 	}
 	line := func(what string, c evaluate.Changes) {
 		if c.Added+c.Changed+c.Removed == 0 {

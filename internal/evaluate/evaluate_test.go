@@ -20,8 +20,8 @@ import (
 // with text.
 var site = &program.Site{
 	Files: []program.File{
-		{Path: "page.shugo", Parts: [][]program.Op{{{Kind: program.Text}, {Kind: program.Call}}}},
-		{Path: "leaf.shugo", Parts: [][]program.Op{{{Kind: program.Text}}}},
+		{Path: "page.svelte", Parts: [][]program.Op{{{Kind: program.Text}, {Kind: program.Call}}}},
+		{Path: "leaf.svelte", Parts: [][]program.Op{{{Kind: program.Text}}}},
 	},
 	Routes: []program.Route{
 		{File: 0, Pattern: "/special", Segments: []program.Segment{{Text: "special"}}},

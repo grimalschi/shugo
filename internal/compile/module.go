@@ -10,7 +10,7 @@ import (
 	"github.com/grimalschi/shugo/internal/syntax"
 )
 
-// module is the JavaScript module written for one .shugo file, line by line,
+// module is the JavaScript module written for a regular .svelte file, line by line,
 // with the place in the file every line came from. The places serve twice:
 // they turn an error of the bundler into an error in the template, and they
 // become the source map that does the same for an error at run time.

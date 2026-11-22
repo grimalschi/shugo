@@ -1,5 +1,5 @@
 <script lang="ts">
-  import CommentItem, { count, type Comment } from "./CommentItem.shugo";
+  import CommentItem, { count, type Comment } from "./CommentItem.svelte";
   let { comments }: { comments: Comment[] } = $props();
 </script>
 

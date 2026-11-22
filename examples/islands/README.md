@@ -14,14 +14,14 @@ bin/shugo serve examples/islands -addr 127.0.0.1:4321
 
 - [Catalog](http://127.0.0.1:4321/catalog) supports search, price, availability, category and size filters, sorting, and pagination. Apply text and price filters with **Show results**. The other filters take effect as soon as they change after hydration.
 - [Deep link](http://127.0.0.1:4321/catalog?q=cup&stock=1&sort=cheap) opens the server-rendered HTML with the results already filtered. Disable JavaScript to try the GET form with a full navigation.
-- [Static version](http://127.0.0.1:4321/baseline) uses the initial results from the same index, with the same interface and shared stylesheet. It runs without client JavaScript, and its form opens the catalog. Both templates use [the same product card](src/components/ProductCard.shugo).
+- [Static version](http://127.0.0.1:4321/baseline) uses the initial results from the same index, with the same interface and shared stylesheet. It runs without client JavaScript, and its form opens the catalog. Both templates use [the same product card](src/components/ProductCard.svelte).
 - [Two islands](http://127.0.0.1:4321/multiple) shows two copies of the same counter with independent state. The [home page](http://127.0.0.1:4321/) has no islands.
 
-The catalog client hydrates the rendered markup, fetches JSON from `/_islands/catalog` whenever the query changes, and responds to Back and Forward navigation. The build prepares a markup program from Svelte's SSR output. `shugo serve` runs it in Go. The build uses Node or Bun for compilation and evaluation. If upgrading from the first version of the demo, run `shugo build` to publish the new program. File exports contain HTML for the initial results and the client code. A running Shugo server handles results for query parameters.
+`Catalog.island.svelte` hydrates the rendered markup, fetches JSON from `/_islands/catalog` whenever the query changes, and responds to Back and Forward navigation. The build prepares a markup program from Svelte's SSR output. `shugo serve` runs it in Go. The build uses Node or Bun for compilation and evaluation. If upgrading from the first version of the demo, run `shugo build` to publish the new program. File exports contain HTML for the initial results and the client code. A running Shugo server handles results for query parameters.
 
-`search()` from `shugo:catalog` connects to the index and returns the initial results. On the island tag, `request:initial={search()}` binds the `initial` prop to results for the current URL. A regular `initial={search()}` prop gets results at build time. [Island tag](src/pages/catalog.shugo)
+`search()` from `shugo:catalog` connects to the index and returns the initial results. On the island tag, `request:initial={search()}` binds the `initial` prop to results for the current URL. A regular `initial={search()}` prop gets results at build time. [Island tag](src/pages/catalog.svelte)
 
-The build publishes the catalog in a separate `_build/catalog-*.sqlite` file. SQLite FTS5 matches words using English stems. Filters, counts, and cards read from the same read-only snapshot. When the source data changes, `shugo update` builds a new snapshot and publishes it alongside the page records. The next update of a project with the old JSON index migrates its catalog to SQLite.
+The build publishes the catalog in a separate `_build/catalog-*.sqlite` file. SQLite FTS5 matches words using English stems. Filters, counts, and cards read from the same read-only snapshot. `shugo update` replaces the snapshot when indexed data changes. If the initial results change, it reevaluates their readers. The next update of a project with the old JSON index migrates its catalog to SQLite.
 
 ## Validation and benchmarks
 

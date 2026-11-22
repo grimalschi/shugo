@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/grimalschi/shugo/internal/program"
+	"github.com/grimalschi/shugo/internal/project"
 	"github.com/grimalschi/shugo/internal/syntax"
 )
 
@@ -518,7 +519,7 @@ func (l *lowerer) element(e *syntax.Element, ctx context) []node {
 	if l.islands[e.Name].path == "" {
 		for _, a := range e.Attrs {
 			if a.Directive == "request" {
-				l.errorf(a.Start, "request:%s binds a prop on a .svelte island", a.Name)
+				l.errorf(a.Start, "request:%s binds a prop on an %s component", a.Name, project.IslandSuffix)
 			}
 		}
 	}
@@ -531,8 +532,8 @@ func (l *lowerer) element(e *syntax.Element, ctx context) []node {
 		return l.dynamicElement(e, ctx)
 	case "svelte:self":
 		// Svelte 5 still shows them, and warns; so does Shugo.
-		name := strings.TrimSuffix(l.file.Path[strings.LastIndex(l.file.Path, "/")+1:], ".shugo")
-		l.warnf(e.Start, "<svelte:self> is deprecated in Svelte 5: a component imports itself, import %s from \"./%s.shugo\"", name, name)
+		name := strings.TrimSuffix(l.file.Path[strings.LastIndex(l.file.Path, "/")+1:], project.TemplateExtension)
+		l.warnf(e.Start, "<svelte:self> is deprecated in Svelte 5: a component imports itself, import %s from \"./%s%s\"", name, name, project.TemplateExtension)
 		return []node{l.call(e, ctx, code{"$$self", e.Start}, true, false)}
 	case "svelte:component":
 		this, ok := l.this(e)
@@ -586,7 +587,7 @@ func (l *lowerer) island(e *syntax.Element, ctx context) node {
 			out.props = append(out.props, prop{name: a.Name, value: l.value(a)})
 		case syntax.Directive:
 			if a.Directive != "request" {
-				l.errorf(a.Start, "pass a JSON prop to the Svelte island <%s>; directives belong inside its .svelte file", e.Name)
+				l.errorf(a.Start, "pass a JSON prop to the Svelte island <%s>; directives belong inside its %s file", e.Name, project.IslandSuffix)
 				continue
 			}
 			if _, ok := a.Expr(); !ok || len(a.Modifiers) != 0 {
@@ -600,7 +601,7 @@ func (l *lowerer) island(e *syntax.Element, ctx context) node {
 			bound[a.Name] = true
 			out.request = append(out.request, prop{name: a.Name, value: l.value(a)})
 		default:
-			l.errorf(a.Start, "pass a JSON prop to the Svelte island <%s>; directives belong inside its .svelte file", e.Name)
+			l.errorf(a.Start, "pass a JSON prop to the Svelte island <%s>; directives belong inside its %s file", e.Name, project.IslandSuffix)
 		}
 	}
 	for _, p := range out.props {

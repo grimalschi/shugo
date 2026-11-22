@@ -1,5 +1,5 @@
 <script>
-  import Button from "../components/Button.shugo"
+  import Button from "../components/Button.svelte"
 
   const features = ["Tailwind classes directly in the templates", "Custom colors with @theme", "Custom rules with @apply"]
 </script>

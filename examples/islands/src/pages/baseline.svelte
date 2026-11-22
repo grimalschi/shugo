@@ -1,6 +1,6 @@
 <script>
   import { search } from "shugo:catalog"
-  import ProductCard from "../components/ProductCard.shugo"
+  import ProductCard from "../components/ProductCard.svelte"
 
   const action = "/catalog"
   const result = search()

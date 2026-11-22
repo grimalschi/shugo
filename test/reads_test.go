@@ -25,100 +25,100 @@ const readSite = `
 {"data": "data/shop.db"}
 -- src/lib/text.ts --
 export const shout = (row: { title: string }) => row.title.toUpperCase()
--- src/components/Row.shugo --
+-- src/components/Row.svelte --
 <li>{$props().row.title}</li>
--- src/components/Frame.shugo --
+-- src/components/Frame.svelte --
 <script>
 let { children } = $props()
 </script>
 <div>{@render children?.()}</div>
--- src/pages/script.shugo --
+-- src/pages/script.svelte --
 <script>
 const item = Shugo.query("products").get("p1")
 const cost = item.price * 2
 console.log("script")
 </script>
 <p>{cost}</p>
--- src/pages/template.shugo --
+-- src/pages/template.svelte --
 <script>
 const item = Shugo.query("products").get("p1")
 console.log("template")
 </script>
 <p>{item.title}</p>
--- src/pages/neither.shugo --
+-- src/pages/neither.svelte --
 <script>
 const item = Shugo.query("products").get("p1")
 console.log("neither")
 </script>
 <p>{#if item}there{:else}gone{/if}</p>
--- src/pages/asked.shugo --
+-- src/pages/asked.svelte --
 <script>
 const item = Shugo.query("products").get("p1")
 const priced = "price" in item
 console.log("asked")
 </script>
 <p>{priced}</p>
--- src/pages/spread.shugo --
+-- src/pages/spread.svelte --
 <script>
 const copy = { ...Shugo.query("products").get("p1") }
 console.log("spread")
 </script>
 <p>{copy.title}</p>
--- src/pages/written.shugo --
+-- src/pages/written.svelte --
 <script>
 const text = JSON.stringify(Shugo.query("products").get("p1")).length > 0
 console.log("written")
 </script>
 <p>{text}</p>
--- src/pages/function.shugo --
+-- src/pages/function.svelte --
 <script>
 import { shout } from "../lib/text"
 const item = Shugo.query("products").get("p1")
 console.log("function")
 </script>
 <p>{shout(item)}</p>
--- src/pages/local.shugo --
+-- src/pages/local.svelte --
 <script>
 const item = Shugo.query("products").get("p1")
 const cost = (row) => row.price + 1
 console.log("local")
 </script>
 <p>{cost(item)}</p>
--- src/pages/component.shugo --
+-- src/pages/component.svelte --
 <script>
-import Row from "../components/Row.shugo"
+import Row from "../components/Row.svelte"
 const item = Shugo.query("products").get("p1")
 console.log("component")
 </script>
 <ul><Row row={item} /></ul>
--- src/pages/fill.shugo --
+-- src/pages/fill.svelte --
 <script>
-import Frame from "../components/Frame.shugo"
+import Frame from "../components/Frame.svelte"
 const item = Shugo.query("products").get("p1")
 console.log("fill")
 </script>
 <Frame>{item.title}</Frame>
--- src/pages/asking.shugo --
+-- src/pages/asking.svelte --
 <p>{Shugo.query("products").get("p1").title}{console.log("asking")}</p>
--- src/pages/together.shugo --
+-- src/pages/together.svelte --
 <script>
 const rows = Shugo.query("products").where({ category: "c1" }).order("position").all()
 console.log("together")
 </script>
 <ul>{#each rows as row}<li>{row.title}</li>{/each}</ul>
--- src/pages/alone.shugo --
+-- src/pages/alone.svelte --
 <script>
 const rows = Shugo.query("products").order("position").limit(2).all()
 console.log("alone")
 </script>
 <ul>{#each rows as row}<li>{row.title}</li>{/each}</ul>
--- src/pages/joined.shugo --
+-- src/pages/joined.svelte --
 <script>
 const item = Shugo.query("products").join("categories", "category").get("p1")
 console.log("joined")
 </script>
 <p>{item.title} in {item.categories.title}</p>
--- src/pages/listed/[slug].shugo --
+-- src/pages/listed/[slug].svelte --
 <script module>
 export const getStaticPaths = ({ query }) => query("products").all().map(({ slug }) => ({ params: { slug } }))
 </script>
@@ -126,7 +126,7 @@ export const getStaticPaths = ({ query }) => query("products").all().map(({ slug
 console.log("listed " + Shugo.params.slug)
 </script>
 <p>{Shugo.params.slug}</p>
--- src/pages/handed/[slug].shugo --
+-- src/pages/handed/[slug].svelte --
 <script module>
 export const getStaticPaths = ({ query }) => query("products").where({ category: "c2" }).all().map((row) => ({ params: { slug: row.slug }, props: { row } }))
 </script>
@@ -223,32 +223,32 @@ func TestWaysThatAreTaken(t *testing.T) {
 -- src/lib/text.ts --
 // What it reads of the row depends on the row.
 export const label = (row) => (row.price > 6 ? row.title : row.note)
--- src/pages/branch.shugo --
+-- src/pages/branch.svelte --
 <script>
 const item = Shugo.query("products").get("p1")
 console.log("branch")
 </script>
 {#if item.available}<p>in stock</p>{:else}<p>comes {item.arrival}</p>{/if}
--- src/pages/either.shugo --
+-- src/pages/either.svelte --
 <script>
 const item = Shugo.query("products").get("p1")
 console.log("either")
 </script>
 <p>{item.note || item.title}</p>
--- src/pages/function.shugo --
+-- src/pages/function.svelte --
 <script>
 import { label } from "../lib/text"
 const item = Shugo.query("products").get("p2")
 console.log("function")
 </script>
 <p>{label(item)}</p>
--- src/pages/loop.shugo --
+-- src/pages/loop.svelte --
 <script>
 const rows = Shugo.query("products").where({ available: true }).order("position").all()
 console.log("loop")
 </script>
 <ul>{#each rows as row}<li>{row.title}</li>{/each}</ul>
--- src/pages/first.shugo --
+-- src/pages/first.svelte --
 <script>
 const rows = Shugo.query("products").order("position").limit(2).all()
 console.log("first")
@@ -313,7 +313,7 @@ func TestSelectTakesLess(t *testing.T) {
 	s := newSite(t, `
 -- shugo.json --
 {"data": "data/shop.db"}
--- src/pages/index.shugo --
+-- src/pages/index.svelte --
 <script>
 const item = Shugo.query("products").select("title", "price", "note").get("p1")
 console.log("index")
@@ -336,7 +336,7 @@ func TestRowIsAnOrdinaryObject(t *testing.T) {
 	s := newSite(t, `
 -- shugo.json --
 {"data": "data/shop.db"}
--- src/pages/index.shugo --
+-- src/pages/index.svelte --
 <script>
 const item = Shugo.query("products").get("p1")
 const priced = item.hasOwnProperty("price")
@@ -344,7 +344,7 @@ const same = item.then === undefined && item.toString === Object.prototype.toStr
 console.log("index")
 </script>
 <p title={item}>{priced} {same} {item} {[item, item]}</p>
--- src/pages/attributes.shugo --
+-- src/pages/attributes.svelte --
 <script>
 const item = Shugo.query("products").select("title", "note").get("p1")
 console.log("attributes")
@@ -383,13 +383,13 @@ func TestRowKeptForAnotherScript(t *testing.T) {
 		want        []string
 	}{
 		{"a row read after its page is computed", keptSite + `
--- src/pages/index.shugo --
+-- src/pages/index.svelte --
 <script>
 import { jug } from "../lib/kept"
 const item = jug(Shugo)
 </script>
 <p>{item.title}</p>
--- src/pages/about.shugo --
+-- src/pages/about.svelte --
 <script>
 import { jug } from "../lib/kept"
 const item = jug(Shugo)
@@ -407,7 +407,7 @@ const item = jug(Shugo)
 let first: { title: string } | undefined
 export const keep = (row: { title: string }) => (first ??= row)
 export const kept = () => first
--- src/pages/[slug].shugo --
+-- src/pages/[slug].svelte --
 <script module>
 import { keep, kept } from "../lib/kept"
 export const getStaticPaths = ({ query }) => query("products").all().map((row) => (keep(row), { params: { slug: row.slug } }))
@@ -415,12 +415,12 @@ export const getStaticPaths = ({ query }) => query("products").all().map((row) =
 <p>{kept().title}</p>
 `, []string{"a row of the table products is read when the page, shared block or list of pages it belongs to is already computed"}},
 		{"Shugo asked after its page is computed", keptSite + `
--- src/pages/index.shugo --
+-- src/pages/index.svelte --
 <script>
 import { count } from "../lib/kept"
 </script>
 <p>{count(Shugo)}</p>
--- src/pages/about.shugo --
+-- src/pages/about.svelte --
 <script>
 import { count } from "../lib/kept"
 </script>
@@ -462,24 +462,24 @@ old
 // that the second page shows what the first one read.
 let kept: string | undefined
 export const title = (Shugo: any) => (kept ??= Shugo.query("products").get("p2").title)
--- src/pages/index.shugo --
+-- src/pages/index.svelte --
 <script>
 import { readFileSync } from "node:fs"
 const note = readFileSync("note.txt", "utf8").trim()
 const count = Shugo.query("products").count()
 </script>
 <p>{note}: {count}</p>
--- src/pages/about.shugo --
+-- src/pages/about.svelte --
 <script>
 const item = Shugo.query("products").get("p1")
 </script>
 <p>{item.title}</p>
--- src/pages/one.shugo --
+-- src/pages/one.svelte --
 <script>
 import { title } from "../lib/kept"
 </script>
 <p>{title(Shugo)}</p>
--- src/pages/two.shugo --
+-- src/pages/two.svelte --
 <script>
 import { title } from "../lib/kept"
 </script>
@@ -527,7 +527,7 @@ func TestParametersComeFromTheAddress(t *testing.T) {
 	s := newSite(t, `
 -- shugo.json --
 {"data": "data/shop.db"}
--- src/pages/price/[price].shugo --
+-- src/pages/price/[price].svelte --
 <script module>
 export const getStaticPaths = ({ query }) => query("products").select("price").all().map(({ price }) => ({ params: { price, more: "no" } }))
 </script>
@@ -554,7 +554,7 @@ func TestCheckCommand(t *testing.T) {
 {"data": "data/shop.db"}
 -- note.txt --
 old
--- src/pages/index.shugo --
+-- src/pages/index.svelte --
 <script>
 import { readFileSync } from "node:fs"
 const note = readFileSync("note.txt", "utf8").trim()

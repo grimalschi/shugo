@@ -4,8 +4,8 @@ Rantime is a server on Go that collects HTML pages from storage.
 
 ## Decisions
 
-- Runtime uses the project program and stored values. The project code it does not execute, requests data does not do, does not calculate anything.
-- All pages and all data are known in advance. There are no pages that depend on cookies or query strings, API routes and processing forms.
+- Go uses the project program to publish values. The template code is compiled and calculated when published.
+- For the island directory Go uses query parameters and published SQLite index. The same issue is available to the browser island via `/_islands/catalog`.
 - The main mode is to assemble the page on the fly with each request. When data changes often, writing thousands of HTML files in advance makes no sense: the runtime collects a page from ready-made pieces very quickly.
 - The second mode is a one-time generation of all HTML-files of the site.
 - Rantime always takes meanings from the saved and doesn't know how or when they were updated.
@@ -30,7 +30,8 @@ There are no copies of the site in the server memory. For each request, it:
 4. It follows the program of the template of the first block. The markup is copied, the next value is taken from the block tape and screens it on the place of expression.
 5. At the call point, the component moves to the next sub-block. The shared block reads from its own record, also by a single search; the block shown on the page twice is read once.
 6. In place, `{@render}` shows a snippet. The snippet with the parameters is the next nested block. The snippet without the parameters that the caller gave is blocks from the caller's record: the component block has written what blocks they are ([Storage](storage.md#tape)).
-7. Closes the transaction and returns the connection to the pool.
+7. On the island site, the directory takes the index version from the same transaction, reads the issue according to the parameters of URL and applies the island markup program. In HTML, it adds the parameters of its hydration.
+8. Closes the transaction and returns the connection to the pool.
 
 The entire page is assembled from one state: the update that ended in the middle does not affect it. The next request already sees it - without a storage survey and without re-reading.
 
@@ -45,7 +46,8 @@ The connections in the pool are twice as large as the cores; everyone has pre-pr
 | address from `redirects` | 301 |
 | file from `public/` | file |
 | `/_assets/…` | file collected by the compiler; cached forever: name changes with content |
-| everything else | 404 and page `src/pages/404.shugo`, if any |
+| `/_islands/catalog?…` | JSON-extract from the published index of the catalog |
+| everything else | 404 and page `src/pages/404.svelte`, if any |
 | not `GET` and not `HEAD` | 405 |
 
 An update made by another process, the server sees from the next request.

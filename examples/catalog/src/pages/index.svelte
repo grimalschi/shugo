@@ -1,5 +1,5 @@
 <script>
-  import ProductCard from "../components/ProductCard.shugo"
+  import ProductCard from "../components/ProductCard.svelte"
 
   const first = Shugo.query("products").order("position").limit(24).all()
 </script>

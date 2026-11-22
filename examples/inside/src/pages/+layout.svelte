@@ -1,5 +1,5 @@
 <script>
-  import Header from "../components/Header.shugo"
+  import Header from "../components/Header.svelte"
 
   let { children } = $props()
 </script>

@@ -19,9 +19,50 @@ import (
 	"github.com/blevesearch/snowballstem"
 	"github.com/blevesearch/snowballstem/english"
 	_ "modernc.org/sqlite"
+
+	"github.com/grimalschi/shugo/internal/data"
 )
 
 const indexVersion = 1
+
+// Affected reports whether any of the rows or columns used by the catalog
+// projection changed. Columns used in the SELECT and ORDER BY clauses in
+// readCategories, readProducts, and readSizes all count.
+func Affected(source *data.DB, changes []data.Change) bool {
+	if len(changes) == 0 {
+		return false
+	}
+	columns := make(map[*data.Table][]int, len(projectionColumns))
+	for name, fields := range projectionColumns {
+		table := source.TableFold(name)
+		if table == nil {
+			return true // a view may read other tables
+		}
+		for index, field := range table.Columns {
+			lower := strings.ToLower(field)
+			if len(lower) == len(field) && slices.Contains(fields, lower) {
+				columns[table] = append(columns[table], index)
+			}
+		}
+		if len(columns[table]) != len(fields) {
+			return true // a generated column may depend on other columns
+		}
+	}
+	for _, change := range changes {
+		for _, column := range columns[change.Table] {
+			if change.Differs(column) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+var projectionColumns = map[string][]string{
+	"categories": {"id", "title", "position"},
+	"products":   {"id", "slug", "title", "category", "price", "discount", "available", "arrival", "description", "position"},
+	"variants":   {"product", "title", "position", "sku"},
+}
 
 type option struct {
 	Value string `json:"value"`

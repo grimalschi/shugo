@@ -20,13 +20,13 @@ SSR and hydration run on Shugo after it adopted Svelte 5 template syntax. The ex
 
 The example supports text search, multiple categories and sizes, availability, price range, four sort orders, 24 products per page, and a reset. Values in one facet match with OR, and separate facets match with AND. Each facet count shows how many products match that value and the remaining filters. The search matches each term as a case-insensitive substring of the name or description. When sort keys tie, position and ID determine the order.
 
-Same [products card](src/components/ProductCard.shugo) imported into `.shugo` The comparison page and [Catalog.svelte](src/components/Catalog.svelte)I'm on the island. Svelte compiles clean `.shugo` The following are the components, including inputs, that are to be considered: Shugoincluding: `Shugo.query` In the input component, the build is mistaken. JSON props or APIThe island can also be placed in a regular Shugo component.
+Same [products card](src/components/ProductCard.svelte) imported into `.shugo` The comparison page and [Catalog.svelte](src/components/Catalog.island.svelte)I'm on the island. Svelte compiles clean `.shugo` The following are the components, including inputs, that are to be considered: Shugoincluding: `Shugo.query` In the input component, the build is mistaken. JSON props or APIThe island can also be placed in a regular Shugo component.
 
 The example uses Svelte's standard `render` and `hydrate`. [Svelte documentation](https://svelte.dev/docs/svelte/imperative-component-api)
 
 ## Build and update
 
-Each cell gives the median of five runs in milliseconds. Both versions have two pages, the same data and catalog at `/catalog`, identical initial results, and the same styles. [The static baseline](src/pages/baseline.shugo) also builds the projection, so the build time difference measures the cost of adding the island. Timing excludes database setup and dependency installation. Build and update times cover the full command in a separate process.
+Each cell gives the median of five runs in milliseconds. Both versions have two pages, the same data and catalog at `/catalog`, identical initial results, and the same styles. [The static baseline](src/pages/baseline.svelte) also builds the projection, so the build time difference measures the cost of adding the island. Timing excludes database setup and dependency installation. Build and update times cover the full command in a separate process.
 
 The environment is Linux x86-64, Intel Xeon E3-1270 v6, 8 logical CPUs, Go 1.27.4, Bun 1.4.4 and Node 24.22.1. for the launch of the bench. HTTP is a loopback network. The sequence of options was alternated by a common machine. [Build script and HTTP](scripts/bench.mjs)
 

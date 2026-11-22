@@ -15,7 +15,7 @@ Documents are written together. Each of the three sections:
 | Document | About what |
 | --- | --- |
 | [Project structure](project-structure.md) | What folders and files are in the project and what they mean |
-| [Templates](templates.md) | `.shugo` files are components of Svelte 5: code, markup, blocks that output expressions where Shugo deviates from Svelte |
+| [Templates](templates.md) | `.svelte` files are components of Svelte 5: code, markup, blocks that output expressions where Shugo deviates from Svelte |
 | [Components](components.md) | Reusable parts of templates: parameters, snippets, common components |
 | [Layouts](layouts.md) | General binding of pages and `<svelte:head>` |
 | [File-based routing](routing.md) | How Page Files Turn into Addresses |
@@ -32,7 +32,7 @@ Documents are written together. Each of the three sections:
 
 - Shugo generates static sites. All pages and all data are known in advance; the project code is not executed at the request of the visitor.
 - **This is framework for agents.** Project code is written by agents, not people. Two solutions are chosen to make the agent make fewer mistakes. Therefore, expressions are written in JS, not something faster: agents know JS perfectly.
-- **Templates — components of Svelte 5** (21 solution November 2026 year). The syntax and pattern behavior copy Svelte to allow a piece of the template to be transferred from Shugo to Svelte and back, and later nearby Svelte islands with the same syntax may appear. This replaces the previous decision on its `g-*` tags.
+- **Templates use syntax Svelte 5.** Ordinary pages, layouts and components are written in `.svelte`. The entry points for the browser-based Svelte are marked with the suffix `.island.svelte`. [Svelte islands](scripts.md#svelte-islands)
 - The entire framework is written in Go: project compilation, start-up calculation, page assembly.
 - In the source code of the project everywhere TypeScript. This is a rule and requirement.
 - The project is divided into stages. The result of each stage is the following, and the boundary between the stages is clear. Details - in [Assembly Sequences](../docs/build-pipeline.md).

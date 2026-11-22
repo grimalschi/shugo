@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Card from "../components/Card.shugo"
+  import Card from "../components/Card.svelte"
   import { products } from "../lib/shop"
 </script>
 

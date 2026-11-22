@@ -1,4 +1,4 @@
-// Package syntax reads .shugo files. A file is written the way a component of
+// Package syntax reads .svelte files. A file is written the way a component of
 // Svelte 5 is: a <script> with the code that runs every time the component is
 // shown, a <script module> with code that runs once, a template, and a
 // <style>. The package knows the shape of all this — elements, attributes,
@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-// File is one parsed .shugo file.
+// File is one parsed .svelte file.
 type File struct {
 	Path   string // as it should appear in messages
 	Source string
@@ -204,7 +204,7 @@ func (e *Element) Attr(name string) (Attr, bool) {
 	return Attr{}, false
 }
 
-// Error is a mistake in a .shugo file, with the place it was found at.
+// Error is a mistake in a .svelte file, with the place it was found at.
 type Error struct {
 	Path    string
 	Line    int // from 1
@@ -279,7 +279,7 @@ var directives = map[string]bool{
 	"request": true,
 }
 
-// Parse reads a .shugo file.
+// Parse reads a .svelte file.
 func Parse(path, source string) (*File, error) {
 	f := &File{Path: path, Source: source}
 	if strings.HasPrefix(strings.TrimLeft(source, " \t\r\n"), "---") {

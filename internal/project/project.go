@@ -22,6 +22,16 @@ const (
 	Output   = "_build"     // everything the framework writes
 )
 
+const (
+	TemplateExtension = ".svelte"
+	IslandSuffix      = ".island.svelte"
+)
+
+// IsIsland reports whether a source file declares a Svelte island.
+func IsIsland(path string) bool {
+	return strings.HasSuffix(path, IslandSuffix)
+}
+
 // Config is what shugo.json holds. Every field may be left out.
 type Config struct {
 	// Site is the address the site is published at: "https://example.com".
@@ -82,8 +92,8 @@ func (p *Project) Data() string {
 	return p.Path(filepath.FromSlash(p.Config.Data))
 }
 
-// Templates returns the .shugo files of the project: those in src/,
-// sorted. The paths are relative to the root and use "/".
+// Templates returns the sorted regular .svelte files in src/. Islands enter
+// the compiler through imports. The paths are relative to the root and use "/".
 func (p *Project) Templates() ([]string, error) {
 	var out []string
 	source := p.Path(Source)
@@ -99,10 +109,21 @@ func (p *Project) Templates() ([]string, error) {
 			}
 			return nil
 		}
-		if strings.HasSuffix(name, ".shugo") {
-			rel, _ := filepath.Rel(p.Root, path)
-			out = append(out, filepath.ToSlash(rel))
+		extension := filepath.Ext(name)
+		const legacyExtension = ".shugo"
+		if IsIsland(name) || (extension != TemplateExtension && extension != legacyExtension) {
+			return nil
 		}
+		rel, err := filepath.Rel(p.Root, path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if extension == legacyExtension {
+			renamed := strings.TrimSuffix(rel, legacyExtension) + TemplateExtension
+			return fmt.Errorf("%s: rename this template to %s and update its imports", rel, renamed)
+		}
+		out = append(out, rel)
 		return nil
 	})
 	sort.Strings(out)

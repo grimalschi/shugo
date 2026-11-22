@@ -129,7 +129,7 @@ func TestParse(t *testing.T) {
 		{"<svelte:element this={tag}>x</svelte:element><Card.Body />", "<svelte:element this={tag}>x</svelte:element><Card.Body/>"},
 	}
 	for _, c := range cases {
-		f, err := Parse("a.shugo", c.source)
+		f, err := Parse("a.svelte", c.source)
 		if err != nil {
 			t.Errorf("%s: %v", c.source, err)
 			continue
@@ -153,7 +153,7 @@ func TestScriptsAndStyle(t *testing.T) {
 <style>
   h1 { color: red; }
 </style>`
-	f, err := Parse("a.shugo", source)
+	f, err := Parse("a.svelte", source)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,10 +174,10 @@ func TestScriptsAndStyle(t *testing.T) {
 
 func TestParseErrors(t *testing.T) {
 	cases := []struct{ source, want string }{
-		{"---\nconst a = 1\n---\n<p/>", `a.shugo:1:1: the code of a component goes into <script>`},
-		{"<div>", "a.shugo:1:1: <div> is never closed"},
-		{"<div></span>", "a.shugo:1:6: </span> does not close <div> opened at 1:1"},
-		{"</p>", "a.shugo:1:1: </p> closes nothing"},
+		{"---\nconst a = 1\n---\n<p/>", `a.svelte:1:1: the code of a component goes into <script>`},
+		{"<div>", "a.svelte:1:1: <div> is never closed"},
+		{"<div></span>", "a.svelte:1:6: </span> does not close <div> opened at 1:1"},
+		{"</p>", "a.svelte:1:1: </p> closes nothing"},
 		{"{#if a}x", "{#if} is never closed with {/if}"},
 		{"{#if a}<p>x{/if}", "stands inside <p>"},
 		{"{#each a as}x{/each}", `{#each} needs a name for one item after "as"`},
@@ -189,7 +189,7 @@ func TestParseErrors(t *testing.T) {
 		{"<br></br>", "</br>: <br> never has a closing tag"},
 	}
 	for _, c := range cases {
-		_, err := Parse("a.shugo", c.source)
+		_, err := Parse("a.svelte", c.source)
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s:\n got %v\nwant …%s…", c.source, err, c.want)
 		}
@@ -197,7 +197,7 @@ func TestParseErrors(t *testing.T) {
 }
 
 func TestImplicitClose(t *testing.T) {
-	f, err := Parse("a.shugo", "<div><p>text</div>")
+	f, err := Parse("a.svelte", "<div><p>text</div>")
 	if err != nil {
 		t.Fatal(err)
 	}

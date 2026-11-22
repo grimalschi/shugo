@@ -75,10 +75,10 @@ func TestCommands(t *testing.T) {
 
 // A mistake is printed with the lines of the file around it.
 func TestCommandShowsTheMistake(t *testing.T) {
-	s := newSite(t, "-- src/pages/index.shugo --\n<main>\n  <p>café!</div>\n</main>")
+	s := newSite(t, "-- src/pages/index.svelte --\n<main>\n  <p>café!</div>\n</main>")
 	s.store.Close()
 	_, errs, status := shugo(t, "build", s.root)
-	want := "error: src/pages/index.shugo:2:11: </div> does not close <p> opened at 2:3\n     1 | <main>\n     2 |   <p>café!</div>\n       |           ^\n"
+	want := "error: src/pages/index.svelte:2:11: </div> does not close <p> opened at 2:3\n     1 | <main>\n     2 |   <p>café!</div>\n       |           ^\n"
 	if status != 1 || errs != want {
 		t.Errorf("status %d\n got: %q\nwant: %q", status, errs, want)
 	}
@@ -94,7 +94,7 @@ func TestUpdateCompilesAChangedProject(t *testing.T) {
 -- src/lib/data.ts --
 import items from "../../data/items.json"
 export const getItems = (): string[] => items
--- src/pages/index.shugo --
+-- src/pages/index.svelte --
 <script>
 import { getItems } from "@/lib/data"
 </script>
@@ -117,7 +117,7 @@ import { getItems } from "@/lib/data"
 		t.Errorf("the page: %s", html)
 	}
 	// A new template is a change of the project too.
-	s.write("-- src/pages/more.shugo --\n<p>more</p>")
+	s.write("-- src/pages/more.svelte --\n<p>more</p>")
 	if _, errs, _ := shugo(t, "update", s.root); !strings.Contains(errs, "the project has changed") {
 		t.Errorf("an update after a new page: %s", errs)
 	}

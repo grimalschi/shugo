@@ -27,7 +27,7 @@ Product page in the store from [examples/catalog](../examples/catalog/README.md)
 
 ```
 page entry /products/jug
-└─ src/pages/+layout.shugo{|children,head} layout common: one to all pages with <svelte:head>
+└─ src/pages/+layout.svelte{|children,head} layout common: one to all pages with <svelte:head>
    ├─ end of <head>: snippet head in page entry: her <title>
    ├─ Header general: one for the whole site
    ├─ {@render children()}: page block in page entry
@@ -38,7 +38,7 @@ page entry /products/jug
    └─ Footer general: one for the whole site
 ```
 
-The layout doesn’t read anything about the page, so it’s also a shared block. The page gives him two snippets: `children` is herself, and `head` is what is written in her `<svelte:head>`. Snippet names stand in the common block name after `|`: a page without `<svelte:head>` shows another common block, `src/pages/+layout.shugo{|children}`. The snippets themselves are calculated in the page and lie in its record; in the layout entry, in their place, there is a reference to "the snippet `children` of the one who showed me".
+The layout doesn’t read anything about the page, so it’s also a shared block. The page gives him two snippets: `children` is herself, and `head` is what is written in her `<svelte:head>`. Snippet names stand in the common block name after `|`: a page without `<svelte:head>` shows another common block, `src/pages/+layout.svelte{|children}`. The snippets themselves are calculated in the page and lie in its record; in the layout entry, in their place, there is a reference to "the snippet `children` of the one who showed me".
 
 Tapes lie inside records, common blocks are separate records under their own name. The reasons are in [2](../spec/decisions.md#2-values-are-stored-by-content-and-shared-blocks-by-name) and [3](../spec/decisions.md#3-which-blocks-are-shared).
 

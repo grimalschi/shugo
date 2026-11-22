@@ -4,7 +4,7 @@ Layout - general binding of pages: `<html>`, `<head>`, cap, footer and place for
 
 ## Decisions
 
-- The layout is a `.shugo` file.
+- The layout is a `.svelte` file.
 - Layouts are modeled after `+layout` from SvelteKit: the layout file is located in the folder with the pages and acts on them.
 - The layout works as a component, but it cannot be called.
 - The model can upload its data.
@@ -16,14 +16,14 @@ Layout - general binding of pages: `<html>`, `<head>`, cap, footer and place for
 
 ```
 src/pages/
-  +layout.shugo wraps all pages
-  index.shugo
+  +layout.svelte wraps all pages
+  index.svelte
   docs/
-    +layout.shugo wraps docs/ pages, itself lying inside the root
-    index.shugo
+    +layout.svelte wraps docs/ pages, itself lying inside the root
+    index.svelte
     (guides)/
-      +layout.shugo folder in parentheses: another layout without part of the address
-      start.shugo address /docs/start
+      +layout.svelte folder in parentheses: another layout without part of the address
+      start.svelte address /docs/start
 ```
 
 The nested layout is inside the external one, as in SvelteKit. The `/docs/start` page is wrapped with three layouts.
@@ -31,9 +31,9 @@ The nested layout is inside the external one, as in SvelteKit. The `/docs/start`
 ### How the layout shows the page
 
 ```svelte
-<!-- src/pages/+layout.shugo -->
+<!-- src/pages/+layout.svelte -->
 <script>
-  import Header from "../components/Header.shugo"
+  import Header from "../components/Header.svelte"
   import "../styles/main.css"
 
   let { children } = $props()
@@ -56,7 +56,7 @@ The nested layout is inside the external one, as in SvelteKit. The `/docs/start`
 ### How a page conveys title and meta tags
 
 ```svelte
-<!-- src/pages/about.shugo -->
+<!-- src/pages/about.svelte -->
 <svelte:head>
   <title>About the store</title>
   <meta name="description" content="Pottery workshop">
@@ -71,7 +71,7 @@ The nested layout is inside the external one, as in SvelteKit. The `/docs/start`
 - `<title>` has one page like in Svelte: last in this order, and it stands after the rest. Therefore, the default title is written in `<svelte:head>` root layout, and the page replaces it with its own:
 
   ```svelte
-  <!-- src/pages/+layout.shugo -->
+  <!-- src/pages/+layout.svelte -->
   <svelte:head><title>Measure</title></svelte:head>
   ```
 

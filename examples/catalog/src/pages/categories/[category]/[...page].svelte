@@ -10,7 +10,7 @@
 </script>
 
 <script>
-  import ProductCard from "../../../components/ProductCard.shugo"
+  import ProductCard from "../../../components/ProductCard.svelte"
 
   const category = Shugo.query("categories").get(Shugo.params.category)
   const page = Shugo.paginate(Shugo.query("products").where({ category: category.id }).order("position"), { pageSize: 24 })

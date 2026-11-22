@@ -17,7 +17,7 @@ type islandBinding struct {
 	request bool // at least one call binds props to request data
 }
 
-// unit is one compiled .shugo file.
+// unit is one regular .svelte file compiled by Shugo.
 type unit struct {
 	file   *syntax.File
 	role   role

@@ -7,15 +7,15 @@ import (
 
 func TestParse(t *testing.T) {
 	cases := []struct{ file, pattern string }{
-		{"index.shugo", "/"},
-		{"about.shugo", "/about"},
-		{"blog/index.shugo", "/blog"},
-		{"blog/[slug].shugo", "/blog/[slug]"},
-		{"docs/[...path].shugo", "/docs/[...path]"},
-		{"(shop)/cart.shugo", "/cart"},
-		{"(shop)/products/[id]/reviews.shugo", "/products/[id]/reviews"},
-		{"404.shugo", "/404"},
-		{"café/index.shugo", "/café"},
+		{"index.svelte", "/"},
+		{"about.svelte", "/about"},
+		{"blog/index.svelte", "/blog"},
+		{"blog/[slug].svelte", "/blog/[slug]"},
+		{"docs/[...path].svelte", "/docs/[...path]"},
+		{"(shop)/cart.svelte", "/cart"},
+		{"(shop)/products/[id]/reviews.svelte", "/products/[id]/reviews"},
+		{"404.svelte", "/404"},
+		{"café/index.svelte", "/café"},
 	}
 	for _, c := range cases {
 		segments, ok, err := Parse(c.file)
@@ -30,17 +30,23 @@ func TestParse(t *testing.T) {
 }
 
 func TestParseSkipsAndErrors(t *testing.T) {
-	for _, file := range []string{"_parts/card.shugo", "blog/_draft.shugo"} {
+	for _, file := range []string{
+		"_parts/card.svelte",
+		"blog/_draft.svelte",
+		"index.island.svelte",
+		"(shop)/products/[id]/Cart.island.svelte",
+		"blog/readme.md",
+	} {
 		if _, ok, err := Parse(file); ok || err != nil {
 			t.Errorf("%s: %v %v", file, ok, err)
 		}
 	}
 	errors := map[string]string{
-		"blog/+page.shugo": "kept for the framework",
-		"[...all]/x.shugo": "must be the last part",
-		"post-[id].shugo":  "mixes text and a parameter",
-		"[a]/[a].shugo":    "is there twice",
-		"[my-id].shugo":    "is not a name of a parameter",
+		"blog/+page.svelte": "kept for the framework",
+		"[...all]/x.svelte": "must be the last part",
+		"post-[id].svelte":  "mixes text and a parameter",
+		"[a]/[a].svelte":    "is there twice",
+		"[my-id].svelte":    "is not a name of a parameter",
 	}
 	for file, want := range errors {
 		if _, _, err := Parse(file); err == nil || !strings.Contains(err.Error(), want) {
@@ -50,7 +56,7 @@ func TestParseSkipsAndErrors(t *testing.T) {
 }
 
 func TestOrder(t *testing.T) {
-	files := []string{"[...all].shugo", "products/[slug].shugo", "[section]/new.shugo", "products/new.shugo", "index.shugo", "products/index.shugo"}
+	files := []string{"[...all].svelte", "products/[slug].svelte", "[section]/new.svelte", "products/new.svelte", "index.svelte", "products/index.svelte"}
 	var routes [][]Segment
 	for _, file := range files {
 		segments, _, _ := Parse(file)

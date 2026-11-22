@@ -208,9 +208,12 @@ const comparisons = new Set(["=", "!=", "<", "<=", ">", ">=", "like", "in"]);
 // It belongs to that computation alone. A question asked, or a column read,
 // by another computation or after this one is over would leave nobody
 // depending on the answer; so both are refused, with what to do instead.
+let catalogAtModuleScope = false;
+
 export class Reads {
   constructor() {
     this.asked = [];
+    this.catalog = false;
     // settled tells that the readings are told: nothing more may be asked
     // or read. handed tells that the rows went on to others with every
     // column counted as read, and stay readable.
@@ -228,8 +231,10 @@ export class Reads {
   text(whole = false) {
     this.settled = true;
     this.handed = whole;
-    if (this.asked.length === 0) return "";
-    const list = [];
+    const catalog = this.catalog || catalogAtModuleScope;
+    if (this.asked.length === 0 && !catalog) return "";
+    // Wire shape -1 reads the default search result and has no key.
+    const list = catalog ? [-1] : [];
     for (const one of this.asked) one.settle(list, whole);
     return JSON.stringify(list);
   }
@@ -253,6 +258,17 @@ export class Reads {
 // list of pages. Nothing waits while a page is computed, so one computation
 // runs at a time and is all there is to know.
 let computing = null;
+
+// The default search result is a build input of the computation that asks
+// for it, including a list of pages or a shared block.
+export function readCatalog() {
+  if (computing?.mine()) {
+    computing.catalog = true;
+  } else {
+    // Module-level values can be shared by any consumer of the bundle.
+    catalogAtModuleScope = true;
+  }
+}
 
 // during runs compute as the computation that reads belongs to.
 export function during(reads, compute) {

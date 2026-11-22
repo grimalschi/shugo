@@ -1,10 +1,10 @@
 # Templates
 
-The document describes the `.shugo` files: what parts they are and how to write the markup. The `.shugo` file is a component of Svelte 5. Pages, layouts and components are written in the same way.
+Normal file `.svelte` written in syntax Svelte 5. Shugo uses its compiler for static templates, calculation of expressions and tracking of data readings. The clean component can also enter the island graph, where it is analyzed by the compiler Svelte. The entry point component for hydration has a suffix `.island.svelte`. [Svelte islands](scripts.md#svelte-islands)
 
 ## Decisions
 
-- **Templates — components of Svelte 5** (the decision of the author of the project 21 November 2026 year). The syntax and behavior of the templates copy Svelte: conditions, cycles, output values in text and attributes, snippets, styles. A piece of the template can be moved from Shugo to Svelte and back, and it will show the same. The meaning is a single syntax throughout the project: later on this basis, the islands of Svelte will appear, and the agent will not be confused between the two template languages. This replaces previous decisions about the Astro-like format and its `g-if`, `g-for`, `<g-slot>`, `<g-html>` tags.
+- The terms, cycles, expressions, snippets and styles of regular templates have the syntax Svelte 5.
 - Cycle - `{#each}` of Svelte; no mandatory key (21 solution November 2026 year).
 - The terms `{:else if}` and `{:else}` are similar to Svelte; `{#each}` also has `{:else}` for an empty list (21 solution November 2026 year).
 - What output expressions in text and in attributes — as in Svelte (21 solution November 2026 year).
@@ -15,7 +15,7 @@ The document describes the `.shugo` files: what parts they are and how to write 
 - The name tag is only as it is in Svelte: `<svelte:element this={…}>` (21 November 2026 solution).
 - Expressions are written in JS, in source code - TypeScript. Functions and components are connected by explicit imports.
 - The values are screened when inserted into the page.
-- An error in expression shows a row and column in the `.shugo` file.
+- An error in expression shows a row and column in the `.svelte` file.
 
 ## Implemented, pending approval
 
@@ -31,7 +31,7 @@ The document describes the `.shugo` files: what parts they are and how to write 
 
 <script lang="ts">
   // Every time the file is shown.
-  import Card from "../../components/Card.shugo"
+  import Card from "../../components/Card.svelte"
   import { price } from "@/lib/shop"
 
   let { limit = 10 } = $props()
@@ -184,7 +184,7 @@ Svelte Rules:
 
 ## Open questions
 
-- File Extension: `.shugo` or `.svelte`C. `.svelte` file opens in the editor with highlighting and hints Svelte without setting, but such file cannot be given to the real Svelte: `Shugo.query` and `<script module>` S `getStaticPaths` not Svelte.
+- Whether to connect the official Svelte parser for regular templates while saving the Go program and registering dependencies.
 - Whether to require `lang="ts"` for TypeScript, like Svelte, then the file is transferred to Svelte without editing.
 - Svelte Availability Warnings: Do You Repeat Them?
 - Check if runes are as strict as Svelte: `$props()` only at the beginning of `<script>`, once.

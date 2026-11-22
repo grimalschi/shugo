@@ -6,6 +6,7 @@ import (
 
 	"github.com/evanw/esbuild/pkg/api"
 
+	"github.com/grimalschi/shugo/internal/project"
 	"github.com/grimalschi/shugo/internal/sourcemap"
 	"github.com/grimalschi/shugo/internal/syntax"
 )
@@ -18,11 +19,11 @@ import (
 // stays there.
 type script struct {
 	lines []string       // the JavaScript, by line
-	smap  *sourcemap.Map // where every line came from in the .shugo file
+	smap  *sourcemap.Map // where every line came from in the .svelte file
 	top   []span         // imports and exports, as ranges of lines
 	// paths tells that the script exports getStaticPaths.
 	paths   bool
-	islands map[string]string // explicit default imports of .svelte files
+	islands map[string]string // explicit default imports of .island.svelte files
 	// at is the <script> in the file, and module tells that it is
 	// <script module>.
 	at     *syntax.Script
@@ -44,7 +45,7 @@ const moduleMark = "export {};"
 func compileScript(f *syntax.File, at *syntax.Script, module bool) (*script, error) {
 	source := f.Source[at.Code.Start:at.Code.End]
 	// The script keeps its place in the file, so that esbuild reports lines
-	// and columns of the .shugo file.
+	// and columns of the .svelte file.
 	padding := strings.Repeat("\n", strings.Count(f.Source[:at.Code.Start], "\n"))
 	result := api.Transform(padding+source+"\n"+moduleMark, api.TransformOptions{
 		Loader:      api.LoaderTS,
@@ -77,7 +78,7 @@ func compileScript(f *syntax.File, at *syntax.Script, module bool) (*script, err
 }
 
 // scriptError turns a message of esbuild about the script into an error that
-// points into the .shugo file.
+// points into the .svelte file.
 func scriptError(f *syntax.File, at *syntax.Script, message api.Message) *syntax.Error {
 	if message.Location == nil {
 		return f.Errorf(at.Code.Start, "%s", message.Text)
@@ -147,7 +148,7 @@ func (s *script) split(f *syntax.File, code string) error {
 // islandImport finds the local binding of an explicit Svelte island import.
 // esbuild has normalized the quotation and removed type-only imports.
 func (s *script) islandImport(f *syntax.File, clause string, line int) error {
-	if !strings.Contains(clause, ".svelte") {
+	if !strings.Contains(clause, project.IslandSuffix) {
 		return nil
 	}
 	scan := syntax.NewScanner(clause, 0)
@@ -166,7 +167,7 @@ func (s *script) islandImport(f *syntax.File, clause string, line int) error {
 		return nil
 	}
 	path, _ := strconv.Unquote(scan.Text(tokens[len(tokens)-1]))
-	if !strings.HasSuffix(path, ".svelte") {
+	if !project.IsIsland(path) {
 		return nil
 	}
 	at := s.at.Start
@@ -174,7 +175,7 @@ func (s *script) islandImport(f *syntax.File, clause string, line int) error {
 		at = offsetAt(f.Source, l, column)
 	}
 	if len(tokens) != 3 || tokens[0].Kind != syntax.Word || scan.Text(tokens[1]) != "from" {
-		return f.Errorf(at, `import an island as a default component, for example import Gallery from "./Gallery.svelte"`)
+		return f.Errorf(at, `import an island as a default component, for example import Gallery from "./Gallery.island.svelte"`)
 	}
 	if s.islands == nil {
 		s.islands = map[string]string{}
@@ -184,7 +185,7 @@ func (s *script) islandImport(f *syntax.File, clause string, line int) error {
 }
 
 // exported checks an export that stands on the given line. The file itself
-// is what a .shugo module exports, and only <script module> runs once for
+// is what a template module exports, and only <script module> runs once for
 // the module: the other <script> runs every time the component is shown,
 // and what it declares belongs to that showing.
 func (s *script) exported(f *syntax.File, rest string, line int) error {

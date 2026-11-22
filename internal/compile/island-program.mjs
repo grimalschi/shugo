@@ -162,7 +162,7 @@ export function lowerIsland(code, parse) {
       // Svelte's onMount is a no-op in SSR. Its callback body cannot run here.
       if (from === 'svelte' && imported === 'onMount' && args.length === 1 &&
           (args[0].type === 'ArrowFunctionExpression' || args[0].type === 'FunctionExpression')) return [];
-      if (from && imported === 'ImportDefaultSpecifier' && /\.(svelte|shugo)$/.test(from) &&
+      if (from && imported === 'ImportDefaultSpecifier' && /\.svelte$/.test(from) &&
           args.length === 2 && args[0].type === 'Identifier' && args[0].name === renderer) {
         return [{ kind: 'component', text: from, props: namedValues(args[1], env) }];
       }

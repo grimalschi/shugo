@@ -658,7 +658,12 @@ func readingsIn(text string, shapes map[int]spec) []string {
 	var out []string
 	for len(list) > 0 {
 		number, _ := list[0].(json.Number)
-		n, _ := number.Int64()
+		n, err := number.Int64()
+		if err == nil && n == -1 {
+			out = append(out, "first catalog results")
+			list = list[1:]
+			continue
+		}
 		s, known := shapes[int(n)]
 		if !known || len(list)-1 < len(s.By) {
 			return append(out, "?")

@@ -21,7 +21,7 @@ let server;
 
 const nestedTemplate = `
 <script>
-  import ProductCard from "./ProductCard.shugo"
+  import FavoriteCard from "./FavoriteCard.island.svelte"
   let { results } = $props()
 </script>
 
@@ -35,7 +35,7 @@ const nestedTemplate = `
               <li data-size={size}>
                 {#if item.discounted}
                   <span data-branch="discounted">{size}</span>
-                  <ProductCard {item} />
+                  <FavoriteCard {item} />
                 {:else if item.available}
                   <span data-branch="available">{item.title} · {size}</span>
                 {:else}
@@ -56,6 +56,16 @@ const nestedTemplate = `
 {/if}
 `;
 
+const favoriteCard = `
+<script>
+  import ProductCard from "./ProductCard.svelte"
+  let { item } = $props()
+  let favorite = $state(false)
+</script>
+<ProductCard {item} />
+<button aria-pressed={favorite} onclick={() => favorite = !favorite}>Add to favorites</button>
+`;
+
 try {
   assert.equal(VERSION, "5.59.1");
   assert(["bun", "node"].includes(runtime), "SHUGO_RUNTIME must name bun or node");
@@ -64,16 +74,17 @@ try {
   for (const name of ["shugo.json", "package.json", "bun.lock"]) cpSync(join(demo, name), join(project, name));
   symlinkSync(realpathSync(join(demo, "node_modules")), join(project, "node_modules"), "dir");
   const components = join(project, "src", "components");
-  const nestedPath = join(components, "Nested.svelte");
+  const nestedPath = join(components, "Nested.island.svelte");
   writeFileSync(nestedPath, nestedTemplate);
-  writeFileSync(join(project, "src", "pages", "nested.shugo"), `<script>
+  writeFileSync(join(components, "FavoriteCard.island.svelte"), favoriteCard);
+  writeFileSync(join(project, "src", "pages", "nested.svelte"), `<script>
   import { search } from "shugo:catalog"
-  import Nested from "../components/Nested.svelte"
+  import Nested from "../components/Nested.island.svelte"
 </script>
 <Nested request:results={search()} />`);
-  writeFileSync(join(project, "src", "pages", "nested-static.shugo"), `<script>
+  writeFileSync(join(project, "src", "pages", "nested-static.svelte"), `<script>
   import { catalog } from "shugo:catalog"
-  import Nested from "../components/Nested.svelte"
+  import Nested from "../components/Nested.island.svelte"
 </script>
 <Nested results={catalog()} />`);
   const shop = generate(1000);
@@ -90,9 +101,10 @@ try {
   execFileSync("go", ["build", "-o", binary, "./cmd/shugo"], { cwd: join(demo, "../.."), stdio: "inherit" });
   execFileSync(binary, ["build", "-runtime", runtime, project], { stdio: "inherit" });
   const { islandPrograms } = JSON.parse(readFileSync(join(project, "_build", "site.json"), "utf8"));
-  assert.ok(islandPrograms["src/components/Catalog.svelte"], "catalog call selects the Go program");
-  assert.ok(islandPrograms["src/components/Nested.svelte"], "nested island call selects the Go program");
-  assert.equal(islandPrograms["src/components/Counter.svelte"], undefined, "ordinary island uses its build-time HTML");
+  assert.ok(islandPrograms["src/components/Catalog.island.svelte"], "catalog call selects the Go program");
+  assert.ok(islandPrograms["src/components/Nested.island.svelte"], "nested island call selects the Go program");
+  assert.ok(islandPrograms["src/components/FavoriteCard.island.svelte"], "request program traverses child islands");
+  assert.equal(islandPrograms["src/components/Counter.island.svelte"], undefined, "ordinary island uses its build-time HTML");
 
   // The CLI checks for the directory but serve needs no source files,
   // database inputs, Node/Bun, dependencies, or build-time JS bundles.
@@ -115,13 +127,13 @@ try {
 
   // This process is the reference implementation, outside the deployment.
   plugin({ name: "svelte-reference", setup(build) {
-    build.onLoad({ filter: /\.(svelte|shugo)$/ }, ({ path }) => {
+    build.onLoad({ filter: /\.svelte$/ }, ({ path }) => {
       const source = readFileSync(path, "utf8");
       const { js } = compile(source, { filename: relative(project, path), generate: "server", css: "external" });
       return { contents: js.code, loader: "js" };
     });
   } });
-  const catalogPath = join(components, "Catalog.svelte");
+  const catalogPath = join(components, "Catalog.island.svelte");
   const { default: Catalog } = await import(catalogPath);
   const { default: Nested } = await import(nestedPath);
   const queries = [
@@ -220,6 +232,7 @@ function island(html) {
   const middle = html.indexOf(payload, start);
   const end = html.indexOf("</script>", middle);
   assert(start >= 0 && middle > start && end > middle, "missing server-rendered island and hydration props");
+  assert.equal(html.indexOf(open, start + open.length), -1, "child islands share the root hydration target");
   return { body: html.slice(start + open.length, middle), props: JSON.parse(html.slice(middle + payload.length, end)) };
 }
 

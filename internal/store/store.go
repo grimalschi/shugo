@@ -732,6 +732,10 @@ func (u *Update) NewShape(spec string) (int64, error) {
 	return result.LastInsertId()
 }
 
+// CatalogResultShape is reserved for a read of the default catalog result.
+// Its key is empty. Database query shapes have positive SQLite row IDs.
+const CatalogResultShape int64 = 0
+
 // Read notes a reading of a reader; Unread, that the reader no longer makes it.
 func (u *Update) Read(shape int64, key []byte, reader string) error {
 	_, err := u.read.Exec(shape, orEmpty(key), reader)

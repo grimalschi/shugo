@@ -38,6 +38,12 @@ Measurements on the store in 100,000 products — in [README booth](../examples/
 
 Internal formats and connections on the small store show the stand "Shugo inside": `go run ./cmd/inside examples/inside`, the report - `examples/inside/report/index.html`.
 
+### Initial search results
+
+The `search()` call from `shugo:catalog` records the dependency for the computed page, common block, or address list. When you change the first issue of Shugo adds its readers to ordinary readers of the changed data. Reading recording is re-created at each calculation, so the conditional call of `search()` loses communication when the branch stops running. Changing the general block reaches all pages that show it. Calling when loading a module is considered common to the entire site, since any template can use the value.
+
+When you change indexed fields, Shugo builds a new SQLite snapshot. If the first issue is the same, pages continue to use the finished entries, and filter queries see the published new version of the index. Changes in fields outside the direct projection save the image and go along the usual `Shugo.query` links. For SQLite representations and computable columns, changes throughout the source base are taken into account. If the journal received records during the preparation of the picture, the next update will check it again, including when canceling the records.
+
 ## Trial implementations
 
 The author of the project asked to make two implementations for comparison, then “the second option with a dependency tree from the first” and “the second with lines that remember what you read, without a tree” (20 November 2026). All done, pass all tests on Bun and Node and stand on a common basis. The final version is collected from the fifth, see above, and approved. The 3 number in the discussion is occupied by [data Adapter](proposals/data-adapter.md): it is not a substitute for these options, but what brings data to the database of variants 2 and 4.
@@ -258,7 +264,7 @@ Go compares prints to saved ones. The template is only run where the print has c
 
 | Stage | Who performs | What does |
 | --- | --- | --- |
-| 1. Compilation | Go | three things are done from each `.shugo` file: data code for `load.mjs`, template for `render.mjs` and tree of pattern dependencies; the program for the runtime remains as is |
+| 1. Compilation | Go | three things are done from each `.svelte` file: data code for `load.mjs`, template for `render.mjs` and tree of pattern dependencies; the program for the runtime remains as is |
 | 2. Downloading data | JS, `load.mjs` | executes the data code of all pages and common blocks and counts the fingerprint of each |
 | 3. Comparison | Go | compares the prints to saved ones and names pages and shared blocks that have changed or appeared |
 | 4. Calculating Expressions | JS, `render.mjs` | executes templates of only named pages and blocks |
@@ -351,7 +357,7 @@ export function finalPrice(product: Product): number { … }
 ```
 
 ```svelte
-<!-- src/components/Header.shugo: usage product() moved from template to data code -->
+<!-- src/components/Header.svelte: usage product() moved from template to data code -->
 <script>
   import { categories, inCategory, product, shop } from "../lib/catalog"
   const menu = …

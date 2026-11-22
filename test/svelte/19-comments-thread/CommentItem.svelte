@@ -8,7 +8,7 @@
 </script>
 
 <script lang="ts">
-  import CommentItem from "./CommentItem.shugo";
+  import CommentItem from "./CommentItem.svelte";
   let { comment, depth }: { comment: Comment; depth: number } = $props();
   const hidden = $derived(count(comment.replies));
 </script>

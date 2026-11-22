@@ -1,6 +1,6 @@
 # Shugo
 
-Shugo - framework for static sites. Pages, layouts and components are `.shugo` files, and each is a component of Svelte 5: `<script>`, markup, `<style>`. Shugo produces the same HTML that the Svelte server produces 5.59. The data of the site is in the database of the SQLite project, and the pages read them only through `Shugo.query`. Project code is executed when pages are calculated; the page visitor is given a server on Go that collects HTML from ready values and does not calculate anything.
+Shugo — framework for static sites with interactive islands. Pages, layouts and regular components are written in `.svelte` the Syntax Svelte 5. Data is read from SQLite via `Shugo.query`and the change of data only counts related pages, routes and common blocks. `*.island.svelte` Compile Svelte for the browser. When opening a link with filters, the server to Go Read the search index and collect the required HTML according to the marking program prepared during assembly. [Svelte islands](spec/scripts.md#svelte-islands)
 
 How to collect and run projects that are finally decided, and what awaits approval, in [specifications](spec/README.md). As Shugo arranged inside - in [docs](docs/README.md), offers - in [docs/proposals](docs/proposals/README.md).
 
@@ -20,7 +20,7 @@ project Database ──► calculation (Bun or Node): eval.mjs reads lines via S
 1. **Compilation.** Two things are obtained from each template: JS, which counts the values of expressions, and the program is a markup with places for these values. The compiler parses the markup according to the rules of Svelte: spaces, nesting of elements, component styles.
 2. **Calculation.** JS executes the code of pages without waiting: the request to the database responds immediately. Each line that the request returned remembers which columns it read — in the page code, in the template, in functions, in components. Go compares the result to the storage and records only differences. A component called with simple parameters is calculated once and stored in a separate record: pages link to it.
 3. **Update.** Triggers in the database write each changed line to the journal. `shugo update` reads the journal, finds who has read the changed columns of these lines, and calculates only them.
-4. **Server.** There are no copies of the site in memory. For each request, the server reads from the storage the page record and the records of common blocks that it shows - one search per record, all from one state - and collects HTML.
+4. **Server.** For each query, Go reads a page record and records its shared blocks from a single storage state and collects HTML. For the island directory, it takes the same state version of the search index and substitutes the issue in a pre-assembled program SSR.
 5. **Exports.** `shugo export` writes the site to files. After the first time, only pages whose HTML has changed are deleted.
 
 ## Try it

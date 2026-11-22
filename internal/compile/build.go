@@ -239,7 +239,7 @@ func digest(parts ...[]byte) string {
 
 type builder struct {
 	project *project.Project
-	paths   []string       // the .shugo files, sorted
+	paths   []string       // the regular .svelte files, sorted
 	ids     map[string]int // the number of every file: its place in paths
 	units   []*unit
 }
@@ -428,6 +428,7 @@ func (b *builder) bundle(routes []program.Route, islands *islandOutput) (*bundle
 	fmt.Fprintf(&entry, "await run([%s]);\n", strings.Join(table, ", "))
 
 	plugin := api.Plugin{Name: "shugo", Setup: func(build api.PluginBuild) {
+		rejectOldTemplates(build)
 		build.OnResolve(api.OnResolveOptions{Filter: `^shugo:`}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
 			return api.OnResolveResult{Path: args.Path, Namespace: "shugo"}, nil
 		})
@@ -442,7 +443,7 @@ func (b *builder) bundle(routes []program.Route, islands *islandOutput) (*bundle
 				contents = jsrt.Catalog
 			case "shugo:island-eval":
 				if islands == nil {
-					return api.OnLoadResult{}, fmt.Errorf("the Svelte evaluation module needs a .svelte import")
+					return api.OnLoadResult{}, fmt.Errorf("the Svelte island evaluation module needs a %s import", project.IslandSuffix)
 				}
 				contents = islands.eval
 			}
@@ -450,14 +451,13 @@ func (b *builder) bundle(routes []program.Route, islands *islandOutput) (*bundle
 		})
 		build.OnLoad(api.OnLoadOptions{Filter: `\.svelte$`}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
 			rel := b.relative(args.Path)
-			if islands == nil || islands.names[rel].path == "" {
-				return api.OnLoadResult{}, fmt.Errorf("import the .svelte file as a default component directly in a .shugo file")
+			if project.IsIsland(rel) {
+				if islands == nil || islands.names[rel].path == "" {
+					return api.OnLoadResult{}, fmt.Errorf("import the island %s as a default component directly in a regular %s template", rel, project.TemplateExtension)
+				}
+				contents := `import { islands } from "shugo:island-eval"; export default islands.get(` + quote(rel) + `);`
+				return api.OnLoadResult{Contents: &contents, Loader: api.LoaderJS, ResolveDir: filepath.Dir(args.Path)}, nil
 			}
-			contents := `import { islands } from "shugo:island-eval"; export default islands.get(` + quote(rel) + `);`
-			return api.OnLoadResult{Contents: &contents, Loader: api.LoaderJS, ResolveDir: filepath.Dir(args.Path)}, nil
-		})
-		build.OnLoad(api.OnLoadOptions{Filter: `\.shugo$`}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
-			rel := b.relative(args.Path)
 			id, known := b.ids[rel]
 			switch {
 			case known:
@@ -517,6 +517,18 @@ func (b *builder) bundle(routes []program.Route, islands *islandOutput) (*bundle
 		return nil, err
 	}
 	return out, nil
+}
+
+// Report stale imports even when the old file has already been renamed.
+func rejectOldTemplates(build api.PluginBuild) {
+	build.OnResolve(api.OnResolveOptions{Filter: `\.shugo$`}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
+		if !filepath.IsAbs(args.Path) && !strings.HasPrefix(args.Path, "./") &&
+			!strings.HasPrefix(args.Path, "../") && !strings.HasPrefix(args.Path, "@/") {
+			return api.OnResolveResult{}, nil // an npm package may have a dot in its name
+		}
+		return api.OnResolveResult{}, fmt.Errorf("update the import %q to %q; Shugo templates now use %s", args.Path,
+			strings.TrimSuffix(args.Path, ".shugo")+project.TemplateExtension, project.TemplateExtension)
+	})
 }
 
 // relative returns the path of a file of the project as the units know it.

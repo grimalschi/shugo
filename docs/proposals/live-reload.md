@@ -32,7 +32,7 @@ What is missing:
 
 | What has changed | What is calculated | What the browser sees |
 | --- | --- | --- |
-| Templates and code: `.shugo`, `.ts` in `src/`, `shugo.json` | the whole site, the open pages are the first | open pages are reloaded as soon as they are calculated. |
+| Templates and code: `.svelte`, `.ts` in `src/`, `shugo.json` | the whole site, the open pages are the first | open pages are reloaded as soon as they are calculated. |
 | Data | what the changed lines read, as it is now | reload only open pages whose HTML has changed |
 | Styles only: `.css` or `<style>` in template | nothing | new style file is replaced in open pages without rebooting |
 | Files in `public/` | nothing | reload all open pages |

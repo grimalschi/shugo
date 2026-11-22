@@ -18,7 +18,7 @@ import (
 )
 
 const catalogAddressPage = `
--- src/pages/[section]/catalog.shugo --
+-- src/pages/[section]/catalog.svelte --
 <script module>
   export const getStaticPaths = () => [{ params: { section: "_islands" } }]
 </script>
@@ -29,7 +29,7 @@ func TestCatalogSnapshot(t *testing.T) {
 	s := newSite(t, `
 -- shugo.json --
 {"data":"data/shop.db"}
--- src/pages/index.shugo --
+-- src/pages/index.svelte --
 <script>
   import { search } from "shugo:catalog"
   const result = search()
@@ -38,7 +38,7 @@ func TestCatalogSnapshot(t *testing.T) {
 `)
 	s.sql(`
 CREATE TABLE categories (id TEXT PRIMARY KEY, title TEXT, position INTEGER);
-CREATE TABLE products (id TEXT PRIMARY KEY, slug TEXT, title TEXT, category TEXT, price INTEGER, discount INTEGER, available INTEGER, arrival TEXT, description TEXT, position INTEGER);
+CREATE TABLE Products (id TEXT PRIMARY KEY, slug TEXT, Title TEXT, category TEXT, price INTEGER, discount INTEGER, available INTEGER, arrival TEXT, description TEXT, position INTEGER);
 CREATE TABLE variants (sku TEXT PRIMARY KEY, product TEXT, title TEXT, stock INTEGER, position INTEGER);
 INSERT INTO categories VALUES ('c', 'Category', 1);
 WITH RECURSIVE ids(id) AS (VALUES (1) UNION ALL SELECT id + 1 FROM ids WHERE id < 25)
@@ -117,7 +117,7 @@ INSERT INTO variants VALUES ('sku', 'p1', 'large', 1, 1);
 	expect(t, s.page("/"), "<h1>Changed first</h1>")
 
 	s.write(`
--- src/pages/index.shugo --
+-- src/pages/index.svelte --
 <h1>Static shop</h1>
 ` + catalogAddressPage)
 	s.build()
@@ -129,7 +129,7 @@ func TestCatalogUnusedSearch(t *testing.T) {
 	s := newSite(t, `
 -- shugo.json --
 {"data":"data/shop.db"}
--- src/pages/index.shugo --
+-- src/pages/index.svelte --
 <script>
   import { search } from "shugo:catalog"
 </script>

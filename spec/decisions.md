@@ -40,7 +40,7 @@ Here is written what is decided without direct confirmation of the author of the
 - he himself and everything he imports does not read `Shugo.url` and `Shugo.params` and does not pass the markup to layouts;
 - it is called with simple parameters: lines, numbers, `true`, `false`, `null` or without parameters.
 
-The name of the shared block is composed of the file path and parameters: `components/ProductCard.shugo{"id":"p7"}`.
+The name of the shared block is composed of the file path and parameters: `components/ProductCard.svelte{"id":"p7"}`.
 
 **Why not.** The agent does not need to mark anything. The header without parameters is general by itself. The card to which the product number was transferred is common for all pages with this product; the card to which the object of the goods was transferred is considered on each page anew.
 
@@ -64,7 +64,7 @@ The name of the shared block is composed of the file path and parameters: `compo
 
 ## 6. Components and functions are imported in data code, as in Astro
 
-**Replaced by 21 November 2026 year:** files `.shugo` components Svelte 5The components are imported into `<script>`As in Svelte: `import Card from "../components/Card.shugo"`. The reasons for the previous decision remained in force: the path is visible in imports, the name is chosen by the one who imports, there are no autoimports (Nitro 3 They refused, in Nuxt 5 They are off the server.
+**Replaced by 21 November 2026 year:** files `.svelte` components Svelte 5The components are imported into `<script>`As in Svelte: `import Card from "../components/Card.svelte"`. The reasons for the previous decision remained in force: the path is visible in imports, the name is chosen by the one who imports, there are no autoimports (Nitro 3 They refused, in Nuxt 5 They are off the server.
 
 ## 7. Object `Shugo`
 
@@ -87,7 +87,7 @@ On `Shugo.props`, `Shugo.slots` and `Astro.props` — error with a hint. The aut
 
 **Changed to 21 on November 2026 of the year, pending approval.** Layout is a component of Svelte: the page it shows `{@render children()}`, the title and meta tags the page writes in `<svelte:head>`; this is the author's decision. The rest awaits approval:
 
-- `+layout.shugo` in the folder wraps all pages of this folder and nested; the nested layout turns out to be **inside** external, as in SvelteKit, Next.js and PocketPages. Replaces only Nuxt, where the page has one named layout.
+- `+layout.svelte` in the folder wraps all pages of this folder and nested; the nested layout turns out to be **inside** external, as in SvelteKit, Next.js and PocketPages. Replaces only Nuxt, where the page has one named layout.
 - The root layout itself is written by `<html>`, `<head>` and `<body>`; in SvelteKit, they are written by `src/app.html`.
 
 The author asked how it works in Svelte, the answer is in [questions](open-questions.md). Chain reset (`+page@.svelte` in SvelteKit) has been postponed.
@@ -100,15 +100,15 @@ The author asked how it works in Svelte, the answer is in [questions](open-quest
 
 | File | Address |
 | --- | --- |
-| `src/pages/index.shugo` | `/` |
-| `src/pages/about.shugo` | `/about` |
-| `src/pages/blog/[slug].shugo` | `/blog/…`, one parameter |
-| `src/pages/docs/[...path].shugo` | `/docs` and deeper |
-| `src/pages/(shop)/cart.shugo` | `/cart`: folder in parentheses is not included |
-| `src/pages/_parts/x.shugo`, `pages/_x.shugo` | no Page |
-| `src/pages/404.shugo` | shown for addresses without page |
+| `src/pages/index.svelte` | `/` |
+| `src/pages/about.svelte` | `/about` |
+| `src/pages/blog/[slug].svelte` | `/blog/…`, one parameter |
+| `src/pages/docs/[...path].svelte` | `/docs` and deeper |
+| `src/pages/(shop)/cart.svelte` | `/cart`: folder in parentheses is not included |
+| `src/pages/_parts/x.svelte`, `pages/_x.svelte` | no Page |
+| `src/pages/404.svelte` | shown for addresses without page |
 
-- Names with `+` are occupied by the framework. Now there is only `+layout.shugo`; any other is an assembly error.
+- Names with `+` are occupied by the framework. Now there is only `+layout.svelte`; any other is an assembly error.
 - Part of the path is either text or one parameter. `post-[id]` is an error.
 - When two routes give one address, the one that calls it more accurate wins: the text is stronger than the parameter, the parameter is stronger than the remainder of the path. Two files with the same type of address are assembly errors.
 - The page has one address, without a slash at the end. `/about/` is redirected to `/about`.
@@ -288,11 +288,11 @@ The **Waiting for approval.** Snippet without parameters, written inside the com
 
 **Why not.** To select elements like Svelte, you need to parse selectors and match with a template, including blocks and dynamic classes, a noticeable part of the Svelte compiler. The page view does not change from this. The question is whether to do exactly in [Styles](styles.md#open-questions).
 
-## 33. Extension `.shugo` and TypeScript
+## 33. Extensions `.svelte` and `.island.svelte`
 
-**Waiting for approval.** Files remain `.shugo`. TypeScript is accepted in any `<script>`, and Svelte requires `lang="ts"`. Both questions are in [open](open-questions.md).
+**Approved 22 November 2026 year.** Common templates have the extension `.svelte`. The suffix `.island.svelte` marks components that are hydrated when called from Shugo. The filename shows this in the editor, project tree and imports. Linking data from URL is specified in the call. [Svelte islands](scripts.md#svelte-islands)
 
-**Why `.shugo`.** File with `Shugo.query` and `getStaticPaths` is not a component of Svelte, and the real Svelte will not assemble it: its extension says this honestly. Price - the editor does not recognize the file without setting up.
+The question of whether to require `lang="ts"` for TypeScript in normal templates remains [open](open-questions.md).
 
 ## 34. What is checked the same as in Svelte
 
@@ -303,6 +303,6 @@ The **Waiting for approval.** Snippet without parameters, written inside the com
 **Waiting for approval.** Folder `src/` is the author's solution. Details:
 
 - `src/` has `pages/`, `components/`, `lib/`, `styles/`; `shugo.json`, `data/` and `public/` at the root;
-- `.shugo` files are only searched in `src/`; importing a `.shugo` file from another location is a prompt error;
+- `.svelte` files are only searched in `src/`; importing a `.svelte` file from another location is a prompt error;
 - `@/` in import means `src/`, as is customary in Vite projects;
 - the store stand scripts moved to `examples/catalog/scripts/`: only the site code remained in `src/lib/`.

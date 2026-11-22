@@ -4,7 +4,7 @@ The document describes what folders and files are in the project on Shugo and wh
 
 ## Decisions
 
-- Pages, layouts and components are `.shugo` files. The rest of the project code is TypeScript.
+- Pages, layouts and common components are `.svelte` files. The entry points for hydration are indicated by the suffix `.island.svelte`. The rest of the project code is TypeScript.
 - Project settings are the `shugo.json` file at the root.
 - Everything that framework writes is stored in the `_build` folder.
 - The site code is in the folder `src/` (the decision of the author of the project 21 November 2026 year).
@@ -26,7 +26,8 @@ _build/ result of the framework; git is not included
 
 - Only the `src/pages/` folder is required.
 - `src/components/`, `src/lib/` and `src/styles/` are agreements: framework finds files by import, not by folder names.
-- `.shugo` files are only searched in `src/`, except for `node_modules` and hidden folders. Importing a `.shugo` file from another location is an build error with a hint of where it belongs.
+- `.svelte` files are only searched in `src/`, except for `node_modules` and hidden folders. Importing a `.svelte` file from another location is an build error with a hint of where it belongs.
+- Islands can lie next to pages in `src/pages/`. The address is set by the page using the island. For ordinary components, the `_components/` folder will be suitable next to the page.
 - `@/` in import means folder `src/`: `import { price } from "@/lib/shop"`.
 - `public/`, `data/` and `shugo.json` lie at the root, as do `static/` and settings in SvelteKit and `public/` in Astro.
 
@@ -57,11 +58,16 @@ All fields are optional. Unknown field is an error.
 | `eval.mjs`, `eval.mjs.map` | the entire JS project for the calculation stage and source map |
 | `site.json` | project program: templates and routes |
 | `sources.json` | from which files the project is collected, with each hash: `shugo update` understands that the project has changed |
-| `assets/` | collected Styles |
+| `assets/` | collected island styles and browser modules |
+| `catalog-*.sqlite` | published search images, if the site uses a directory |
 | `store.db` | storage |
 | `dist/` | site in files after `shugo export` |
 
 Packages from npm to `eval.mjs` are not sewn: they are taken from the `node_modules` project at launch.
+
+### Switching from `.shugo`
+
+Rename `.shugo` to `.svelte` and the former `.svelte` Islands files to `.island.svelte`. Update the import paths and run `shugo build` with the same database. The assembly will create new keys for records where the key includes a path to the template. Published records remain available until a new build is successfully published.
 
 ## Open questions
 

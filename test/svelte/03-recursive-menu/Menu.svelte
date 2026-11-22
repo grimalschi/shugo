@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Menu from "./Menu.shugo";
+  import Menu from "./Menu.svelte";
   type Item = { label: string; href: string; active?: boolean; children?: Item[] };
   let { items, depth = 1 }: { items: Item[]; depth?: number } = $props();
 </script>

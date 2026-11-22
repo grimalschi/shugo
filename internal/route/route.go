@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/grimalschi/shugo/internal/project"
 )
 
 // Kind tells what a segment of an address matches.
@@ -23,17 +25,21 @@ type Segment struct {
 }
 
 // Extension is what the files of templates end with.
-const Extension = ".shugo"
+const Extension = project.TemplateExtension
 
 // Layout is the name of the file that wraps the pages of its folder.
 const Layout = "+layout" + Extension
 
 // Parse reads the path of a page file under src/pages/, such as
-// "products/[slug].shugo". It returns no segments and false for a file that
-// gives no address: one whose name or folder starts with "_".
+// "products/[slug].svelte". Islands and files whose name or folder starts
+// with "_" do not give an address.
 func Parse(file string) ([]Segment, bool, error) {
+	path, template := strings.CutSuffix(file, Extension)
+	if !template || project.IsIsland(file) {
+		return nil, false, nil
+	}
 	var out []Segment
-	parts := strings.Split(strings.TrimSuffix(file, Extension), "/")
+	parts := strings.Split(path, "/")
 	for i, part := range parts {
 		last := i == len(parts)-1
 		switch {

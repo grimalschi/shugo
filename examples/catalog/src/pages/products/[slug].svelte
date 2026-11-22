@@ -9,9 +9,9 @@
 </script>
 
 <script>
-  import Badge from "../../components/Badge.shugo"
-  import ProductCard from "../../components/ProductCard.shugo"
-  import Variant from "../../components/Variant.shugo"
+  import Badge from "../../components/Badge.svelte"
+  import ProductCard from "../../components/ProductCard.svelte"
+  import Variant from "../../components/Variant.svelte"
   import { finalPrice, price } from "../../lib/catalog"
 
   // No query names its columns. A page depends on what is read of its rows

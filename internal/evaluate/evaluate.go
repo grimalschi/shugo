@@ -25,6 +25,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/grimalschi/shugo/internal/catalog"
 	"github.com/grimalschi/shugo/internal/compile"
 	"github.com/grimalschi/shugo/internal/data"
 	"github.com/grimalschi/shugo/internal/project"
@@ -292,7 +293,9 @@ func tracked(w *worker, k *keeper, path string, whole bool, took func(string)) e
 	}
 	var journal string
 	var at int64
-	fmt.Sscanf(state, "%s %d", &journal, &at)
+	// Older stores contain only the journal ID and position.
+	var catalogPending bool
+	fmt.Sscanf(state, "%s %d %t", &journal, &at, &catalogPending)
 	k.report.Data = &DataReport{}
 
 	var changes []data.Change
@@ -311,20 +314,24 @@ func tracked(w *worker, k *keeper, path string, whole bool, took func(string)) e
 			return err
 		}
 	}
+	var catalogChanged bool
 	if k.site.CatalogSearch {
 		took("data")
-		changed, err := w.prepareCatalog(k.update, whole || now != at)
+		catalogChanged, err = w.prepareCatalog(k.update, whole || catalogPending || catalog.Affected(source, changes))
 		if err != nil {
 			return err
 		}
-		took("catalog")
-		// The experimental projection has no per-reader dependency edges.
-		// If its default page changes, recompute the records that may embed it.
-		if changed && !whole {
-			k.report.CatalogRecomputed = true
-			whole = true
-			k.report.Data.Rows = len(changes)
+		// The catalog opens its own source snapshot after reading the journal.
+		// It may have seen newer writes that cancel out in the next journal
+		// read. In that case, rebuild once even when nothing appears changed.
+		after, err := source.Position()
+		if err != nil {
+			return err
 		}
+		catalogPending = after != now
+		took("catalog")
+	} else {
+		catalogPending = false
 	}
 	if whole {
 		k.report.Data.Whole = true
@@ -333,20 +340,34 @@ func tracked(w *worker, k *keeper, path string, whole bool, took func(string)) e
 	} else {
 		k.report.Data.Rows = len(changes)
 		var readers map[string]struct{}
-		if readers, err = k.shapes.reached(changes); err == nil {
-			took("data")
-			if k.check {
-				err = checked(w, k, readers, took)
-			} else {
-				err = part(w, k, readers, took)
+		readers, err = k.shapes.reached(changes)
+		if err != nil {
+			return err
+		}
+		if catalogChanged {
+			if err := k.update.Readers(store.CatalogResultShape, nil, func(reader string) {
+				readers[reader] = struct{}{}
+				k.report.CatalogRecomputed = true
+			}); err != nil {
+				return err
 			}
+		}
+		took("data")
+		if k.check {
+			err = checked(w, k, readers, took)
+		} else {
+			err = part(w, k, readers, took)
 		}
 	}
 	if err != nil {
 		return err
 	}
 	k.report.Data.Position = now
-	return k.update.SetData(fmt.Sprintf("%s %d", source.ID, now))
+	state = fmt.Sprintf("%s %d", source.ID, now)
+	if catalogPending {
+		state += " true"
+	}
+	return k.update.SetData(state)
 }
 
 // checked computes everything where the journal told to compute only the

@@ -1,6 +1,5 @@
-<script>
-  import Footer from "../components/Footer.shugo"
-  import Header from "../components/Header.shugo"
+<script lang="ts">
+  import Header from "../components/Header.svelte"
   import "../styles/main.css"
 
   let { children } = $props()
@@ -10,11 +9,10 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
   </head>
   <body>
     <Header />
     <main>{@render children()}</main>
-    <Footer />
+    <footer>© 2026</footer>
   </body>
 </html>

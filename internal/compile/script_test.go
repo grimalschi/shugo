@@ -15,7 +15,7 @@ func parseScript(t *testing.T, code string, module bool) (*syntax.File, *script,
 	if module {
 		open = "<script module>"
 	}
-	f, err := syntax.Parse("src/pages/a.shugo", open+"\n"+code+"\n</script>\n<p/>")
+	f, err := syntax.Parse("src/pages/a.svelte", open+"\n"+code+"\n</script>\n<p/>")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func lines(s *script, spans []span) string {
 func TestScriptSplit(t *testing.T) {
 	_, s, err := parseScript(t, `
 import { price, type Product } from "../lib/shop"
-import Card from "../components/Card.shugo"
+import Card from "../components/Card.svelte"
 import "../styles/main.css"
 import type { Unused } from "./types"
 interface Props { title: string }
@@ -58,7 +58,7 @@ const tpl = `+"`export ${ {a: 1}.a }`"+`
 		t.Fatal(err)
 	}
 	wantTop := `import { price } from "../lib/shop";
-import Card from "../components/Card.shugo";
+import Card from "../components/Card.svelte";
 import "../styles/main.css";`
 	if got := lines(s, s.top); got != wantTop {
 		t.Errorf("imports\n got:\n%s\nwant:\n%s", got, wantTop)
@@ -117,12 +117,12 @@ func TestScriptForms(t *testing.T) {
 
 func TestScriptErrors(t *testing.T) {
 	cases := []struct{ name, code, want string }{
-		{"syntax", "const a = 1\nconst b = (a +\nconst c = 2", `src/pages/a.shugo:4:1: Unexpected "const"`},
-		{"return outside of a function", "const a = 1\nif (a) return", `src/pages/a.shugo:3:8: Top-level return cannot be used inside an ECMAScript module`},
-		{"export default", "export default 1", `src/pages/a.shugo:2:1: the script cannot have "export default": the file itself is what it exports`},
-		{"markup in the script", "const a = <b>x</b>", `src/pages/a.shugo:2:19: Unterminated regular expression`},
-		{"a prop of Svelte 4", "export let title = \"x\"", `src/pages/a.shugo:2:8: "export let" declares a prop in Svelte 4: a component of Svelte 5 takes its props with let { name } = $props()`},
-		{"an export outside <script module>", "const a = 1\nexport const getStaticPaths = () => []", `src/pages/a.shugo:3:8: an export goes into <script module>, which runs once; this <script> runs every time the component is shown: <script module> export function getStaticPaths() { … } </script>`},
+		{"syntax", "const a = 1\nconst b = (a +\nconst c = 2", `src/pages/a.svelte:4:1: Unexpected "const"`},
+		{"return outside of a function", "const a = 1\nif (a) return", `src/pages/a.svelte:3:8: Top-level return cannot be used inside an ECMAScript module`},
+		{"export default", "export default 1", `src/pages/a.svelte:2:1: the script cannot have "export default": the file itself is what it exports`},
+		{"markup in the script", "const a = <b>x</b>", `src/pages/a.svelte:2:19: Unterminated regular expression`},
+		{"a prop of Svelte 4", "export let title = \"x\"", `src/pages/a.svelte:2:8: "export let" declares a prop in Svelte 4: a component of Svelte 5 takes its props with let { name } = $props()`},
+		{"an export outside <script module>", "const a = 1\nexport const getStaticPaths = () => []", `src/pages/a.svelte:3:8: an export goes into <script module>, which runs once; this <script> runs every time the component is shown: <script module> export function getStaticPaths() { … } </script>`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

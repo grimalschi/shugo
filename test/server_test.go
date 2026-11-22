@@ -19,19 +19,19 @@ import (
 const small = `
 -- shugo.json --
 {"redirects": {"/old": "/about"}}
--- src/pages/+layout.shugo --
+-- src/pages/+layout.svelte --
 <script>
 let { children } = $props()
 import "../styles/main.css"
 </script>
 <html><head><title>T</title></head><body>{@render children()}</body></html>
--- src/pages/index.shugo --
+-- src/pages/index.svelte --
 <h1>home</h1>
--- src/pages/about.shugo --
+-- src/pages/about.svelte --
 <h1>about</h1>
--- src/pages/404.shugo --
+-- src/pages/404.svelte --
 <h1>no such page</h1>
--- src/pages/café au lait.shugo --
+-- src/pages/café au lait.svelte --
 <h1>café</h1>
 -- src/styles/main.css --
 h1 { color: red }
@@ -178,8 +178,8 @@ func TestExport(t *testing.T) {
 	// One page changes and one goes away: one file is written, one removed.
 	// The project has changed, so every page is built again, and the
 	// folder is cleared of pages the site does not have.
-	s.write("-- src/pages/about.shugo --\n<h1>about us</h1>")
-	s.remove("src/pages/café au lait.shugo")
+	s.write("-- src/pages/about.svelte --\n<h1>about us</h1>")
+	s.remove("src/pages/café au lait.svelte")
 	s.build()
 	if done := export(); done.Pages != 3 || done.Built != 3 || done.Written != 1 || done.Removed != 2 {
 		t.Errorf("after a change: %+v", done)

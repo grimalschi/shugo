@@ -104,6 +104,20 @@ func (d *DB) Table(name string) (*Table, bool) {
 	return t, found
 }
 
+// TableFold finds a journaled table by its SQL identifier. SQLite's SQL
+// lookups ignore the case of the catalog's ASCII identifiers.
+func (d *DB) TableFold(name string) *Table {
+	if table := d.tables[name]; table != nil {
+		return table
+	}
+	for key, table := range d.tables {
+		if len(key) == len(name) && strings.EqualFold(key, name) {
+			return table
+		}
+	}
+	return nil
+}
+
 // journaled tells what the journal has to be for the tables as they are
 // now: the triggers it needs and a name for the set of them. inPlace tells
 // that it is so already: it was made for these very tables, and all of its

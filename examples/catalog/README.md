@@ -28,11 +28,11 @@ Only the list of product URLs specifies columns. Each page depends on the column
 | File | What it shows |
 | --- | --- |
 | `scripts/generate.mjs` | Shop tables with single-column keys and separate ordering columns. The generator leaves index creation to the build. |
-| `src/components/Header.shugo` | Shared block with no parameters. It reads its own configuration, navigation, and category counts. |
-| `src/components/ProductCard.shugo` | Shared block that takes a product ID and reads the product. The template calls `finalPrice(item)`, so the card depends on the `price` and `discount` fields that the function reads. |
-| `src/components/Variant.shugo` | Regular component that receives the full variant row. Reading `title` and `stock` adds them as page dependencies. The variant's shelf location is never read. |
-| `src/pages/products/[slug].shugo` | The route lists URLs, and each page queries its own product, variants, reviews, badges, and recommendations. The page reads the expected arrival date only when the product is out of stock, and the discount expiration date only when a discount applies. |
-| `src/pages/categories/[category]/[...page].shugo` | The route uses `paginate` with a product count. The page uses `Shugo.paginate` with a query. |
+| `src/components/Header.svelte` | Shared block with no parameters. It reads its own configuration, navigation, and category counts. |
+| `src/components/ProductCard.svelte` | Shared block that takes a product ID and reads the product. The template calls `finalPrice(item)`, so the card depends on the `price` and `discount` fields that the function reads. |
+| `src/components/Variant.svelte` | Regular component that receives the full variant row. Reading `title` and `stock` adds them as page dependencies. The variant's shelf location is never read. |
+| `src/pages/products/[slug].svelte` | The route lists URLs, and each page queries its own product, variants, reviews, badges, and recommendations. The page reads the expected arrival date only when the product is out of stock, and the discount expiration date only when a discount applies. |
+| `src/pages/categories/[category]/[...page].svelte` | The route uses `paginate` with a product count. The page uses `Shugo.paginate` with a query. |
 | `src/lib/catalog.ts` | Price helpers that load no data. |
 
 ## Results

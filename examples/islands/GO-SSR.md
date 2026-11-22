@@ -8,7 +8,7 @@ This experiment builds on the [first version with a JavaScript worker](REPORT.md
 
 ```mermaid
 flowchart LR
-    A["Catalog.svelte and ProductCard.shugo"] --> B["Svelte compiler at build time"]
+    A["Catalog.island.svelte and ProductCard.svelte"] --> B["Svelte compiler at build time"]
     B --> C["Browser bundle"]
     B --> D["Svelte server output"]
     D --> E["Markup program in the Shugo store"]
@@ -21,11 +21,11 @@ flowchart LR
 ```
 
 1. **Compilation.** Svelte 5.59.1 makes a browser and server build of the island. The `request:initial={search()}` link on the island tag means that Shugo can be used to frame the request in prop `initial`. For these calls, Shugo reads the server output tree and extracts HTML, hydration tags, text and attributes, branches, repeats and challenges of the input components. The boxes and branches have links to JSON fields and constants. The programs are recorded in `site.json` and then in the page repository. [Compilation of Svelte](https://svelte.dev/docs/svelte/svelte-compiler) · [Version 5.59.1 labels](https://github.com/sveltejs/svelte/blob/svelte%405.59.1/packages/svelte/src/internal/server/hydration.js)
-2. **Page evaluation.** When the evaluation bundle calls `search()` from `shugo:catalog`, Shugo prepares the index from SQLite. The same function renders results in a static `.shugo` page such as `/baseline`. The standard `eval.mjs` on Bun or Node computes the props, and Go compares the markup program's output with Svelte's native SSR. A mismatch prevents publication. The store holds the parameter-free HTML, props, and bindings such as `{"initial":"catalog"}`.
+2. **Page evaluation.** When the evaluation bundle calls `search()` from `shugo:catalog`, Shugo prepares the index from SQLite. The same function renders results in a static `.svelte` page such as `/baseline`. The standard `eval.mjs` on Bun or Node computes the props, and Go compares the markup program's output with Svelte's native SSR. A mismatch prevents publication. The store holds the parameter-free HTML, props, and bindings such as `{"initial":"catalog"}`.
 3. **Filtered request.** Go reads the page and index version from the same store snapshot and runs the search. Go uses the results to fill the bound prop. The markup program selects branches and loops and escapes inserted values for their context. The response contains the HTML with hydration markers and the same props that the program used.
 4. **Browser.** Svelte's `hydrate` attaches to the existing DOM. When users change filters, the island updates the URL and fetches the next results from the JSON API. The browser handles events, history, and requests. [Svelte hydration](https://svelte.dev/docs/svelte/imperative-component-api#hydrate)
 
-The render program for the catalog and card contains 123 operations in a compact representation of about 8 KB. One program covers any number of pages and filter combinations. Both island bundles use `ProductCard.shugo`, and ordinary Shugo pages can use it too. The live route shares this card template.
+The render program for the catalog and card contains 123 operations in a compact representation of about 8 KB. One program covers any number of pages and filter combinations. Both island bundles use `ProductCard.svelte`, and ordinary Shugo pages can use it too. The live route shares this card template.
 
 ## Approaches considered
 
@@ -48,6 +48,8 @@ The selected program takes almost as much as the sample fragments and is generat
 - **Byte coincidence.** is checked against each of the 12 sets of parameters by HTML of the catalog and a separate test island with `if → each → if → each → if / else if / else` and a sub-card call. All branches, including empty results, products without size and different conditions of discount and availability, have been passed on to the test island. Among the queries are long page, combined facets, price 0 and text with HTML symbols. Props in HTML are the same as JSON API. The verification is performed after build and with Bun and Node. The `.toFixed()` call immediately stops the build at the request mark.
 - **Hydration.** Nine Chromium catalog scenarios passed against the isolated Go server with Svelte's automatic recovery disabled. With the bundle deliberately delayed, hydration preserved the title and first card DOM nodes that the browser had created from server HTML. Loading made no duplicate request for the results. A separate test island also retained the DOM node in an inner loop.
 - **Interactivity.** Changing categories, sizes, price range, sort order, pages, or browser history preserves the current document. A late response cannot replace a newer one, and users can retry a failed request. With JavaScript disabled, the form submits a GET and the first response shows the filtered list and the control state.
+- **Publication with a server running.**, a new binarium with an empty `PATH`, opened the vault from the previous version. With the failed upgrades, he continued to give the catalog. After renaming the templates and changing the product, `shugo update` published a new index, HTML and a client module. All 224 parallel requests were fully old or new during the update. The old hash resource is still available.
+- **Precision updates.** Two routes that show the common block with `search()` receive a new HTML by counting the single block. The page reading another field via `Shugo.query` is updated separately. The change of the product outside the initial results changes the published index and filter answers. In the 100,000-product stand, 21 consecutive updates and checks were performed on all 104,203 exported non-construction files. [Dependency tests](../../test/island_migration_test.go) · [Table script](../catalog/stand.mjs)
 
 ## Limitations
 
@@ -55,9 +57,22 @@ The Go program reads JSON fields, booleans, and arrays. The Go projection prepar
 
 The compilation depends on the fixed server output of Svelte 5.59.1. When updating Svelte, it is useful to run byte comparison and browser test before changing version. The format of the old worker experiment requires a re-build of `shugo build`.
 
-The bar uses the store and URL `/catalog`. The next synthesis is a named source of data linked to a particular island on the page. The search still reads the entire selected order for the phaset count, and the change log can re-engineer the index in its entirety. The search index and SSR have a separate value. The measurements below show where optimization will have an effect.
+The bar uses the store and URL `/catalog`. `request:` now links the island's parameter to the catalog. The change in the indexed field creates a whole new picture. The cost of the index and the cost of the SSR programme can be measured separately. [How changes are monitored](../../docs/change-tracking.md#initial-search-results)
 
-## Comparison with the worker version
+## Benchmarks after the switch to `.svelte` and `.island.svelte`
+
+We compared the first SQLite FTS5 catalog build with the version that uses the new extensions. Both used the same products, SQLite FTS5, and a Go server. Each size used three fresh builds and runs of 24 loopback requests. The table gives medians for the previous and new versions in that order. Build time includes index creation. [Benchmark script](scripts/bench.mjs)
+
+| Products | Collection of the island site, ms | Compilation, ms | Price update, ms | Warmed TTFB on p50 / p95 filter, ms |
+| ---: | ---: | ---: | ---: | ---: |
+| 1,000 | 464 → 466 | 381 → 379 | 90 → 81 | 2.47 / 3.43 → 2.54 / 3.33 |
+| 100,000 | 5,007 → 5,029 | 375 → 375 | 4,809 → 4,563 | 59.4 / 65.8 → 59.0 / 83.9 |
+
+The initial results of the price update recalculated one page. The two pages and the block were previously re-readed. With 100,000 products, 4.52 s out of 4.56 was upgraded to create a new FTS5 image. The eight simultaneous requests for this size p95 increased from 376 to 408 ms. After the p95 was passed, the three runs were between 64 and 88 ms.
+
+The initial dimensions of HTML and the resources were in the same order. The catalog weighs 4,784 bytes per 100,000 items after gzip HTML, while the client JS weighs 29,735 bytes. In a static catalog with the same HTML cards, 2,651 bytes after gzip, the browser JS is missing.
+
+## Comparison with the worker version using the previous JSON index
 
 Two versions are collected from separate copies of the originals with the same determinized base. Each size consists of five fresh assemblies and five series of 60 warm consecutive requests for the route. Requests were made for loopback. Go 1.27.4, Bun 1.4.4 in the build phase, Intel Xeon E3-1270 v6, eight logical CPUs. Time in milliseconds. Each pair first has a worker version, then Go. [Measurement scenario](scripts/bench.mjs)
 

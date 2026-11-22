@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Layout from "./Layout.shugo";
+  import Layout from "./Layout.svelte";
   type Post = { title: string; url: string };
   let { title, posts, related, note }: { title: string; posts: Post[]; related: Post[]; note?: string } = $props();
 </script>

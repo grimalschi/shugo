@@ -1,6 +1,6 @@
 <script>
   import { search } from "shugo:catalog"
-  import Catalog from "../components/Catalog.svelte"
+  import Catalog from "../components/Catalog.island.svelte"
 </script>
 
 <svelte:head><title>Ceramics catalog — Measure</title></svelte:head>

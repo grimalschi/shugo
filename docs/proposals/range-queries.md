@@ -19,7 +19,7 @@ The result is not spoiled: the page can not remain outdated. The only other calc
 Example: A movie with its neighbors:
 
 ```svelte
-<!-- src/pages/films/[slug].shugo -->
+<!-- src/pages/films/[slug].svelte -->
 <script module>
   export function getStaticPaths({ query }) {
     return query("films").select("slug").all().map(({ slug }) => ({ params: { slug } }))

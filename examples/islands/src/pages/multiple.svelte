@@ -1,5 +1,5 @@
 <script>
-  import Counter from "../components/Counter.svelte"
+  import Counter from "../components/Counter.island.svelte"
 </script>
 
 <svelte:head><title>Two islands — Measure</title></svelte:head>

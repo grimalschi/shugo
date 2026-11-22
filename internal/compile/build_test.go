@@ -44,7 +44,7 @@ func TestBuildExample(t *testing.T) {
 	}
 	// The header reads nothing of the page; the card too; the layout shows
 	// both and has no script that reads the page.
-	for path, want := range map[string]bool{"src/components/Header.shugo": true, "src/components/Card.shugo": true, "src/pages/+layout.shugo": true, "src/pages/about.shugo": false} {
+	for path, want := range map[string]bool{"src/components/Header.svelte": true, "src/components/Card.svelte": true, "src/pages/+layout.svelte": true, "src/pages/about.svelte": false} {
 		if shared[path] != want {
 			t.Errorf("%s: shared = %v, want %v", path, shared[path], want)
 		}
@@ -58,4 +58,86 @@ func TestBuildExample(t *testing.T) {
 	if result.Site.Mounts["head"] == "" {
 		t.Error("the style sheet is not linked")
 	}
+}
+
+func TestRegularSvelteDependencies(t *testing.T) {
+	p := templateProject(t, map[string]string{
+		"src/pages/index.svelte": `<script>import Frame from '../components/Frame.svelte'</script><Frame />`,
+		"src/components/Frame.svelte": `
+<script>import * as ui from '../lib/ui.ts'</script>
+<main><ui.Label /></main>`,
+		"src/lib/ui.ts": `export { default as Label } from '../components/Label.svelte'`,
+		"src/components/Label.svelte": `
+<script>
+import './label.css'
+const path = Shugo.url.pathname
+</script>
+<p class="label">{path}</p>
+<style>p { color: red; }</style>`,
+		"src/components/label.css":             `.label { font-style: italic; }`,
+		"src/pages/Unreferenced.island.svelte": `<script>INVALID JS(`,
+	})
+	// No Svelte compiler process is needed for a project with ordinary
+	// templates, even if it keeps an unused island file beside its pages.
+	p.Config.Runtime = p.Path("missing-runtime")
+	built, err := Build(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(built.Site.Routes) != 1 || built.Site.Routes[0].Pattern != "/" || len(built.Site.IslandPrograms) != 0 {
+		t.Fatalf("unexpected route or island entry: %+v", built.Site)
+	}
+	for _, file := range built.Site.Files {
+		if project.IsIsland(file.Path) || file.Shared {
+			t.Errorf("islands are absent and page-dependent components are not shared: %+v", file)
+		}
+	}
+	if len(built.Site.Assets) != 1 || !strings.HasSuffix(built.Site.Assets[0], ".css") {
+		t.Fatalf("expected only the ordinary style asset: %v", built.Site.Assets)
+	}
+	css, err := os.ReadFile(p.Path(project.Output, Assets, built.Site.Assets[0]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(css), "color:red") || !strings.Contains(string(css), "font-style:italic") {
+		t.Fatalf("expected styles from the component and its CSS import: %s", css)
+	}
+	if changed, err := Changed(p); err != nil || changed {
+		t.Fatalf("fresh build: changed = %v, error = %v", changed, err)
+	}
+	if err := os.WriteFile(p.Path("src/lib/ui.ts"), []byte("// a forwarder modification"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := Changed(p); err != nil || !changed {
+		t.Fatalf("changed import: changed = %v, error = %v", changed, err)
+	}
+}
+
+func TestStaleTemplateImport(t *testing.T) {
+	p := templateProject(t, map[string]string{
+		"src/pages/index.svelte":     `<script>import Card from '../components/Card.shugo'</script><Card />`,
+		"src/components/Card.svelte": `<p>new</p>`,
+	})
+	if _, err := Build(p); err == nil || !strings.Contains(err.Error(), `update the import "../components/Card.shugo" to "../components/Card.svelte"`) {
+		t.Fatalf("expected a migration diagnostic, got %v", err)
+	}
+}
+
+func templateProject(t *testing.T, files map[string]string) *project.Project {
+	t.Helper()
+	root := t.TempDir()
+	for name, content := range files {
+		file := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(file, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p, err := project.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
 }

@@ -5,7 +5,7 @@
 </script>
 
 <script>
-  import ProductCard from "../../components/ProductCard.shugo"
+  import ProductCard from "../../components/ProductCard.svelte"
 
   const category = Shugo.query("categories").get(Shugo.params.id)
   const products = Shugo.query("products").select("id").where({ category: category.id }).order("title").all()

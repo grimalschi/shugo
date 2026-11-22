@@ -43,7 +43,7 @@ func markup(text string) program.Op { return op(program.Markup, text) }
 //	1, the card:   <section> {@render children()} {@render footer?.()} </section>
 //	2, the header: <header> {text} </header>
 var site = &program.Site{Files: []program.File{
-	{Path: "page.shugo", Parts: [][]program.Op{
+	{Path: "page.svelte", Parts: [][]program.Op{
 		{
 			markup("<main>"), op(program.Text, ""),
 			markup("<a"), op(program.URL, "href"), op(program.Attr, "class"), op(program.Spread, ""), markup(">"),
@@ -53,10 +53,10 @@ var site = &program.Site{Files: []program.File{
 		},
 		{markup("<b>"), op(program.Text, ""), markup("</b>")}, // put into the card
 	}},
-	{Path: "card.shugo", Parts: [][]program.Op{{
+	{Path: "card.svelte", Parts: [][]program.Op{{
 		markup("<section>"), op(program.Render, ""), op(program.Render, ""), markup("</section>"),
 	}}},
-	{Path: "header.shugo", Parts: [][]program.Op{{markup("<header>"), op(program.Text, ""), markup("</header>")}}},
+	{Path: "header.svelte", Parts: [][]program.Op{{markup("<header>"), op(program.Text, ""), markup("</header>")}}},
 }}
 
 // page builds a record of the page with its card and a shared header.

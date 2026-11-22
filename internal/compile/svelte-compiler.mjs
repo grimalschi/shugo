@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 
 const wanted = '5.59.1';
 const { compile, VERSION } = await import('svelte/compiler').catch((error) => {
-  throw new Error(`install svelte@${wanted} in this Shugo project to compile .svelte islands`, { cause: error });
+  throw new Error(`install svelte@${wanted} in this Shugo project to compile .island.svelte files`, { cause: error });
 });
 if (VERSION !== wanted) throw new Error(`Shugo islands use Svelte ${wanted}: this project has ${VERSION}`);
 

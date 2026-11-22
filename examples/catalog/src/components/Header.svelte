@@ -1,5 +1,5 @@
 <script>
-  import ProductCard from "./ProductCard.shugo"
+  import ProductCard from "./ProductCard.svelte"
 
   const shop = Shugo.query("shop").get(1)
   // The menu shows how many products every category has.

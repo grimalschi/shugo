@@ -46,7 +46,7 @@ The page receives a line from the route hands. You can not calculate one page se
 
 ### 2. Which component is common
 
-Yes, the component without dependencies is stored once. A component that does not read the page address and is called without parameters or with simple ones strings, numbers, `true`, `false`, `null` is calculated once and stored by one record under the name “file + parameters”: `src/components/ProductCard.shugo{"id":"p5"}`. Pages refer to the entry number. `<Header />` without parameters is one entry on 100,000 pages. Snippets transmitted inside do not interfere with it: therefore, the layout, to which each page passes itself as `children`, is stored once.
+Yes, the component without dependencies is stored once. A component that does not read the page address and is called without parameters or with simple ones strings, numbers, `true`, `false`, `null` is calculated once and stored by one record under the name “file + parameters”: `src/components/ProductCard.svelte{"id":"p5"}`. Pages refer to the entry number. `<Header />` without parameters is one entry on 100,000 pages. Snippets transmitted inside do not interfere with it: therefore, the layout, to which each page passes itself as `children`, is stored once.
 
 **The Council:** approve [3](decisions.md#3-which-blocks-are-shared) and warn when one component has too many entries (`<Price value={n} />`).
 
@@ -82,10 +82,10 @@ V SvelteKit `+layout.svelte` in the folder `src/routes/…` wraps all pages of t
 
 | | SvelteKit | Shugo |
 | --- | --- | --- |
-| Page | folder to address, file `+page.svelte`: `src/routes/blog/[slug]/+page.svelte` | file to the address: `src/pages/blog/[slug].shugo` |
+| Page | folder to address, file `+page.svelte`: `src/routes/blog/[slug]/+page.svelte` | file to the address: `src/pages/blog/[slug].svelte` |
 | List of pages | `entries` in `+page.ts` | `getStaticPaths` in `<script module>` |
 | Not Page | any file without `+` in the route folder | name with `_` |
-| 404 | `+error.svelte` | `404.shugo` |
+| 404 | `+error.svelte` | `404.svelte` |
 | Parameters | `[slug]`, `[...rest]`, `[[optional]]`, `[x=matcher]`, `(group)` | `[slug]`, `[...rest]`, `(group)` |
 | Files not in HTML | `+server.ts` | none |
 
@@ -150,18 +150,18 @@ Hugo is also a single file on Go. It is distributed as follows: ready files for 
 
 ### 15. Optional parameter `[[lang]]`
 
-Details are in [proposal for internationalization](../docs/proposals/i18n.md). In short: `src/pages/[[lang]]/about.shugo` gives both `/about` and `/en/about`; without parameter, the main language.
+Details are in [proposal for internationalization](../docs/proposals/i18n.md). In short: `src/pages/[[lang]]/about.svelte` gives both `/about` and `/en/about`; without parameter, the main language.
 
 ## New questions after switching to Svelte
 
-16. **File Extension.** `.shugo` or `.svelte`C. `.svelte` editor highlights and prompts without setting, but real Svelte This file will not collect: `Shugo.query` and `getStaticPaths` not Svelte. **The Council:** `.shugo` and an extension for the editor who considers it Svelte.
+16. **Types for the editor.** Extensions `.svelte` and `.island.svelte` are selected. How to describe `Shugo`, `shugo:catalog` and `request:` for review in editor.
 17. **`lang="ts"`.** Svelte understands TypeScript only in `<script lang="ts">`, Shugo — any. **The Council:** require `lang="ts"`, like Svelte, with a clear error: then the file is transferred to Svelte without editing.
 18. **Accessibility alerts.** U Svelte There are dozens of them (`alt` in pictures, roles, signatures). **The Council:** The agent is useful, and Svelte He's waiting for them.
 19. **Rune places.** Svelte forbids `$props()` in markup, second call `$props()` and the like; Shugo does not check yet. **The Council:** check as well as Svelte.
 20. **Style class.** Put the component class only on items that selectors select, and throw out extra selectors like Svelte ([32](decisions.md#32-style-class-on-all-component-elements)). **The Council:** yes, but after the rest: the page view does not change from this.
 21. **`<svelte:head>` in a conventional component.** In Svelte it works everywhere, in Shugo it works only in page and layout. **The Council:** allow in components that are not common; in general - an error with explanation.
 22. **`$lib`.** In SvelteKit `$lib` is `src/lib`, and the code from SvelteKit writes `import X from "$lib/…"`. **The Council:** understand `$lib` along with `@/`.
-23. **Svelte Islands.** When to start and how to mark a component that works in the browser. **The Council:** after data adapter.
+23. **Data from the islands.** Do I need a general binding mechanism for `request:` besides the published catalog?
 
 ## From the proposals
 

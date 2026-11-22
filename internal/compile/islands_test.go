@@ -8,11 +8,11 @@ import (
 )
 
 func TestLowerIsland(t *testing.T) {
-	u, err := compileFile("src/pages/catalog.shugo", `<script module>
-  import Counter from '@/components/Counter.svelte';
+	u, err := compileFile("src/pages/catalog.svelte", `<script module>
+  import Counter from '@/components/Counter.island.svelte';
 </script>
 <script>
-  import StaticCard from '@/components/StaticCard.shugo';
+  import StaticCard from '@/components/StaticCard.svelte';
   const props = { start: 2 };
 </script>
 <Counter {...props} />
@@ -20,7 +20,7 @@ func TestLowerIsland(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if u.islands["Counter"] != (islandBinding{path: "@/components/Counter.svelte"}) || len(u.islands) != 1 {
+	if u.islands["Counter"] != (islandBinding{path: "@/components/Counter.island.svelte"}) || len(u.islands) != 1 {
 		t.Fatalf("island imports: %#v", u.islands)
 	}
 	var kinds []program.Kind
@@ -49,7 +49,7 @@ func TestRequestBindingSelectsIslandProgram(t *testing.T) {
 		{`<Island request:results={source} {...props} />`, true},
 		{`<Island request:initial={source} /><Island initial={data} />`, true},
 	} {
-		u, err := compileFile("src/pages/catalog.shugo", `<script>import Island from './Island.svelte'</script>`+test.markup, 0, page)
+		u, err := compileFile("src/pages/catalog.svelte", `<script>import Island from './Island.island.svelte'</script>`+test.markup, 0, page)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -61,19 +61,19 @@ func TestRequestBindingSelectsIslandProgram(t *testing.T) {
 
 func TestIslandBoundaryDiagnostics(t *testing.T) {
 	for _, test := range []struct{ source, message string }{
-		{`<script>import { Counter } from './Counter.svelte';</script><Counter />`, "import an island as a default component"},
-		{`<script>import Counter from './Counter.svelte';</script><Counter>child text</Counter>`, "cannot pass children or snippets"},
-		{`<script>import Counter from './Counter.svelte';</script><Counter>{#snippet detail()}hi{/snippet}</Counter>`, "cannot pass children or snippets"},
-		{`<script>import Counter from './Counter.svelte';</script><svelte:component this={Counter} />`, "must be rendered by its imported tag"},
-		{`<script>import Counter from './Counter.svelte';</script><Counter bind:value />`, "directives belong inside"},
-		{`<script>import Counter from './Counter.svelte';</script><Counter shugoSearch />`, "use request:initial"},
-		{`<script>import Counter from './Counter.svelte';</script><Counter request:initial />`, "needs one source expression"},
-		{`<script>import Counter from './Counter.svelte';</script><Counter request:initial={source} initial={value} />`, "already gets its value"},
-		{`<script>import Counter from './Counter.svelte';</script><Counter request:initial={source} request:initial={other} />`, "already bound"},
-		{`<div request:initial={source}></div>`, "binds a prop on a .svelte island"},
-		{`<script>import Counter from './Counter.svelte';</script><svg><Counter /></svg>`, "its wrapper in the HTML body"},
+		{`<script>import { Counter } from './Counter.island.svelte';</script><Counter />`, "import an island as a default component"},
+		{`<script>import Counter from './Counter.island.svelte';</script><Counter>child text</Counter>`, "cannot pass children or snippets"},
+		{`<script>import Counter from './Counter.island.svelte';</script><Counter>{#snippet detail()}hi{/snippet}</Counter>`, "cannot pass children or snippets"},
+		{`<script>import Counter from './Counter.island.svelte';</script><svelte:component this={Counter} />`, "must be rendered by its imported tag"},
+		{`<script>import Counter from './Counter.island.svelte';</script><Counter bind:value />`, "directives belong inside"},
+		{`<script>import Counter from './Counter.island.svelte';</script><Counter shugoSearch />`, "use request:initial"},
+		{`<script>import Counter from './Counter.island.svelte';</script><Counter request:initial />`, "needs one source expression"},
+		{`<script>import Counter from './Counter.island.svelte';</script><Counter request:initial={source} initial={value} />`, "already gets its value"},
+		{`<script>import Counter from './Counter.island.svelte';</script><Counter request:initial={source} request:initial={other} />`, "already bound"},
+		{`<div request:initial={source}></div>`, "binds a prop on an .island.svelte component"},
+		{`<script>import Counter from './Counter.island.svelte';</script><svg><Counter /></svg>`, "its wrapper in the HTML body"},
 	} {
-		if _, err := compileFile("src/pages/index.shugo", test.source, 0, page); err == nil || !strings.Contains(err.Error(), test.message) {
+		if _, err := compileFile("src/pages/index.svelte", test.source, 0, page); err == nil || !strings.Contains(err.Error(), test.message) {
 			t.Errorf("compile %s: got %v, want %q", test.source, err, test.message)
 		}
 	}

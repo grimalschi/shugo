@@ -1,10 +1,10 @@
 # Shugo and Svelte
 
-The Shugo templates are components of the Svelte 5, and the page that Shugo collects is the same as that given by the Svelte server, byte per byte, except for hydration tags. The document describes how it is done and how it is checked, and the studies that selected the syntax. How to write templates in [Templates](../spec/templates.md).
+Shugo uses syntax Svelte 5 for ordinary `.svelte` the Islands `.island.svelte`. For regular templates Shugo It runs its compiler and compares HTML supported designs with a standard. For islands, the browser code produces Svelte, and Shugo prepares the program SSR with hydration tags. How to write templates - in [Templates](../spec/templates.md). The device of the islands — in [SSR Report on Go](../examples/islands/GO-SSR.md).
 
 ## How Shugo repeats Svelte
 
-The standard is Svelte 5.59.1. The Shugo compiler parses the `.shugo` file itself, on Go, and converts the values into text functions transferred from the server runtime of Svelte as is:
+The standard is Svelte 5.59.1. The Shugo compiler parses the `.svelte` file itself, on Go, and converts the values into text functions transferred from the server runtime of Svelte as is:
 
 | What | Where to Svelte | Where in Shugo |
 | --- | --- | --- |

@@ -5,7 +5,7 @@
 // Add --clients 8 to also measure overlapping filtered SSR and JSON requests.
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { Agent, get } from "node:http";
 import { arch, cpus, platform, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -64,9 +64,11 @@ function prepare(folder, database, variant) {
   copyFileSync(database, join(folder, "data/catalog.db"));
   cpSync(join(demo, "src"), join(folder, "src"), { recursive: true });
   const pages = join(folder, "src/pages");
-  rmSync(join(pages, "multiple.shugo"));
-  if (variant === "baseline") copyFileSync(join(pages, "baseline.shugo"), join(pages, "catalog.shugo"));
-  rmSync(join(pages, "baseline.shugo"));
+  // Archived fixtures are built with the matching historical binary.
+  const extension = existsSync(join(pages, "catalog.svelte")) ? ".svelte" : ".shugo";
+  rmSync(join(pages, "multiple" + extension));
+  if (variant === "baseline") copyFileSync(join(pages, "baseline" + extension), join(pages, "catalog" + extension));
+  rmSync(join(pages, "baseline" + extension));
   // Both projects use the same catalog projection and default result. Only
   // the island variant needs to compile Svelte and publish browser assets.
   const config = JSON.parse(readFileSync(join(demo, "shugo.json"), "utf8"));

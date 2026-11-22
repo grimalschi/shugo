@@ -6,7 +6,7 @@
 </script>
 
 <script>
-  import Variant from "../../components/Variant.shugo"
+  import Variant from "../../components/Variant.svelte"
   import { price } from "../../lib/money"
 
   const item = Shugo.query("products").where({ slug: Shugo.params.slug }).first()

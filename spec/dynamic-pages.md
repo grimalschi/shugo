@@ -11,7 +11,7 @@ Dynamic page - one file, which collects many pages. Their list is taken from the
 ## Implemented, pending approval
 
 ```svelte
-<!-- src/pages/products/[slug].shugo -->
+<!-- src/pages/products/[slug].svelte -->
 <script module>
   export function getStaticPaths({ query }) {
     return query("products").select("slug").all()   // one request for all pages
@@ -37,7 +37,7 @@ Dynamic page - one file, which collects many pages. Their list is taken from the
 ### Pagination
 
 ```svelte
-<!-- src/pages/blog/[...page].shugo -->
+<!-- src/pages/blog/[...page].svelte -->
 <script module>
   export function getStaticPaths({ query, paginate }) {
     return paginate(query("posts").count(), { pageSize: 10 })

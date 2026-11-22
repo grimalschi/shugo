@@ -21,17 +21,18 @@ Below is how the stages are arranged now: in the final version ([Change tracking
 
 | Stage | Who performs | What gets | What gives |
 | --- | --- | --- | --- |
-| 1. Compilation | Go | project Sources from `src/` | `_build/eval.mjs` — the entire JS project in one file; `_build/site.json` — project program; `_build/assets/` — styles |
+| 1. Compilation | Go, the Svelte compiler for islands | project Sources from `src/` | `_build/eval.mjs` with code calculation, `_build/site.json` with project program, island styles and browser modules in `_build/assets/` |
 | 2. Calculation | Bun or Node running Go | `eval.mjs`, project database and its log | changes in `_build/store.db` and report on them |
-| 3. Rantime | Go | `store.db`, `public/`, `assets/` | HTML pages on request or changed page files |
+| 3. Rantime | Go | `store.db`, `public/`, `assets/`, published search index if available | HTML pages on request or changed page files |
 
 ### Compilation
 
-1. Finds all `.shugo` files in `src/` and parses each as a component of Svelte 5: `<script module>`, `<script>`, `<style>` and markup. What Svelte does not accept is a bug with a place in the file; what Svelte warns about, for example, the tag that the browser would rearrange if there was a block between the tags is a warning.
+1. Finds pages and layouts among the usual `.svelte` files. It parses `<script module>`, `<script>`, `<style>` and parser markup. The remaining templates are connected by imports.
 2. For each file, JS is written. Imports, exports and all `<script module>` — `getStaticPaths` — remain at the top of the module. `<script>` and template become one normal function, without `async`, which is performed for each display of the component. The template is a regular `if` and `for` and the calls that record the meaning of each expression. `$props()` gives the parameters and snippers that the caller gave.
 3. For each file, a program writes: a template markup with places where values are substituted. Separate parts in it are the snippets of the template and its `<svelte:head>`. The spaces between tags are removed and compressed here, according to the rules of Svelte. There are no expressions or project code in the program.
 4. Collects all modules, their imported code and the framework library in one file. TypeScript types are erased here. `@/` in imports means `src/`.
 5. Collects styles into one file with a hash in the name: `<style>` components, rewritten to act only on elements of its component (class `svelte-…`, as in Svelte), CSS files that import code, and Tailwind if it is installed in the project.
+6. For imported `*.island.svelte`, Svelte compiles the server and browser versions of the graph. Shugo builds a SSR program for islands with parameters from the query and checks it HTML for the output of Svelte at the calculation stage. Browser modules are published as hash files.
 
 The compiler does not parse JavaScript itself: it does esbuild, which is connected as a library of Go. The compiler only needs to distinguish code from lines and comments to find the end of an expression.
 

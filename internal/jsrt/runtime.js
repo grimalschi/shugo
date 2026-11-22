@@ -12,7 +12,7 @@
 
 import { readFileSync, readSync, writeSync } from "node:fs";
 
-import { during, open, Query, Reads } from "shugo:query";
+import { during, open, Query, readCatalog, Reads } from "shugo:query";
 
 // The data database of the project, once it is open; null if it has none.
 let data = null;
@@ -24,6 +24,7 @@ const requestSources = new WeakMap();
 export function catalogView() {
   const result = process.env.SHUGO_CATALOG;
   if (!result) throw new Error("shugo:catalog search() needs a prepared catalog index");
+  readCatalog();
   const view = JSON.parse(result);
   requestSources.set(view, "catalog");
   return view;
@@ -211,7 +212,7 @@ class Writer {
       throw new TypeError("a Svelte island must be rendered by its imported tag");
     }
     if (target === null || typeof target !== "object" || typeof target.render !== "function") {
-      throw new TypeError(`this tag is not a component: it is ${describe(target)}. A component is what a .shugo file exports: import Card from "./Card.shugo"`);
+      throw new TypeError(`this tag is not a component: it is ${describe(target)}. Import a Svelte component, for example import Card from "./Card.svelte"`);
     }
     // What stands inside the tag is computed here, in the template that
     // wrote it, whether or not the component shows it.
@@ -636,7 +637,7 @@ function describe(value) {
 // ---------------------------------------------------------------------------
 // The run
 
-// component is what every .shugo file exports.
+// component is what a regular .svelte file exports in the evaluation bundle.
 export function component(file, render) {
   return { file, render };
 }
@@ -812,7 +813,7 @@ class Run {
 
 // A component that depends on nothing of the page and is called with plain
 // values shows the same wherever it stands, so it is computed once under a
-// name made of its file and those values: components/Card.shugo{"id":"p7"}.
+// name made of its file and those values: components/Card.svelte{"id":"p7"}.
 // null means: not shared. JSON writes every control character as an escape,
 // so a name never holds one of the separators.
 function sharedName(path, props, snippets) {

@@ -137,7 +137,7 @@ type islandOutput struct {
 	warnings []string
 }
 
-// buildIslands bundles only components that a .shugo file explicitly imports.
+// buildIslands registers the island entries that regular templates import.
 func (b *builder) buildIslands() (*islandOutput, error) {
 	roots := map[string]bool{}
 	for _, u := range b.units {
@@ -252,10 +252,11 @@ func (b *builder) islandOptions() api.BuildOptions {
 	}
 }
 
-// sveltePlugin interprets .shugo in the island's graph as Svelte. Ordinary
-// Shugo templates keep their separate compilation and evaluation pipeline.
+// sveltePlugin uses Svelte's compiler throughout the island's graph, including
+// ordinary components shared with templates compiled by Shugo.
 func (b *builder) sveltePlugin(compiler *svelteProcess, entries map[string]string, client bool) api.Plugin {
 	return api.Plugin{Name: "shugo-svelte", Setup: func(build api.PluginBuild) {
+		rejectOldTemplates(build)
 		build.OnResolve(api.OnResolveOptions{Filter: `^shugo-island-`}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
 			return api.OnResolveResult{Path: args.Path, Namespace: "shugo-island"}, nil
 		})
@@ -274,7 +275,7 @@ func (b *builder) sveltePlugin(compiler *svelteProcess, entries map[string]strin
 			compiler.mu.Unlock()
 			return api.OnLoadResult{Contents: &css, Loader: api.LoaderCSS, ResolveDir: filepath.Dir(path)}, nil
 		})
-		build.OnLoad(api.OnLoadOptions{Filter: `\.(svelte|shugo)$`, Namespace: "file"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
+		build.OnLoad(api.OnLoadOptions{Filter: `\.svelte$`, Namespace: "file"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
 			return b.svelteLoad(compiler, args.Path, client)
 		})
 		if !client {
@@ -288,11 +289,8 @@ func (b *builder) sveltePlugin(compiler *svelteProcess, entries map[string]strin
 
 func (b *builder) svelteLoad(compiler *svelteProcess, path string, client bool) (api.OnLoadResult, error) {
 	rel := b.relative(path)
-	if strings.HasSuffix(rel, ".shugo") {
-		id, known := b.ids[rel]
-		if !known || b.units[id].role != component {
-			return api.OnLoadResult{}, fmt.Errorf("Svelte islands can reuse .shugo components under src/, but cannot import the page or layout %s", rel)
-		}
+	if id, known := b.ids[rel]; known && b.units[id].role != component {
+		return api.OnLoadResult{}, fmt.Errorf("an island cannot import the page or layout %s; extract a reusable Svelte component", rel)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {

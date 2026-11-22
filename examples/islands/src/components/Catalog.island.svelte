@@ -1,6 +1,6 @@
 <script>
   import { onMount, tick } from "svelte"
-  import ProductCard from "./ProductCard.shugo"
+  import ProductCard from "./ProductCard.svelte"
   import { readFilters, searchParams } from "../lib/catalog.js"
 
   let { initial, action, endpoint } = $props()
