@@ -472,3 +472,70 @@ func TestLegacySourceRequiresRenameWithoutDroppingThePublishedSite(t *testing.T)
 		t.Fatal("a failed build published a new page")
 	}
 }
+
+// A module with runes, .svelte.js or .svelte.ts, is compiled by Svelte, for a
+// page and for an island alike; a mistake in it is told at its line.
+func TestModulesWithRunes(t *testing.T) {
+	files := `
+-- src/lib/counter.svelte.ts --
+export interface Counter { readonly count: number; readonly double: number }
+
+export function counter(start: number): Counter {
+  let count = $state<number>(start)
+  const double = $derived(count * 2)
+  if (start < 0) throw new Error("a counter starts at zero or more")
+  return {
+    get count() { return count },
+    get double() { return double },
+  }
+}
+-- src/lib/shared.svelte.js --
+export const shared = $state({ visits: 3 })
+-- src/components/Counter.island.svelte --
+<script lang="ts">
+import { counter } from "../lib/counter.svelte"
+let { start }: { start: number } = $props()
+const c = counter(start)
+</script>
+<button>{c.count} × 2 = {c.double}</button>
+`
+	got := one(t, `<script lang="ts">
+import { counter } from "../lib/counter.svelte"
+import { shared } from "../lib/shared.svelte.js"
+const c = counter(21)
+</script>
+<p>{c.count} {c.double} {shared.visits}</p>`, files)
+	expect(t, got, "<p>21 42 3</p>")
+
+	s := newSite(t, files+`
+-- src/pages/index.svelte --
+<script>
+import { counter } from "../lib/counter.svelte"
+const c = counter(-1)
+</script>
+<p>{c.count}</p>`)
+	if _, err := s.tryBuild(); err == nil || !strings.Contains(err.Error(), "at src/lib/counter.svelte.ts:6:") {
+		t.Errorf("a failure in a module with runes: %v", err)
+	}
+
+	modules, err := filepath.Abs(filepath.Join("svelte", "node_modules"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(modules, "svelte", "package.json")); err != nil {
+		t.Skip("islands need Svelte: cd test/svelte && bun install")
+	}
+	s = newSite(t, files+`
+-- src/pages/index.svelte --
+<script>
+import Counter from "../components/Counter.island.svelte"
+</script>
+<Counter start={5} />`)
+	if err := os.Symlink(modules, filepath.Join(s.root, "node_modules")); err != nil {
+		t.Fatal(err)
+	}
+	s.build()
+	if page := s.page("/"); !strings.Contains(page, "<button>5 × 2 = 10</button>") {
+		t.Errorf("an island with a module with runes: %s", page)
+	}
+}

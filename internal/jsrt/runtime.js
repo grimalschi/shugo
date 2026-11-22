@@ -12,6 +12,7 @@
 
 import { readFileSync } from "node:fs";
 
+import { getAllContexts } from "svelte";
 import { render } from "svelte/server";
 
 import { during, open, Query, Reads } from "shugo:query";
@@ -35,14 +36,12 @@ export function requestSource(value, source) {
 // ---------------------------------------------------------------------------
 // Marks
 //
-// Svelte renders a page as one text. Where a shared block stands in it, and
-// what the page gives that block, is marked in the text, and so is the raw
-// HTML of {@html}: with marks that no page can write, a byte 0, a word
-// chosen at random for the run, what the mark says and a byte 0 again.
+// Svelte renders a page as one text. Where a shared block stands in it is
+// marked in the text, and so is the raw HTML of {@html}: with marks that no
+// page can write, a byte 0, a word chosen at random for the run, what the
+// mark says and a byte 0 again.
 //
-//   c3      block 3 of the record stands here: a use of a shared block
-//   (3,name the snippet name, given to the shared block of block 3, starts
-//   )       the snippet ends
+//   c3      use 3 of the record stands here: a shared block, see use
 //   gname   what the place that shows this shared block gave it as name
 //   i2      island 2 of the record
 //   [ ]     the HTML of {@html} starts, and ends
@@ -58,17 +57,35 @@ const headEnd = mark("h");
 // The comments Svelte writes for the browser, to hydrate the page with: a
 // static page has no use for them. Svelte 5.59 writes <!----> between texts
 // and around {@html}; <!--[-->, <!--[!-->, <!--[1-->, <!--[-1--> and
-// <!--]--> around blocks; <!--$s1--> for $props.id(); and the hash of a
-// component around what it gives the head. A comment the page writes itself,
-// with {@html}, stays.
-const comments = /<!--(?:\[(?:!|-?\d+)?|\]|\$[\w-]*|[a-z0-9]*)-->/g;
+// <!--]--> around blocks; <!--$s1--> for $props.id(); the hash of a
+// component around what it gives the head; and <!> at the end of a <select>
+// or an <option> whose content is more than text. A comment the page writes
+// itself, with {@html}, stays.
+const comments = /<!--(?:\[(?:!|-?\d+)?|\]|\$[\w-]*|[a-z0-9]*)-->|<!>/g;
+
+// rendered renders with Svelte what show writes, and returns its HTML, what
+// it gives the head and the <title> among that, each as Svelte wrote it,
+// marks and all.
+function rendered(show, options) {
+  const { head, body } = render(Rendered, { props: { show }, ...options });
+  const end = head.lastIndexOf(headEnd);
+  return { body, head: head.slice(0, end), title: head.slice(end + headEnd.length) };
+}
+
+// Rendered is what every render starts from: what it is to show, then a
+// mark where what that gave the head ends. Svelte writes the <title> after
+// the head.
+function Rendered($$renderer, { show }) {
+  show($$renderer);
+  $$renderer.head(($$renderer) => $$renderer.push(headEnd));
+}
 
 // ---------------------------------------------------------------------------
 // What is computed
 
 // A record is everything computed for one page, or for one shared block: its
-// blocks, in the order they were made. Blocks of a record name each other by
-// their place in it.
+// blocks, made as what Svelte rendered is read. Blocks of a record name each
+// other by their place in it.
 class Record {
   constructor(kind, key, route) {
     this.kind = kind; // "p" for a page, "s" for a shared block
@@ -76,104 +93,94 @@ class Record {
     this.route = route; // the route of a page, by its place among the routes
     this.blocks = [];
     this.top = 0;
-    this.islands = []; // the islands it shows, in JSON
+    // The shared blocks marked while Svelte renders, { name, snippets }, and
+    // the islands, in JSON. A render that Svelte does again, as it does
+    // for bind:, leaves some of them unmarked: only what is marked in the
+    // end becomes a block.
+    this.uses = [];
+    this.islands = [];
     // What was asked of the data database on the way. The rows it gave note
     // what is read of them until the record is complete: see encode.
     this.reads = new Reads();
   }
 
-  // A block is what a component rendered: its HTML, what it gives the head
-  // of the page, and the <title> among it; or a snippet given to a shared
-  // block, HTML alone; or a use, which stands for a shared block. HTML is a
-  // fragment, see fragment.
+  // A block is what Svelte rendered: HTML, what it gives the head of the
+  // page and the <title> among that; or a use, which stands for a shared
+  // block. HTML is a fragment, see fragment.
   block() {
     const block = { index: this.blocks.length, shared: null, snippets: null, body: [""], head: [""], title: "" };
     this.blocks.push(block);
     return block;
   }
 
-  // use stands where a shared block is shown, and names it. The shared
-  // block is kept once; the snippets this place gave it are kept here.
-  use(name) {
-    const block = this.block();
-    block.shared = name;
-    block.snippets = new Map();
-    return block;
-  }
-
-  // render renders a component with Svelte and keeps what it rendered as a
-  // block. idPrefix starts the ids of $props.id().
-  render(component, props, idPrefix) {
-    const { head, body } = render(Rendered, { props: { component, props }, idPrefix });
-    const end = head.lastIndexOf(headEnd);
+  // render renders show with Svelte and keeps what it rendered as a block.
+  // idPrefix starts the ids of $props.id().
+  render(show, idPrefix) {
+    const { body, head, title } = rendered(show, { idPrefix });
     const block = this.block();
     block.body = this.fragment(body);
-    block.head = this.fragment(head.slice(0, end));
-    block.title = head.slice(end + headEnd.length);
+    block.head = this.fragment(head);
+    block.title = title;
     return block.index;
   }
 
+  // use makes the block that stands where a shared block is shown, and
+  // names it. The shared block is kept once; the snippets this place gave
+  // it are kept here, a block each.
+  use({ name, snippets }) {
+    const use = this.block();
+    use.shared = name;
+    use.snippets = new Map();
+    for (const snippet of snippets) {
+      const block = this.block();
+      block.body = this.fragment(snippet.body);
+      block.head = this.fragment(snippet.head);
+      block.title = snippet.title;
+      use.snippets.set(snippet.name, [block.index]);
+    }
+    return use;
+  }
+
   // fragment reads what Svelte rendered: HTML with marks. It takes the
-  // comments of Svelte out of the HTML, and the snippets given to shared
-  // blocks into blocks of their own. A fragment is texts with holes between
-  // them, [text, hole, text, …, text]; a hole is a mark that stays: c3,
-  // gname or i2.
-  fragment(rendered) {
-    const parts = rendered.split(marks);
-    let at = 0;
-    const read = (snippet) => {
-      const out = [];
-      let html = "";
-      let raw = false;
-      while (at < parts.length) {
-        const part = parts[at];
-        if (at++ % 2 === 0) {
-          html += raw ? part : part.replace(comments, "");
-          continue;
-        }
-        switch (part[0]) {
-          case "[":
-            raw = true;
-            break;
-          case "]":
-            raw = false;
-            break;
-          case "(": {
-            const comma = part.indexOf(",");
-            const use = this.blocks[Number(part.slice(1, comma))];
-            const given = this.block();
-            given.body = read(true);
-            use.snippets.set(part.slice(comma + 1), [given.index]);
-            break;
-          }
-          case ")":
-            if (!snippet) throw new Error("a snippet given to a shared block ends where none starts. This should not happen: please report it");
-            out.push(html);
-            return out;
-          default:
-            out.push(html, part);
-            html = "";
-        }
+  // comments of Svelte out of the HTML, outside {@html}, and makes the
+  // blocks of the shared blocks marked in it. A fragment is texts with holes
+  // between them, [text, hole, text, …, text]; a hole is c and the number
+  // of a block, gname or i2.
+  fragment(text) {
+    const parts = text.split(marks);
+    const out = [];
+    let html = "";
+    let raw = false;
+    for (let at = 0; at < parts.length; at++) {
+      const part = parts[at];
+      if (at % 2 === 0) {
+        html += raw ? part : part.replace(comments, "");
+        continue;
       }
-      if (snippet) throw new Error("a snippet given to a shared block has no end. This should not happen: please report it");
-      out.push(html);
-      return out;
-    };
-    return read(false);
+      switch (part[0]) {
+        case "[":
+          raw = true;
+          break;
+        case "]":
+          raw = false;
+          break;
+        case "c":
+          out.push(html, "c" + this.use(this.uses[Number(part.slice(1))]).index);
+          html = "";
+          break;
+        default:
+          out.push(html, part);
+          html = "";
+      }
+    }
+    out.push(html);
+    return out;
   }
 
   // island keeps an island and returns its mark.
   island(json) {
     return mark("i" + (this.islands.push(json) - 1));
   }
-}
-
-// Rendered is what every render starts from: the component it is given,
-// then a mark where what the component gave the head ends. Svelte writes the
-// <title> after the head.
-function Rendered($$renderer, { component, props }) {
-  component($$renderer, props);
-  $$renderer.head(($$renderer) => $$renderer.push(headEnd));
 }
 
 // ---------------------------------------------------------------------------
@@ -190,16 +197,9 @@ export function component(file, compiled) {
   components.set(file, compiled);
   return function shown($$renderer, props) {
     const shared = present?.record ? share(file, props) : null;
-    if (shared === null) return compiled($$renderer, props);
-    const use = present.record.use(shared.name);
-    $$renderer.push(mark("c" + use.index));
-    // What the place gives the shared block is rendered here, where it is
-    // written.
-    for (const name of shared.given) {
-      $$renderer.push(mark("(" + use.index + "," + name));
-      props[name]($$renderer);
-      $$renderer.push(mark(")"));
-    }
+    const snippets = shared && apart(shared.given, props);
+    if (!snippets) return compiled($$renderer, props);
+    $$renderer.push(mark("c" + (present.record.uses.push({ name: shared.name, snippets }) - 1)));
   };
 }
 
@@ -208,18 +208,23 @@ export function component(file, compiled) {
 // values and snippets without parameters, written inside its tag. The name
 // of the block is its file and those values, and the names of the snippets
 // after "|": components/Card.svelte{"id":"p7"|children}. null: it is not.
+// A prop of bind: is read and written through the component: it is not a
+// value.
 function share(file, props) {
   const { path, shared } = site.files[file];
   if (!shared) return null;
   const slots = props.$$slots;
   const values = [];
   const given = [];
-  for (const name in props) {
-    const value = props[name];
-    if (value === undefined || name === "$$slots") continue;
+  for (const name of Object.keys(props)) {
+    if (name === "$$slots") continue;
+    const property = Object.getOwnPropertyDescriptor(props, name);
+    if (property.get || property.set) return null;
+    const value = property.value;
+    if (value === undefined) continue;
     if (typeof value === "function" && slots?.[name === "children" ? "default" : name]) {
       // A snippet with parameters is rendered where it is shown.
-      if (value.length > 1) return null;
+      if (takesParameters(value)) return null;
       given.push(name);
       continue;
     }
@@ -228,6 +233,41 @@ function share(file, props) {
     values.push(name);
   }
   return { name: nameOf(path, props, values, given), given };
+}
+
+// takesParameters tells whether a snippet compiled by Svelte takes
+// parameters besides the renderer: function row($$renderer, item = 1).
+// Parameters with default values do not count in the length of a function,
+// so its source is read.
+function takesParameters(snippet) {
+  if (snippet.length > 1) return true;
+  const source = Function.prototype.toString.call(snippet);
+  const open = source.indexOf("(");
+  const arrow = source.indexOf("=>");
+  if (open < 0 || (arrow >= 0 && arrow < open)) return false; // $$renderer => …
+  return /^\s*[\w$]+\s*,/.test(source.slice(open + 1));
+}
+
+// apart renders the snippets a place gives a shared block, each as a render
+// of its own: a snippet without parameters shows the same wherever the
+// shared block shows it. It sees the context of the place. null when one
+// cannot be rendered apart: it fails where the shared block would not show
+// it, or it calls $props.id(), whose ids count what was rendered before them
+// on the page. Then the component is rendered in place, with its snippets,
+// as Svelte renders them.
+function apart(names, props) {
+  const out = [];
+  for (const name of names) {
+    let snippet;
+    try {
+      snippet = rendered(($$renderer) => props[name]($$renderer), { context: getAllContexts() });
+    } catch {
+      return null;
+    }
+    if (snippet.body.includes("<!--$") || snippet.head.includes("<!--$")) return null;
+    out.push({ name, ...snippet });
+  }
+  return out;
 }
 
 // nameOf names a shared block. Props in another order are the same props.
@@ -239,14 +279,14 @@ function nameOf(path, props, values, given) {
 }
 
 // unnamed reads a name that nameOf wrote. The names of the snippets follow
-// the last "|" and are made of letters, digits, "$" and "_"; a "|" inside a
-// prop is followed by the quote that closes its text at the least.
+// the last "|" and are names of JavaScript; a "|" inside a prop is followed
+// by the quote that closes its text at the least.
 function unnamed(name) {
   const start = name.indexOf("{");
   let inside = name.slice(start + 1, -1);
   let given = [];
   const bar = inside.lastIndexOf("|");
-  if (bar >= 0 && /^[\w$,]*$/.test(inside.slice(bar + 1))) {
+  if (bar >= 0 && /^[\p{ID_Continue}$,]*$/u.test(inside.slice(bar + 1))) {
     given = inside.slice(bar + 1).split(",").filter((one) => one !== "");
     inside = inside.slice(0, bar);
   }
@@ -254,15 +294,11 @@ function unnamed(name) {
 }
 
 // givenBy stands, inside a shared block, for a snippet that the place that
-// shows the block gave it: the place renders the snippet, where it is
-// written, and the Go side puts it here.
-function givenBy(name, path) {
-  return ($$renderer, ...args) => {
-    if (args.length > 0) {
-      throw new TypeError(`${path} shows the snippet ${name} with arguments, and ${name} is rendered where it is written, without them: its parameters all have default values, so it was taken for a snippet without parameters. Write its parameters without default values`);
-    }
-    $$renderer.push(mark("g" + name));
-  };
+// shows the block gave it: the place rendered the snippet, and the Go side
+// puts it here. The snippet takes no parameters, so what the shared block
+// passes it changes nothing, as in Svelte.
+function givenBy(name) {
+  return ($$renderer) => $$renderer.push(mark("g" + name));
 }
 
 // island is what a template imports of an island: a component that renders
@@ -491,13 +527,13 @@ class Run {
     if (given.length > 0) {
       props.$$slots = {};
       for (const snippet of given) {
-        props[snippet] = givenBy(snippet, path);
+        props[snippet] = givenBy(snippet);
         props.$$slots[snippet === "children" ? "default" : snippet] = true;
       }
     }
     const record = new Record("s", name, 0);
     computing({ reads: record.reads, page, route: null, record }, () => {
-      record.top = record.render(compiled, props, "b" + file);
+      record.top = record.render(($$renderer) => compiled($$renderer, props), "b" + file);
     });
     this.emit(record);
   }
@@ -555,12 +591,14 @@ class Run {
   // not the pages, and a change of a page computes the page alone.
   around(record, index) {
     const route = site.routes[index];
-    let top = record.render(components.get(route.file), {}, "");
+    const compiled = components.get(route.file);
+    let top = record.render(($$renderer) => compiled($$renderer, {}), "");
     for (let i = route.layouts.length - 1; i >= 0; i--) {
       const file = site.files[route.layouts[i]];
       const props = file.shared ? {} : { "@route": index, "@path": record.key };
-      const use = record.use(nameOf(file.path, props, Object.keys(props), ["children"]));
-      use.snippets.set("children", [top]);
+      const use = record.block();
+      use.shared = nameOf(file.path, props, Object.keys(props), ["children"]);
+      use.snippets = new Map([["children", [top]]]);
       top = use.index;
     }
     record.top = top;

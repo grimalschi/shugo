@@ -40,9 +40,11 @@ func (u *unit) own() bool {
 }
 
 // placed tells that what the file shows depends on the place it stands at:
-// it uses the context of Svelte, which the components around it give, or
-// calls $props.id(), whose ids count the components rendered before it.
-// Such a component is rendered where it stands, and so is any that shows it.
+// it uses the context of Svelte, which the components around it give; calls
+// $props.id(), whose ids count the components rendered before it; or shows
+// a snippet inside a <select>, whose value marks the <option> the snippet
+// shows. Such a component is rendered where it stands, and so is any that
+// shows it.
 func (u *unit) placed() bool {
-	return u.Facts.Context || u.Facts.ID
+	return u.Facts.Context || u.Facts.ID || u.Facts.Select
 }

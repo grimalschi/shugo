@@ -75,6 +75,7 @@ The regular `.svelte` file compiles and renders the Svelte 5.59.1 itself, sewn i
 - `await` no: the page is calculated without waiting, because `query` responds immediately. What is expected and done once - for example, code highlighting - is expected at the top level of the module from `src/lib/`.
 - For TypeScript Write `<script lang="ts">` or `<script module lang="ts">`: Svelte Finds out. TypeScript And it's the type that washs. `enum` and other structures which TypeScript Turns it into a code, Svelte does not accept: `enum` - Object `as const`.
 - `@/` in import path means folder `src/`.
+- Rune modules — `counter.svelte.ts`, `state.svelte.js` — compile Svelte, as in SvelteKit: imported as regular modules, `import { counter } from "@/lib/counter.svelte"`. On the server `$state` in them — just a value; on the island they work in the browser.
 - Runes Svelte work as on the server Svelte: `$state(x)` - just the value of `x`, `$derived(…)` is considered once, `$effect` is not executed. Page is static, in the browser its code does not work.
 - `return` at the top level `<script>` and `export default` are build errors.
 
@@ -183,7 +184,6 @@ Svelte Rules:
 | --- | --- | --- |
 | hydration comments `<!--[-->`, `<!--]-->`, `<!---->` | sd | cuts: static page they are not needed. Remain at the islands and in HTML of `{@html}` |
 | Context specified in layout via `setContext` | reaches the page | not available: the layout is rendered separately from the page |
-| What is `<title>` | the latest in the order of the document | last in the order in which the blocks are shown; the page title wins the layout title as in Svelte |
 | Warnings about what is changing in the browser (`state_referenced_locally` and neighboring) | I have | no: static page is rendered once |
 
 ### What is not and what the compiler answers

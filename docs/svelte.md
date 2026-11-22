@@ -11,14 +11,15 @@ Ordinary `.svelte` compile and render itself Svelte 5.59.1: compiler with output
 | Component Styles: `svelte-…` class, rewritten selectors, unused selectors | Svelte, `css: "external"` | styles assemble in file Shugo, `internal/compile/styles.go` |
 | Your checks: shell, islands, first syntax tags Shugo, slots Svelte 4 | Shugo, by tree, which gave the same compiler call | `internal/svelte/compile.mjs` |
 | What component is the common block and what renders on the spot | Shugo: `component()` wrap around each component | `internal/jsrt/runtime.js`, `internal/compile/build.go` |
-| Tags for common blocks and snippets, cutting HTML into blocks, `<title>` separately from the head | Shugo | `internal/jsrt/runtime.js` |
+| Common block labels, snippets of common blocks in separate renders, cutting HTML into blocks, `<title>` separately from the head | Shugo | `internal/jsrt/runtime.js` |
+| Modules with runes, `.svelte.js` and `.svelte.ts` | Svelte, `compileModule`; types `.svelte.ts` removes esbuild, source cards add up | `internal/compile/build.go` |
 | Comments on hydration `<!--[-->`, `<!--]-->`, `<!---->` and others | writes Svelte, cuts Shugo — except for the islands and `{@html}` | `internal/jsrt/runtime.js` |
 | Page head in order of blocks, one `<title>` is the last | Shugo, when assembling a page | `internal/render` |
 | Document around the page, `src/site.html` | Shugo | `internal/skeleton`, `internal/render` |
 
 The page code is performed by the real JS — Bun or Node — and HTML writes the real Svelte, so the match with Svelte is obtained by building: numbers, dates, `String()` arrays and objects, spaces and attributes — all of it.
 
-Shugo has blocks. A component that shows the same thing everywhere it stands with the same parameters is rendered once, and pages are stored in its place a hole. A parameterless snippet written inside the tag of such a component is rendered where it is written and stored in the caller's record. The component that takes the context of Svelte or calls `$props.id()` depends on the location and is always renderable in place. See also [Blocks](blocks.md#shared-components).
+Shugo has blocks. A component that shows the same thing everywhere it stands with the same parameters is rendered once, and pages are stored in its place a hole. A parameterless snippet written inside the tag of such a component is rendered separately, where it is written, with its head and `<title>`, and stored in the caller's record; a snippet that falls or calls `$props.id()` leaves the component in place. The component that takes the context of Svelte, calls `$props.id()`, shows a snippet inside `<select>` or has received `bind:`, is location-dependent and always renders in place. See also [Blocks](blocks.md#shared-components).
 
 The document around the Svelte page does not write: `render()` gives the head and body separately. Shugo, like SvelteKit with `src/app.html`, puts them in the shell of `src/site.html`: head in place of `%shugo.head%`, body in place of `%shugo.body%`. Therefore, the root layout starts immediately with the contents of `<body>`, like `+layout.svelte`, and the template that `<html>`, `<head>` or `<body>` writes is an error. The address and page parameters also give the object modeled on SvelteKit: `page` from the `shugo` module with `url`, `params`, `route.id` and `status` fields, as `page` from `$app/state`.
 
@@ -26,7 +27,6 @@ The document around the Svelte page does not write: `render()` gives the head an
 
 - **Comments of hydration** Shugo cuts out: a static page does not need them, and this is a quarter of its byte. They remain at the islands - the island comes to life in the browser on them - and in HTML, which inserts `{@html}`.
 - **Layout Context** does not reach the page: the layout is rendered separately, and `setContext` sees its components in it, but not the page inside.
-- **`<title>`**: Svelte leaves the latter in order of document. Shugo is the last in the order in which blocks are shown: the block of the common component and the snippet given to it are considered to be shown where they stand. In practice, it’s the same: the page title is shown inside the layout and the layout title wins.
 - **Runes and TypeScript** the " How to Svelte S `runes: true`: syntax Svelte 4 (`export let`, `$:`) - compiler error, `<slot>` and `slot="…"` error Shugo with a hint of snippets. TypeScript the City of London `<script lang="ts">` Svelte adopts without assembler: types are erased, and `enum` and other structures that TypeScript Turns into code, is a mistake.
 - **Warnings** about what changes in the browser — `state_referenced_locally` and neighboring — Shugo does not show: a static page is rendered once. The island warns about them, as always: its Svelte compiles for the browser.
 
@@ -35,6 +35,7 @@ The document around the Svelte page does not write: `render()` gives the head an
 - **Tasks of testing.** The `test/svelte/` contains the test reference components of the 30 (below) and what the Svelte 5.59.1 gives on each dataset. `TestSvelteTasks` collects each task as a site and compares pages. The Svelte: `cd test/svelte && bun install && bun render.mjs` itself makes the reference. Previously, the test was checked by the Shugo compiler with Svelte; now it is what Shugo does around Svelte: blocks, cut-out comments, page head.
 - **Comments.** `TestNoCommentsOfSvelte` collects a page with all kinds of Svelte blocks, common components in the head and `$props.id()` and checks that Svelte comments are not left in it, and comments from `{@html}` remain.
 - **Tests of patterns.** The expected HTML in `test/template_test.go` is taken from the output of Svelte on the same templates.
+- **Svelte across the blocks.** `TestSvelteSemanticsAcrossBlocks` collects templates where shared blocks could change the meaning: `bind:`Snippets on condition, `<select>` With a snippet, `$props.id()` In the snippet, which is shown twice, `<title>` From the snippet, the names of the snippets are not Latin, the extra arguments are snippets, `slot` at the custom element. Expected HTML Everyone is what gives Svelte on the same files.
 - **Random pages.** `TestRandomPages` writes pages at random and considers them HTML as its model on Go, independent of the Shugo code. The model is checked with Svelte 5.59.1 on 400 random pages: all matched.
 - Before comparing, Svelte output removes the hydration labels, and both removes the style class: the reference is compiled with the other file path, and the hash class is the other.
 

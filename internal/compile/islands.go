@@ -89,7 +89,9 @@ func (s *svelteProcess) close() {
 	}
 }
 
-func (s *svelteProcess) compile(path, source string) (svelteModule, error) {
+// compile compiles a component, or a module with runes when module is set,
+// for the browser and for the server.
+func (s *svelteProcess) compile(path, source string, module bool) (svelteModule, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.failed != nil {
@@ -98,20 +100,21 @@ func (s *svelteProcess) compile(path, source string) (svelteModule, error) {
 	if result, known := s.modules[path]; known {
 		return result, nil
 	}
-	result, err := s.ask(path, source, false)
+	result, err := s.ask(path, source, false, module)
 	if err == nil {
 		s.modules[path] = result
 	}
 	return result, err
 }
 
-func (s *svelteProcess) ask(path, source string, lower bool) (svelteModule, error) {
+func (s *svelteProcess) ask(path, source string, lower, module bool) (svelteModule, error) {
 	var result svelteModule
 	err := s.request.Encode(struct {
 		Filename string `json:"filename"`
 		Source   string `json:"source"`
-		Lower    bool   `json:"lower"`
-	}{path, source, lower})
+		Lower    bool   `json:"lower,omitempty"`
+		Module   bool   `json:"module,omitempty"`
+	}{path, source, lower, module})
 	if err == nil {
 		err = s.response.Decode(&result)
 	}
@@ -282,6 +285,9 @@ func (b *builder) sveltePlugin(compiler *svelteProcess, entries map[string]strin
 		build.OnLoad(api.OnLoadOptions{Filter: `\.svelte$`, Namespace: "file"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
 			return b.svelteLoad(compiler, args.Path, client)
 		})
+		build.OnLoad(api.OnLoadOptions{Filter: `\.svelte\.(js|ts)$`, Namespace: "file"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
+			return b.svelteLoad(compiler, args.Path, client)
+		})
 		if !client {
 			build.OnLoad(api.OnLoadOptions{Filter: `\.css$`, Namespace: "file"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
 				empty := ""
@@ -301,7 +307,17 @@ func (b *builder) svelteLoad(compiler *svelteProcess, path string, client bool) 
 		return api.OnLoadResult{}, err
 	}
 	source := string(data)
-	compiled, err := compiler.compile(rel, source)
+	// A module with runes: Svelte reads JavaScript alone, so a .svelte.ts
+	// file loses its types first.
+	module := !strings.HasSuffix(path, ".svelte")
+	if strings.HasSuffix(path, ".svelte.ts") {
+		stripped := api.Transform(source, api.TransformOptions{Loader: api.LoaderTS, Target: api.ESNext, Sourcefile: rel, LogLevel: api.LogLevelSilent})
+		if len(stripped.Errors) > 0 {
+			return api.OnLoadResult{Errors: stripped.Errors}, nil
+		}
+		source = string(stripped.Code)
+	}
+	compiled, err := compiler.compile(rel, source, module)
 	if err != nil {
 		return api.OnLoadResult{}, err
 	}
@@ -431,7 +447,7 @@ func (b *builder) islandPrograms(compiler *svelteProcess, paths []string, reques
 		if !ok {
 			return fmt.Errorf("%s: request-time island component was not compiled by Svelte", path)
 		}
-		lowered, err := compiler.ask(path, source.Server, true)
+		lowered, err := compiler.ask(path, source.Server, true, false)
 		if err != nil {
 			return err
 		}

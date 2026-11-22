@@ -2,7 +2,7 @@
 
 Here is written what is decided without direct confirmation of the author of the project: where the answer was “don’t know”, “decision” or question before. Every decision has a reason. After approval, the decision is transferred to the “Decision” section of its document, after refusal redone. The numbers don’t change so that the links don’t break; every decision above tells you what happened to it.
 
-Decisions 1–27 taken during the assembly of the first version, 28–35 when switching to syntax Svelte 21 November 2026 years, 36–38 — 22 November 2026 The year when the shell appeared `src/site.html` Files are not HTML, 39 When there is only one search, 40–47 — the same time when the templates began to compile and render themselves Svelte.
+Decisions 1–27 taken during the assembly of the first version, 28–35 when switching to syntax Svelte 21 November 2026 years, 36–38 — 22 November 2026 The year when the shell appeared `src/site.html` Files are not HTML, 39 When there is only one search, 40–48 — the same time when the templates began to compile and render themselves Svelte.
 
 ## 1. Data loading and expression are counted together, Go compares the result
 
@@ -260,7 +260,7 @@ Export follows the previous one: in the folder, it leaves a list of which storag
 - Svelte version update new benchmarks and correction of discrepancies.
 - Derogations: hydration labels are not written, style class is placed on all elements ([32](#32-style-class-on-all-component-elements)), `<svelte:head>` - only in the page and layout ([30](#30-sveltehead-and-title)), there are no availability warnings, runes are not checked. Derogations are listed in [Templates](templates.md#how-shugo-differs-from-svelte).
 
-*With 22 November, 2026 compiles and renders the templates itself Svelte (the author's decision): the page matches Svelte's output on construction, and the deletions left are the cut-out hydration comments and what comes from the Shugo blocks, the [43](#43-what-comes-from-the-shugo-blocks).*
+*With 22 November, 2026 compiles and renders the templates itself Svelte (the author's decision): the page matches Svelte's conclusion on construction, and the deletions left are the deleted hydration comments and the layout context that does not reach the page, [42 and 43](#43-render-shared-block-snippets-separately).*
 
 **Why so strict.** The template should be transferred to Svelte And then there will be islands. Svelte. If only Shugo Repetitive Svelte "about", the agent could not count on any of the rules: gaps at the edges of the blocks, `false` in the text, `class` from the array.
 
@@ -374,23 +374,29 @@ The *As it was before this day:* parsing errors were Svelte, and the rest was re
 
 ## 42. Shared components do not use context or $props.id()
 
-**Waiting for approval.** The General Component Rule[3](#3-which-blocks-are-shared)) added: component that takes context Svelte — `getContext`, `setContext`, `hasContext`, `getAllContexts`, `createContext`or call `$props.id()`, itself or through what imports and shows, renders on the spot. The layout is rendered separately from the page, so its context does not reach the page, and the names of `$props.id()` It starts with the file number: `b3-s1`.
+**Waiting for approval.** The rule of the common component ([3](#3-which-blocks-are-shared)) is added: renders on-site a component that itself or through what imports and shows,
 
-**Why not.** The shared block is rendered once, separately from the places where it stands. The context would give it components around — they are not with a separate render. `$props.id()` counts components that were previously rendered on the page there is no such account in the common block, and one name would appear on the page twice. Before Svelte, these funds were not in Shugo.
+- takes the context of Svelte — `getContext`, `setContext`, `hasContext`, `getAllContexts`, `createContext`;
+- calls `$props.id()`;
+- shows the snippet inside `<select>`;
 
-## 43. What comes from the Shugo blocks
+and another component, which was transferred to `bind:`. The layout is rendered separately from the page, so its context does not reach the page, and the names of `$props.id()` in it begin with the number of his file: `b3-s1`.
 
-**Waiting for approval.** Svelte renders a page with one line, and Shugo cuts it into blocks. From this, three differences from Svelte:
+**Why not.** The shared block is rendered once, separately from the places where it stands. The context would give it components around — they are not with a separate render. `$props.id()` counts components that were previously rendered on the page there is no such account in the common block, and one name would appear on the page twice. The `<select>` value marks the selected `<option>`, and the `<option>` from the snippet is written elsewhere. Through `bind:`, the component writes to the one who showed it, and this will not happen with a separate render. Before Svelte, these funds were not in Shugo.
 
-- The layout context does not reach the page ([42](#42-shared-components-do-not-use-context-or-propsid)).
-- `<title>` remains the last in the order in which the blocks are shown, not the order of the document. The difference is visible only when `<svelte:head>` stands in the layout after `{@render children()}`: Svelte will leave the layout title, Shugo - pages.
-- A snippet that has all the default parameters is considered a snippet without the parameters: JavaScript does not distinguish it by the number of parameters. The general component renders it where it is written, without arguments. If the component shows it with arguments, the calculation will stop with an error and prompt to write parameters without default values.
+## 43. Render shared-block snippets separately
 
-**Why not.** This is the price of having a shared block computed once. Otherwise, you would have to render the entire page and then look for repetitions in it, and the point update is based on the fact that each block knows what it has read.
+**Waiting for approval.** The snippet without parameters given to the common block is rendered separatelyby its render of Svelte, where written, with the context of this placeand stored in a place record along with what it gave to `<head>`, and by its `<title>`. The server shows it where the shared block shows it: the head and title go in the same order as Svelte, and the snippet, which the shared block did not show, does not give anything to the head. Snippet renders even if the shared block does not show it now: then the place record is ready when the shared block after changing its data begins to show it.
+
+If the snippet cannot be rendered like this it falls or calls `$props.id()` the component renders on-site, along with its snippets, as in Svelte. A snippet with parameters, even with default values for everyone, always leaves the component in place: the component shows it with its arguments. This is recognized by the source of the snippet function: such parameters are not included in the length of the JavaScript function.
+
+There is one difference from Svelte: the layout context does not reach the page ([42](#42-shared-components-do-not-use-context-or-propsid)).
+
+**Why not.** So the common block is calculated once, and the HTML pages are the same as the Svelte. The first version of the renderer snippet inside the render space, between labels: then the snippet under a condition that is in the common block false, dropped the assembly, its `<title>` played the title of the common block, and the `$props.id()` in the snippet shown twice gave two identical names. Each case is checked by `TestSvelteSemanticsAcrossBlocks`.
 
 ## 44. Comments of hydration are cut by sight
 
-**Waiting for approval.** The author of the project decided to cut out comments Svelte everywhere except islands. Comments of the type that writes Svelte 5.59.1: `<!---->`, `<!--[-->`, `<!--[!-->`, `<!--[1-->`, `<!--[-1-->`, `<!--]-->`, `<!--$s1-->` and hash component like `<!--1f5b1r6-->`. `{@html}` in templates Shugo The same function Sveltebut her HTML Stands between labels ShugoThe comments are still there, even the same kind.
+**Waiting for approval.** The author of the project decided to cut out comments Svelte everywhere except islands. Comments of the type that writes Svelte 5.59.1: `<!---->`, `<!--[-->`, `<!--[!-->`, `<!--[1-->`, `<!--[-1-->`, `<!--]-->`, `<!--$s1-->`hash components like `<!--1f5b1r6-->` and `<!>` At the end of “The Rich” `<select>`. `{@html}` in templates Shugo The same function Sveltebut her HTML Stands between labels ShugoThe comments are still there, even the same kind.
 
 **Why not.** Svelte can not help but write these comments: Svelte 5 does not have such a parameter. There are no other comments in the Svelte output — he does not display the template comments, except those brought by `{@html}`, and their Shugo does not touch. There is one possibility of error: the text `<!--[-->` inside `<script>` or `<style>`, written directly in the markup; this was not the case.
 
@@ -411,4 +417,10 @@ The *As it was before this day:* parsing errors were Svelte, and the rest was re
 **Waiting for approval.** Errors and warnings Svelte are displayed in its text, in one line, with reference to the explanation: `` `</div>` attempted to close an element that was not open https://svelte.dev/e/element_invalid_closing_tag ``. Shugo messages are still in English, without references ([22](#22-message-language)). Only one Svelte message is replaced by its own: about the `await` in the Shugo component explains that the page is computed without waiting.
 
 **Why not.** The agent finds a rule and example of correction in Svelte.
+
+## 48. Modules with runes
+
+**Waiting for approval.** Modules `.svelte.js` and `.svelte.ts` compile Svelte, `compileModule`, as in SvelteKit: for pages for server, on the island for browser and for server. Svelte only reads JavaScript, so `.svelte.ts` first takes off the esbuild types; the Svelte source card is routed through the esbuild card, and the error shows a string in `.svelte.ts`.
+
+**Why not.** So in Svelte 5 write the state, which is divided by components, and the islands need it in the browser. Before that, `$state` in such a module fell when calculating a page with an unknown error.
 

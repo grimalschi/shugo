@@ -143,8 +143,9 @@ import Field from "../components/Field.svelte"
 	}
 }
 
-// A snippet whose parameters all have defaults looks like one without
-// parameters: a shared block that shows it with arguments is told so.
+// A snippet whose parameters all have defaults takes parameters all the
+// same: a component given it is rendered in place, and shows it with its
+// own arguments, as in Svelte.
 func TestSnippetWithDefaultsGivenToASharedBlock(t *testing.T) {
 	s := newSite(t, `
 -- src/components/List.svelte --
@@ -158,7 +159,8 @@ import List from "../components/List.svelte"
 </script>
 <List>{#snippet row(item = "none")}<li>{item}</li>{/snippet}</List>
 `)
-	if _, err := s.tryBuild(); err == nil || !strings.Contains(err.Error(), "src/components/List.svelte shows the snippet row with arguments") {
-		t.Errorf("got %v", err)
+	if report := s.build(); report.Shared.Total != 0 {
+		t.Errorf("the list is kept apart: %+v", report.Shared)
 	}
+	expect(t, s.page("/"), "<ul><li>x</li></ul>")
 }

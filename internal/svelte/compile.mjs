@@ -1,8 +1,9 @@
-// The compiler of Svelte as Shugo runs it, one process for a build. It reads
-// requests from its input, one JSON line each, { path, source }, and answers
-// each with one JSON line: the code Svelte compiled for a server, its source
-// map, the styles of the component and the warnings of Svelte, with what
-// Shugo needs to know of the file; or the errors in it.
+// The compiler of Svelte as Shugo runs it. It reads requests from its input,
+// one JSON line each, { path, source, module }, and answers each with one
+// JSON line: the code Svelte compiled for a server, its source map, the
+// styles of the component and the warnings of Svelte, with what Shugo needs
+// to know of the file; or the errors in it. A module, module: true, is a
+// .svelte.js file with runes, in JavaScript: it has code alone.
 //
 // The compiler is the one Shugo ships, vendor/compiler-<version>.cjs, so a
 // project does not install Svelte to have pages. It is given as a path and a
@@ -47,6 +48,22 @@ function compileTemplate(path, input) {
       .filter((w) => !staticPages.has(w.code) && !look.quiet.has(w.position?.[0]))
       .map((w) => problem(source, w.position?.[0] ?? 0, w.message)),
     facts: look.facts,
+  };
+}
+
+// compileModule compiles a module with runes for the server.
+function compileModule(path, source) {
+  let result;
+  try {
+    result = svelte.compileModule(source, { filename: path, generate: 'server' });
+  } catch (error) {
+    if (!Array.isArray(error?.position)) throw error;
+    return { errors: [problem(source, error.position[0], messages[error.code] ?? error.message)] };
+  }
+  return {
+    code: result.js.code,
+    map: JSON.stringify(result.js.map),
+    warnings: result.warnings.filter((w) => !staticPages.has(w.code)).map((w) => problem(source, w.position?.[0] ?? 0, w.message)),
   };
 }
 
@@ -103,6 +120,8 @@ const contextFunctions = new Set(['getContext', 'setContext', 'hasContext', 'get
 //            what differs from page to page
 //   context  it uses the context of Svelte
 //   id       it calls $props.id()
+//   select   it shows a snippet inside a <select>, whose value chooses the
+//            <option> the snippet shows
 //   renders  it shows a snippet: a layout shows the page with {@render children()}
 //   paths    its <script module> exports getStaticPaths
 //   islands  the islands it imports: [{ source, request }], request when a
@@ -112,11 +131,11 @@ class Look {
     this.source = source;
     this.errors = [];
     this.quiet = new Set(); // where a warning of Svelte is answered by Shugo
-    this.facts = { page: false, context: false, id: false, renders: false, paths: false, islands: [] };
+    this.facts = { page: false, context: false, id: false, select: false, renders: false, paths: false, islands: [] };
     this.islands = new Map(); // the name an island is imported under → { source, request }
     if (ast.module) this.script(ast.module, true);
     if (ast.instance) this.script(ast.instance, false);
-    this.fragment(ast.fragment, []);
+    this.fragment(ast.fragment, [], null);
     // An island imported under two names is one island, bound to a request
     // when either tag binds it.
     const bySource = new Map();
@@ -178,17 +197,20 @@ class Look {
   }
 
   // fragment looks at the nodes of a template. inside are the names of the
-  // elements around them.
-  fragment(fragment, inside) {
-    for (const node of fragment?.nodes ?? []) this.node(node, inside);
+  // elements around them, and parent the node they stand in.
+  fragment(fragment, inside, parent) {
+    for (const node of fragment?.nodes ?? []) this.node(node, inside, parent);
   }
 
-  node(node, inside) {
+  node(node, inside, parent) {
     if (Object.hasOwn(oldTags, node.name ?? '') && ['RegularElement', 'SlotElement', 'Component'].includes(node.type)) {
       this.error(node.start, `there is no <${node.name}>: write ${oldTags[node.name]}`);
     }
+    // slot="…" right inside the tag of a component is a slot of Svelte 4;
+    // elsewhere it is the slot of a custom element.
+    const inComponent = ['Component', 'SvelteComponent', 'SvelteSelf'].includes(parent?.type);
     for (const a of node.attributes ?? []) {
-      if ((a.type === 'Attribute' && a.name === 'slot') || a.type === 'LetDirective') {
+      if ((a.type === 'Attribute' && a.name === 'slot' && inComponent) || a.type === 'LetDirective') {
         this.error(a.start, `${a.type === 'Attribute' ? 'slot="…"' : 'let:'} is a part of the slots of Svelte 4: write {#snippet name()}…{/snippet} inside the component's tag and {@render name()} in the component`);
       }
     }
@@ -198,6 +220,7 @@ class Look {
         break;
       case 'RenderTag':
         this.facts.renders = true;
+        if (inside.includes('select')) this.facts.select = true;
         break;
       case 'RegularElement':
         if (['!doctype', 'html', 'head', 'body'].includes(node.name.toLowerCase()) && !inside.includes('svg')) this.shell(node);
@@ -217,7 +240,7 @@ class Look {
     }
     const within = node.type === 'RegularElement' || node.type === 'SvelteHead' ? [...inside, node.type === 'SvelteHead' ? 'svelte:head' : node.name] : inside;
     for (const key of ['fragment', 'consequent', 'alternate', 'body', 'fallback', 'pending', 'then', 'catch']) {
-      if (node[key]?.type === 'Fragment') this.fragment(node[key], within);
+      if (node[key]?.type === 'Fragment') this.fragment(node[key], within, node);
     }
   }
 
@@ -291,6 +314,6 @@ function walk(node, visit) {
 const reply = (message) => process.stdout.write(JSON.stringify(message) + '\n');
 reply({ ready: true });
 for await (const line of createInterface({ input: process.stdin })) {
-  const { path, source } = JSON.parse(line);
-  reply(compileTemplate(path, source));
+  const { path, source, module } = JSON.parse(line);
+  reply(module ? compileModule(path, source) : compileTemplate(path, source));
 }

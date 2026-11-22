@@ -84,6 +84,29 @@ func (m *Map) Find(line, column int) (source string, sourceLine, sourceColumn in
 	return m.Sources[segments[i].Source], segments[i].SourceLine, segments[i].SourceColumn, true
 }
 
+// Through returns the map of m carried through next: m maps generated code
+// to the code that next maps further, as the map of a compiler to that of a
+// transform before it. A place next does not know is left out.
+func (m *Map) Through(next *Map) *Map {
+	out := &Map{Sources: next.Sources, Lines: make([][]Segment, len(m.Lines))}
+	sources := make(map[string]int, len(next.Sources))
+	for i, source := range next.Sources {
+		sources[source] = i
+	}
+	for i, segments := range m.Lines {
+		for _, s := range segments {
+			if s.Source < 0 {
+				out.Lines[i] = append(out.Lines[i], s)
+				continue
+			}
+			if source, line, column, found := next.Find(s.SourceLine, s.SourceColumn); found {
+				out.Lines[i] = append(out.Lines[i], Segment{s.Column, sources[source], line, column})
+			}
+		}
+	}
+	return out
+}
+
 // JSON writes the map.
 func (m *Map) JSON() []byte {
 	var mappings strings.Builder

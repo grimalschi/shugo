@@ -72,3 +72,25 @@ func TestParseDamaged(t *testing.T) {
 		}
 	}
 }
+
+// A map carried through another leads to the place the second one knows.
+func TestThrough(t *testing.T) {
+	compiled := &Map{Sources: []string{"a.js"}, Lines: [][]Segment{
+		{{Column: 0, Source: 0, SourceLine: 1, SourceColumn: 2}, {Column: 5, Source: -1}},
+		{{Column: 3, Source: 0, SourceLine: 9, SourceColumn: 0}},
+	}}
+	stripped := &Map{Sources: []string{"a.ts"}, Lines: [][]Segment{
+		nil,
+		{{Column: 0, Source: 0, SourceLine: 4, SourceColumn: 7}},
+	}}
+	got := compiled.Through(stripped)
+	if source, line, column, found := got.Find(0, 1); !found || source != "a.ts" || line != 4 || column != 7 {
+		t.Errorf("got %s %d %d %v", source, line, column, found)
+	}
+	if _, _, _, found := got.Find(0, 6); found {
+		t.Error("a place of no source is found")
+	}
+	if _, _, _, found := got.Find(1, 3); found {
+		t.Error("a place the second map does not know is found")
+	}
+}

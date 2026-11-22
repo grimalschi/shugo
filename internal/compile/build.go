@@ -64,6 +64,7 @@ func Build(p *project.Project) (*Result, error) {
 	for id, path := range paths {
 		b.ids[path] = id
 	}
+	defer b.closeCompilers()
 	if err := b.compile(); err != nil {
 		return nil, err
 	}
@@ -310,6 +311,10 @@ type builder struct {
 	modules []string
 	// shell is the hash of src/site.html as it was read; empty without it.
 	shell string
+	// svelte compiles the templates and the modules with runes; see compilers.
+	svelte         *svelte.Pool
+	svelteFailed   error
+	startCompilers sync.Once
 }
 
 // roleOf tells what a file is by where it lies.
@@ -327,41 +332,16 @@ func roleOf(path string) role {
 	return page
 }
 
-// compile has Svelte compile every template. A compiler compiles one file
-// at a time, in a millisecond or two, and takes longer to start: a large
-// project has a few work at once.
+// compile has Svelte compile every template, several at a time.
 func (b *builder) compile() error {
 	b.units = make([]*unit, len(b.paths))
 	if len(b.paths) == 0 {
 		return nil
 	}
-	compilers := make(chan *svelte.Compiler, min(runtime.NumCPU(), 1+len(b.paths)/32, 4))
-	for range cap(compilers) {
-		c, err := svelte.Start(b.project.Runtime(), b.project.Root)
-		if err != nil {
-			close(compilers)
-			for c := range compilers {
-				c.Close()
-			}
-			return err
-		}
-		compilers <- c
-	}
-	defer func() {
-		close(compilers)
-		for c := range compilers {
-			c.Close()
-		}
-	}()
-
 	failures := make([]error, len(b.paths))
 	var group sync.WaitGroup
 	for id, path := range b.paths {
-		group.Go(func() {
-			c := <-compilers
-			defer func() { compilers <- c }()
-			b.units[id], failures[id] = b.compileTemplate(c, path)
-		})
+		group.Go(func() { b.units[id], failures[id] = b.compileTemplate(path) })
 	}
 	group.Wait()
 
@@ -381,12 +361,33 @@ func (b *builder) compile() error {
 	return nil
 }
 
-func (b *builder) compileTemplate(c *svelte.Compiler, path string) (*unit, error) {
+// compilers returns the compilers of Svelte of the build, which start when
+// they are first needed. A compiler compiles one file at a time, in a
+// millisecond or two, and takes longer to start: a large project has a few
+// work at once.
+func (b *builder) compilers() (*svelte.Pool, error) {
+	b.startCompilers.Do(func() {
+		b.svelte, b.svelteFailed = svelte.StartPool(b.project.Runtime(), b.project.Root, min(runtime.NumCPU(), 1+len(b.paths)/32, 4))
+	})
+	return b.svelte, b.svelteFailed
+}
+
+func (b *builder) closeCompilers() {
+	if b.svelte != nil {
+		b.svelte.Close()
+	}
+}
+
+func (b *builder) compileTemplate(path string) (*unit, error) {
 	source, err := os.ReadFile(b.project.Path(filepath.FromSlash(path)))
 	if err != nil {
 		return nil, err
 	}
-	compiled, err := c.Compile(path, string(source))
+	compilers, err := b.compilers()
+	if err != nil {
+		return nil, err
+	}
+	compiled, err := compilers.Compile(path, string(source))
 	var found svelte.Mistakes
 	if errors.As(err, &found) {
 		return nil, mistakes(path, found)
@@ -608,6 +609,9 @@ func (b *builder) bundle(routes []skeleton.Route, islands *islandOutput) (*bundl
 			}
 			return api.OnLoadResult{Contents: &contents, Loader: api.LoaderJS, ResolveDir: filepath.Dir(args.Path)}, nil
 		})
+		build.OnLoad(api.OnLoadOptions{Filter: `\.svelte\.(js|ts)$`, Namespace: "file"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
+			return b.runeModule(args.Path)
+		})
 		// Style sheets do not go into JavaScript: they are collected and
 		// built into a file of their own.
 		build.OnLoad(api.OnLoadOptions{Filter: `\.css$`}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
@@ -655,6 +659,68 @@ func (b *builder) bundle(routes []skeleton.Route, islands *islandOutput) (*bundl
 		return nil, err
 	}
 	return out, nil
+}
+
+// runeModule compiles a module with runes, .svelte.js or .svelte.ts, for
+// the server. Svelte reads JavaScript alone: the types of a .svelte.ts file
+// are taken away first, and the source map of Svelte is carried through
+// that of the types, so that a place in the code is a place in the file.
+func (b *builder) runeModule(path string) (api.OnLoadResult, error) {
+	rel := b.relative(path)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return api.OnLoadResult{}, err
+	}
+	source, types := string(data), (*sourcemap.Map)(nil)
+	if strings.HasSuffix(path, ".ts") {
+		stripped := api.Transform(source, api.TransformOptions{Loader: api.LoaderTS, Target: api.ESNext, Sourcefile: pathBase(rel), Sourcemap: api.SourceMapExternal, LogLevel: api.LogLevelSilent})
+		if len(stripped.Errors) > 0 {
+			return api.OnLoadResult{Errors: stripped.Errors}, nil
+		}
+		if types, err = sourcemap.Parse(stripped.Map); err != nil {
+			return api.OnLoadResult{}, err
+		}
+		source = string(stripped.Code)
+	}
+	compilers, err := b.compilers()
+	if err != nil {
+		return api.OnLoadResult{}, err
+	}
+	compiled, err := compilers.CompileModule(rel, source)
+	var found svelte.Mistakes
+	if errors.As(err, &found) {
+		return api.OnLoadResult{Errors: messagesOf(rel, found, types)}, nil
+	}
+	if err != nil {
+		return api.OnLoadResult{}, err
+	}
+	smap := []byte(compiled.Map)
+	if types != nil {
+		code, err := sourcemap.Parse(smap)
+		if err != nil {
+			return api.OnLoadResult{}, err
+		}
+		smap = code.Through(types).JSON()
+	}
+	contents := compiled.Code + "\n//# sourceMappingURL=data:application/json;base64," + base64.StdEncoding.EncodeToString(smap) + "\n"
+	return api.OnLoadResult{Contents: &contents, Loader: api.LoaderJS, ResolveDir: filepath.Dir(path), Warnings: messagesOf(rel, compiled.Warnings, types)}, nil
+}
+
+// messagesOf tells the bundler of mistakes or warnings of Svelte in a file.
+// types, when the file is TypeScript, leads from the code Svelte read to the
+// file.
+func messagesOf(path string, found []svelte.Message, types *sourcemap.Map) []api.Message {
+	out := make([]api.Message, len(found))
+	for i, m := range found {
+		line, column := m.Line, m.Column-1
+		if types != nil {
+			if _, sourceLine, sourceColumn, ok := types.Find(line-1, column); ok {
+				line, column = sourceLine+1, sourceColumn
+			}
+		}
+		out[i] = api.Message{Text: m.Text, Location: &api.Location{File: path, Line: line, Column: column}}
+	}
+	return out
 }
 
 // Report stale imports even when the old file has already been renamed.

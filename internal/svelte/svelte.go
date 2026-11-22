@@ -49,10 +49,13 @@ type Facts struct {
 	// Page tells that the template imports page or paginate from the module
 	// shugo: it shows what differs from page to page.
 	Page bool `json:"page"`
-	// Context tells that the template uses the context of Svelte, and ID
-	// that it calls $props.id(): what it shows depends on where it stands.
+	// Context tells that the template uses the context of Svelte, ID that
+	// it calls $props.id(), and Select that it shows a snippet inside a
+	// <select>, whose value chooses the <option> the snippet shows: what it
+	// shows depends on where it stands.
 	Context bool `json:"context"`
 	ID      bool `json:"id"`
+	Select  bool `json:"select"`
 	// Renders tells that the template shows a snippet, as a layout shows the
 	// page with {@render children()}.
 	Renders bool `json:"renders"`
@@ -154,8 +157,19 @@ func Start(runtime, dir string) (*Compiler, error) {
 // Compile compiles one template. path is how messages name the file. The
 // mistakes in the template come as Mistakes.
 func (c *Compiler) Compile(path, source string) (*Template, error) {
+	return c.ask(path, source, false)
+}
+
+// CompileModule compiles a module with runes, a .svelte.js file, for the
+// server: the Template has Code, Map and Warnings. A .svelte.ts file is
+// given with its types taken away.
+func (c *Compiler) CompileModule(path, source string) (*Template, error) {
+	return c.ask(path, source, true)
+}
+
+func (c *Compiler) ask(path, source string, module bool) (*Template, error) {
 	if !utf8.ValidString(source) {
-		return nil, Mistakes{{Line: 1, Column: 1, Text: "a template is text in UTF-8"}}
+		return nil, Mistakes{{Line: 1, Column: 1, Text: "a source file is text in UTF-8"}}
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -168,7 +182,8 @@ func (c *Compiler) Compile(path, source string) (*Template, error) {
 	if err := c.request.Encode(struct {
 		Path   string `json:"path"`
 		Source string `json:"source"`
-	}{path, source}); err != nil {
+		Module bool   `json:"module,omitempty"`
+	}{path, source, module}); err != nil {
 		return nil, c.fail(err)
 	}
 	var answer struct {
@@ -209,6 +224,52 @@ func (c *Compiler) fail(err error) error {
 		c.failed = fmt.Errorf("%w\n%s", c.failed, detail)
 	}
 	return c.failed
+}
+
+// Pool is a few compilers that work at once; each compiles one file at a
+// time. The calls of a pool may come from several goroutines.
+type Pool struct {
+	free chan *Compiler
+}
+
+// StartPool starts n compilers, as Start does.
+func StartPool(runtime, dir string, n int) (*Pool, error) {
+	p := &Pool{free: make(chan *Compiler, max(n, 1))}
+	for range cap(p.free) {
+		c, err := Start(runtime, dir)
+		if err != nil {
+			p.Close()
+			return nil, err
+		}
+		p.free <- c
+	}
+	return p, nil
+}
+
+// Compile compiles a template with a compiler that is free.
+func (p *Pool) Compile(path, source string) (*Template, error) {
+	c := <-p.free
+	defer func() { p.free <- c }()
+	return c.Compile(path, source)
+}
+
+// CompileModule compiles a module with runes with a compiler that is free.
+func (p *Pool) CompileModule(path, source string) (*Template, error) {
+	c := <-p.free
+	defer func() { p.free <- c }()
+	return c.CompileModule(path, source)
+}
+
+// Close stops the compilers. Nothing may be compiling.
+func (p *Pool) Close() {
+	for {
+		select {
+		case c := <-p.free:
+			c.Close()
+		default:
+			return
+		}
+	}
 }
 
 // Runtime has the bundler take the modules of Svelte that a page imports,
