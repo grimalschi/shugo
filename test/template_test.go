@@ -73,8 +73,8 @@ const odd = "a\u0000b\u0001c\u0002d\u0003e\u0004f\u0005g\u0004@"
 	}
 }
 
-// Svelte writes an address as it is given. Shugo replaces one that would
-// run code when followed.
+// An address is written as it is given, as Svelte writes it: what a link
+// may lead to is the project's affair.
 func TestAddresses(t *testing.T) {
 	got := one(t, `<script>
 const bad = "javascript:alert(1)"
@@ -83,7 +83,8 @@ const picture = "data:image/png;base64,AAAA"
 const attrs = { href: bad }
 </script>
 <a href={bad}>1</a><a href={sneaky}>2</a><a href="/ok">3</a><a href={"mailto:a@b.c"}>4</a><img src={picture}><a title={bad}>5</a><a {...attrs}>6</a>`)
-	expect(t, got, `<a href="about:invalid#blocked">1</a><a href="about:invalid#blocked">2</a><a href="/ok">3</a><a href="mailto:a@b.c">4</a><img src="data:image/png;base64,AAAA"/><a title="javascript:alert(1)">5</a><a href="about:invalid#blocked">6</a>`)
+	expect(t, got, `<a href="javascript:alert(1)">1</a><a href=" Java
+Script:alert(1)">2</a><a href="/ok">3</a><a href="mailto:a@b.c">4</a><img src="data:image/png;base64,AAAA"/><a title="javascript:alert(1)">5</a><a href="javascript:alert(1)">6</a>`)
 }
 
 func TestConditions(t *testing.T) {

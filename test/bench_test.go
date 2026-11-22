@@ -7,7 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
+	"sync/atomic"
 	"testing"
 )
 
@@ -51,26 +53,37 @@ func BenchmarkRender(b *testing.B) {
 	b.ReportMetric(float64(bytes)/float64(b.N), "bytes/page")
 }
 
-// BenchmarkServe measures whole requests to a running server, from as many
-// clients as there are processors.
+// BenchmarkServe asks the server for product pages from as many clients as
+// there are processors: as they are, and compressed by gzip. The clients
+// keep their connections and do not unpack what they get.
 func BenchmarkServe(b *testing.B) {
 	base, size := benchCatalogue(b)
 	s := openSite(b, base.root)
 	s.build()
 	ts := serveSite(b, s)
-	b.ResetTimer()
-	b.RunParallel(func(pb *testing.PB) {
-		client := &http.Client{}
-		for i := 0; pb.Next(); i++ {
-			response, err := client.Get(ts.URL + fmt.Sprintf("/products/product-%d", i%size+1))
-			if err != nil {
-				b.Fatal(err)
-			}
-			io.Copy(io.Discard, response.Body)
-			response.Body.Close()
-			if response.StatusCode != 200 {
-				b.Fatal(response.Status)
-			}
-		}
-	})
+	transport := &http.Transport{DisableCompression: true, MaxIdleConnsPerHost: runtime.GOMAXPROCS(0)}
+	b.Cleanup(transport.CloseIdleConnections)
+	for _, encoding := range []string{"identity", "gzip"} {
+		b.Run(encoding, func(b *testing.B) {
+			var sent atomic.Int64
+			b.RunParallel(func(pb *testing.PB) {
+				client := &http.Client{Transport: transport}
+				for i := 0; pb.Next(); i++ {
+					request, _ := http.NewRequest(http.MethodGet, ts.URL+fmt.Sprintf("/products/product-%d", i%size+1), nil)
+					request.Header.Set("Accept-Encoding", encoding)
+					response, err := client.Do(request)
+					if err != nil {
+						b.Fatal(err)
+					}
+					n, _ := io.Copy(io.Discard, response.Body)
+					response.Body.Close()
+					if response.StatusCode != 200 {
+						b.Fatal(response.Status)
+					}
+					sent.Add(n)
+				}
+			})
+			b.ReportMetric(float64(sent.Load())/float64(b.N), "bytes/page")
+		})
+	}
 }

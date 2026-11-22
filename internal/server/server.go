@@ -1,7 +1,6 @@
 package server
 
 import (
-	"fmt"
 	"net/http"
 	"os"
 	"path"
@@ -95,16 +94,22 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.html(w, r, http.StatusNotFound, page.HTML)
 }
 
+// html answers with a page. The page may differ at the next request, so the
+// browser asks every time, with the tag of the page it has: the same page
+// is answered with 304 and no body.
 func (s *Server) html(w http.ResponseWriter, r *http.Request, status int, html []byte) {
 	header := w.Header()
 	header.Set("Content-Type", "text/html; charset=utf-8")
-	// The page may differ at the next request: the browser asks every time.
 	header.Set("Cache-Control", "no-cache")
-	header.Set("Content-Length", fmt.Sprint(len(html)))
-	w.WriteHeader(status)
-	if r.Method != http.MethodHead {
-		w.Write(html)
+	if status == http.StatusOK {
+		tag := pageTag(html)
+		header.Set("ETag", tag)
+		if hasTag(r.Header.Get("If-None-Match"), tag) {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
 	}
+	write(w, r, status, html)
 }
 
 func (s *Server) fail(w http.ResponseWriter, err error) {
@@ -128,6 +133,6 @@ func (s *Server) file(w http.ResponseWriter, r *http.Request, folder, address st
 		}
 		return false
 	}
-	http.ServeFile(w, r, name)
+	serveFile(w, r, name, info)
 	return true
 }

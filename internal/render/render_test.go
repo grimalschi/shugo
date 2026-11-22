@@ -46,7 +46,7 @@ var site = &program.Site{Files: []program.File{
 	{Path: "page.shugo", Parts: [][]program.Op{
 		{
 			markup("<main>"), op(program.Text, ""),
-			markup("<a"), op(program.URL, "href"), op(program.Attr, "class"), op(program.Spread, ""), markup(">"),
+			markup("<a"), op(program.Attr, "href"), op(program.Attr, "class"), op(program.Spread, ""), markup(">"),
 			op(program.If, "", []program.Op{markup("one")}, []program.Op{markup("two:"), op(program.Text, "")}),
 			op(program.For, "", []program.Op{markup("<li>"), op(program.Text, ""), markup("</li>")}),
 			op(program.Call, ""), op(program.Call, ""), op(program.HTML, ""), markup("</main>"),
@@ -175,21 +175,6 @@ func TestCheck(t *testing.T) {
 	rec.Blocks[0].Values, rec.Blocks[0].Children = whole, nil
 	if err := Check(site, &rec.Blocks[0]); err == nil {
 		t.Error("a block without its children passes the check")
-	}
-}
-
-func TestAddresses(t *testing.T) {
-	safe := []string{"/a", "a/b", "#top", "?q=1", "https://a.b/c", "HTTP://A", "mailto:a@b.c", "tel:+1", "./a:b", "/a?b=c:d", "data:image/png;base64,AA", ""}
-	unsafe := []string{"javascript:alert(1)", " javascript:alert(1)", "JaVaScRiPt:x", "java\tscript:x", "java\nscript:x", "vbscript:x", "data:text/html,<script>", "data:image/svg+xml,<svg onload=x>", "file:///etc/passwd", "x-custom:y"}
-	for _, address := range safe {
-		if !safeAddress([]byte(address)) {
-			t.Errorf("%q is taken for unsafe", address)
-		}
-	}
-	for _, address := range unsafe {
-		if safeAddress([]byte(address)) {
-			t.Errorf("%q is taken for safe", address)
-		}
 	}
 }
 
