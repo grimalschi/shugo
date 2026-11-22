@@ -2,7 +2,7 @@
 //
 // A query is built step by step and run by all(), first(), get() or count():
 //
-//   Shugo.query("products").where({ category: "c9" }).order("position").limit(24).all()
+//   query("products").where({ category: "c9" }).order("position").limit(24).all()
 //
 // Every query that runs leaves readings with the page or shared block that
 // made it: which rows of which table it looked for, and which of their
@@ -544,7 +544,7 @@ export class Query {
     if (this.#reads.mine()) return;
     throw new Error(
       this.#reads.late(`the table ${this.#table.name} is asked`) +
-        "Shugo.query belongs to the script it is called in: do not keep Shugo, or a query made of it, in a variable of a module for others",
+        "A query belongs to the script it is asked in: do not keep a query in a variable of a module for others, let every script ask its own",
     );
   }
 

@@ -24,16 +24,18 @@ const dataShop = `
 {"data": "data/shop.db"}
 -- src/components/Card.shugo --
 <script>
+import { query } from "shugo"
 const { id } = $props() as { id: string }
-const item = Shugo.query("products").select("slug", "title", "price").get(id)
+const item = query("products").select("slug", "title", "price").get(id)
 if (!item) throw new Error("there is no product " + id)
 console.log("card " + id)
 </script>
 <a href={"/products/" + item.slug}>{item.title} — {item.price}</a>
 -- src/components/Header.shugo --
 <script>
-const shop = Shugo.query("shop").select("name").get(1)
-const count = Shugo.query("products").count()
+import { query } from "shugo"
+const shop = query("shop").select("name").get(1)
+const count = query("products").count()
 console.log("header")
 </script>
 <header>{shop.name} · {count} products</header>
@@ -45,21 +47,23 @@ import Header from "../components/Header.shugo"
 <html><body><Header /><main>{@render children()}</main></body></html>
 -- src/pages/index.shugo --
 <script>
+import { query } from "shugo"
 import Card from "../components/Card.shugo"
-const top = Shugo.query("products").select("id").order("position").limit(2).all()
+const top = query("products").select("id").order("position").limit(2).all()
 console.log("index")
 </script>
 <ul>{#each top as p}<li><Card id={p.id} /></li>{/each}</ul>
 -- src/pages/products/[slug].shugo --
 <script module>
-export const getStaticPaths = ({ query }) => query("products").select("slug").all().map(({ slug }) => ({ params: { slug } }))
+import { query, page } from "shugo"
+export const getStaticPaths = () => query("products").select("slug").all().map(({ slug }) => ({ params: { slug } }))
 </script>
 <script>
 import Card from "../../components/Card.shugo"
-const item = Shugo.query("products").select("title", "price")
-  .where({ slug: Shugo.params.slug }).join("categories", "category", { select: ["title"], as: "group" }).first()
-const reviews = Shugo.query("reviews").select("text").where({ product: item.id, approved: true }).all()
-const related = Shugo.query("related").select("other").where({ product: item.id }).order("position").all()
+const item = query("products").select("title", "price")
+  .where({ slug: page.params.slug }).join("categories", "category", { select: ["title"], as: "group" }).first()
+const reviews = query("reviews").select("text").where({ product: item.id, approved: true }).all()
+const related = query("related").select("other").where({ product: item.id }).order("position").all()
 console.log("page " + item.id)
 </script>
 <h1>{item.title}</h1><p>{item.price} · {item.group?.title}</p>
@@ -67,18 +71,19 @@ console.log("page " + item.id)
 <nav>{#each related as r}<Card id={r.other} />{/each}</nav>
 -- src/pages/categories/[id]/[...page].shugo --
 <script module>
-export const getStaticPaths = ({ query, paginate }) =>
+import { query, paginate, page } from "shugo"
+export const getStaticPaths = () =>
   query("categories").select("id").all().flatMap(({ id }) => paginate(query("products").where({ category: id }).count(), { pageSize: 2, params: { id } }))
 </script>
 <script>
 import Card from "../../../components/Card.shugo"
-const category = Shugo.query("categories").get(Shugo.params.id)
-const page = Shugo.paginate(Shugo.query("products").select("id").where({ category: category.id }).order("position"), { pageSize: 2 })
-console.log("list " + Shugo.url.pathname)
+const category = query("categories").get(page.params.id)
+const list = paginate(query("products").select("id").where({ category: category.id }).order("position"), { pageSize: 2 })
+console.log("list " + page.url.pathname)
 </script>
-<h1>{category.title}: {page.total}, page {page.currentPage} of {page.lastPage}</h1>
-{#each page.data as p}<Card id={p.id} />{/each}
-{#if page.url.next}<a href={page.url.next}>next</a>{/if}
+<h1>{category.title}: {list.total}, page {list.currentPage} of {list.lastPage}</h1>
+{#each list.data as p}<Card id={p.id} />{/each}
+{#if list.url.next}<a href={list.url.next}>next</a>{/if}
 `
 
 const dataShopRows = `
@@ -314,32 +319,37 @@ func TestDataQueries(t *testing.T) {
 {"data": "data/shop.db"}
 -- src/pages/among.shugo --
 <script>
-const rows = Shugo.query("products").select("title").where("id", "in", ["p1", "p3"]).order("title").all()
+import { query } from "shugo"
+const rows = query("products").select("title").where("id", "in", ["p1", "p3"]).order("title").all()
 console.log("among")
 </script>
 <p>{rows.map((row) => row.title).join(", ")}</p>
 -- src/pages/cheap.shugo --
 <script>
-const rows = Shugo.query("products").select("title", "price").where("price", "<", 8).order("price", "desc").all()
+import { query } from "shugo"
+const rows = query("products").select("title", "price").where("price", "<", 8).order("price", "desc").all()
 console.log("cheap")
 </script>
 <p>{rows.map((row) => row.title + " " + row.price).join(", ")}</p>
 -- src/pages/dearest.shugo --
 <script>
-const row = Shugo.query("products").select("title").where({ category: "c1" }).order("price", "desc").first()
+import { query } from "shugo"
+const row = query("products").select("title").where({ category: "c1" }).order("price", "desc").first()
 console.log("dearest")
 </script>
 <p>{row.title}</p>
 -- src/pages/joined.shugo --
 <script>
-const row = Shugo.query("products").select("title").join("categories", "category", { select: ["title"], as: "group" }).get("p4")
-const other = Shugo.query("categories").join("products", "id", { on: "slug", select: ["title"], as: "namesake" }).get("c1")
+import { query } from "shugo"
+const row = query("products").select("title").join("categories", "category", { select: ["title"], as: "group" }).get("p4")
+const other = query("categories").join("products", "id", { on: "slug", select: ["title"], as: "namesake" }).get("c1")
 console.log("joined")
 </script>
 <p>{row.title} in {row.group.title}; {String(other.namesake)}</p>
 -- src/pages/count.shugo --
 <script>
-const count = Shugo.query("products").where("price", ">=", 7).where("category", "!=", null).count()
+import { query } from "shugo"
+const count = query("products").where("price", ">=", 7).where("category", "!=", null).count()
 console.log("count")
 </script>
 <p>{count}</p>
@@ -381,25 +391,25 @@ console.log("count")
 
 func TestDataQueryMistakes(t *testing.T) {
 	for name, mistake := range map[string][2]string{
-		"no table":                 {`Shugo.query("goods").all()`, `there is no table "goods" in the data database; it has: categories, products`},
-		"a view":                   {`Shugo.query("cheap").all()`, `cheap is a view`},
-		"the journal":              {`Shugo.query("_shugo_journal").all()`, `there is no table "_shugo_journal"`},
-		"no column":                {`Shugo.query("products").select("name").all()`, `there is no column "name" in the table products (select); it has: id, slug, title, price, category`},
-		"a number for a text":      {`Shugo.query("products").where({ category: 5 }).all()`, `products.category holds text, and it is compared with the number 5: write "5"`},
-		"a text for a number":      {`Shugo.query("products").where({ price: "5" }).all()`, `products.price holds numbers, and it is compared with the text "5": write 5`},
-		"a join to many rows":      {`Shugo.query("categories").join("products", "id", { on: "category" }).all()`, `products.category may hold the same value in several rows`},
-		"a column compared twice":  {`Shugo.query("products").where({ id: "p1" }).where({ id: "p2" }).all()`, `products.id is already compared with a value`},
-		"an unknown comparison":    {`Shugo.query("products").where("price", "~", 5).all()`, `the comparisons are =, !=, <, <=, >, >=, like, in`},
-		"a join that hides a name": {`Shugo.query("products").join("categories", "category", { as: "title" }).all()`, `a row already has "title"`},
+		"no table":                 {`query("goods").all()`, `there is no table "goods" in the data database; it has: categories, products`},
+		"a view":                   {`query("cheap").all()`, `cheap is a view`},
+		"the journal":              {`query("_shugo_journal").all()`, `there is no table "_shugo_journal"`},
+		"no column":                {`query("products").select("name").all()`, `there is no column "name" in the table products (select); it has: id, slug, title, price, category`},
+		"a number for a text":      {`query("products").where({ category: 5 }).all()`, `products.category holds text, and it is compared with the number 5: write "5"`},
+		"a text for a number":      {`query("products").where({ price: "5" }).all()`, `products.price holds numbers, and it is compared with the text "5": write 5`},
+		"a join to many rows":      {`query("categories").join("products", "id", { on: "category" }).all()`, `products.category may hold the same value in several rows`},
+		"a column compared twice":  {`query("products").where({ id: "p1" }).where({ id: "p2" }).all()`, `products.id is already compared with a value`},
+		"an unknown comparison":    {`query("products").where("price", "~", 5).all()`, `the comparisons are =, !=, <, <=, >, >=, like, in`},
+		"a join that hides a name": {`query("products").join("categories", "category", { as: "title" }).all()`, `a row already has "title"`},
 	} {
-		s := newSite(t, "-- shugo.json --\n{\"data\": \"data/shop.db\"}\n-- src/pages/index.shugo --\n<script>\nconst rows = "+mistake[0]+"\n</script>\n<p>{rows.length}</p>\n")
+		s := newSite(t, "-- shugo.json --\n{\"data\": \"data/shop.db\"}\n-- src/pages/index.shugo --\n<script>\nimport { query } from \"shugo\"\nconst rows = "+mistake[0]+"\n</script>\n<p>{rows.length}</p>\n")
 		s.sql(queryRows)
 		if _, err := s.tryBuild(); err == nil || !strings.Contains(err.Error(), mistake[1]) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
 
-	s := newSite(t, "-- src/pages/index.shugo --\n<script>\nconst rows = Shugo.query(\"products\").all()\n</script>\n<p>{rows.length}</p>\n")
+	s := newSite(t, "-- src/pages/index.shugo --\n<script>\nimport { query } from \"shugo\"\nconst rows = query(\"products\").all()\n</script>\n<p>{rows.length}</p>\n")
 	if _, err := s.tryBuild(); err == nil || !strings.Contains(err.Error(), "this project names none") {
 		t.Errorf("no data database: %v", err)
 	}
@@ -421,10 +431,11 @@ func TestPagesAskForTheirRows(t *testing.T) {
 {"data": "data/shop.db"}
 -- src/pages/items/[id].shugo --
 <script module>
-export const getStaticPaths = ({ query }) => query("products").select("id").all().map(({ id }) => ({ params: { id } }))
+import { query, page } from "shugo"
+export const getStaticPaths = () => query("products").select("id").all().map(({ id }) => ({ params: { id } }))
 </script>
 <script>
-const item = Shugo.query("products").select("title").get(Shugo.params.id)
+const item = query("products").select("title").get(page.params.id)
 console.log("item " + item.id)
 </script>
 <h1>{item.title}</h1>
@@ -455,14 +466,16 @@ func TestSharedBlockThatFails(t *testing.T) {
 {"data": "data/shop.db"}
 -- src/components/Card.shugo --
 <script>
-const item = Shugo.query("products").select("title").get($props().id)
+import { query } from "shugo"
+const item = query("products").select("title").get($props().id)
 if (!item) throw new Error("there is no product " + $props().id)
 </script>
 <b>{item.title}</b>
 -- src/pages/index.shugo --
 <script>
+import { query } from "shugo"
 import Card from "../components/Card.shugo"
-const rows = Shugo.query("products").select("id").where({ category: "c2" }).all()
+const rows = query("products").select("id").where({ category: "c2" }).all()
 </script>
 <Card id="p1" />{#each rows as row}<Card id={row.id} />{/each}
 `)
@@ -499,7 +512,8 @@ func TestDataJournalStartsAnew(t *testing.T) {
 {"data": "data/shop.db"}
 -- src/pages/index.shugo --
 <script>
-const rows = Shugo.query("products").select("title").order("title").all()
+import { query } from "shugo"
+const rows = query("products").select("title").order("title").all()
 </script>
 <p>{rows.map((row) => row.title).join(", ")}</p>
 `)
@@ -541,9 +555,10 @@ func TestDataOutsideTheDatabase(t *testing.T) {
 old
 -- src/pages/index.shugo --
 <script>
+import { query } from "shugo"
 import { readFileSync } from "node:fs"
 const note = readFileSync("note.txt", "utf8")
-const count = Shugo.query("products").count()
+const count = query("products").count()
 </script>
 <p>{note}: {count}</p>
 `)
@@ -568,10 +583,11 @@ func TestDataPageBehindAnother(t *testing.T) {
 <h1>Special</h1>
 -- src/pages/products/[slug].shugo --
 <script module>
-export const getStaticPaths = ({ query }) => query("products").select("slug").all().map(({ slug }) => ({ params: { slug } }))
+import { query, page } from "shugo"
+export const getStaticPaths = () => query("products").select("slug").all().map(({ slug }) => ({ params: { slug } }))
 </script>
 <script>
-const item = Shugo.query("products").select("title").where({ slug: Shugo.params.slug }).first()
+const item = query("products").select("title").where({ slug: page.params.slug }).first()
 console.log("page " + item.id)
 </script>
 <h1>{item.title}</h1>
@@ -599,27 +615,30 @@ func TestDataPageChangesRoutes(t *testing.T) {
 {"data": "data/shop.db"}
 -- src/components/Card.shugo --
 <script>
-const item = Shugo.query("products").select("title").get($props().id)
+import { query } from "shugo"
+const item = query("products").select("title").get($props().id)
 console.log("card " + $props().id)
 </script>
 <b>{item.title}</b>
 -- src/pages/x/[slug].shugo --
 <script module>
-export const getStaticPaths = ({ query }) => query("products").select("slug").where({ category: "c1" }).all().map(({ slug }) => ({ params: { slug } }))
+import { query, page } from "shugo"
+export const getStaticPaths = () => query("products").select("slug").where({ category: "c1" }).all().map(({ slug }) => ({ params: { slug } }))
 </script>
 <script>
 import Card from "../../components/Card.shugo"
-const item = Shugo.query("products").select("price").where({ slug: Shugo.params.slug }).first()
+const item = query("products").select("price").where({ slug: page.params.slug }).first()
 console.log("exact " + item.id)
 </script>
 <p>exact {item.price} <Card id={item.id} /></p>
 -- src/pages/[...all].shugo --
 <script module>
-export const getStaticPaths = ({ query }) => query("products").select("slug").all().map(({ slug }) => ({ params: { all: "x/" + slug } }))
+import { query, page } from "shugo"
+export const getStaticPaths = () => query("products").select("slug").all().map(({ slug }) => ({ params: { all: "x/" + slug } }))
 </script>
 <script>
 import Card from "../components/Card.shugo"
-const item = Shugo.query("products").select("price").where({ slug: Shugo.params.all.slice(2) }).first()
+const item = query("products").select("price").where({ slug: page.params.all.slice(2) }).first()
 console.log("loose " + item.id)
 </script>
 <p>loose {item.price} <Card id={item.id} /></p>
@@ -657,19 +676,21 @@ func TestLayoutKeptForEveryPage(t *testing.T) {
 {"data": "data/shop.db"}
 -- src/pages/+layout.shugo --
 <script>
+import { query, page } from "shugo"
 let { children } = $props()
-const menu = Shugo.query("categories").order("id").all()
-console.log("layout " + Shugo.url.pathname)
+const menu = query("categories").order("id").all()
+console.log("layout " + page.url.pathname)
 </script>
 <svelte:head><title>Shop</title><meta name="menu" content={menu.length}></svelte:head>
-<html><head><meta charset="utf-8"></head><body><nav>{#each menu as item}<a href="/{item.id}" class:active={Shugo.url.pathname === "/" + item.id}>{item.title}</a>{/each}</nav>{@render children()}</body></html>
+<html><head><meta charset="utf-8"></head><body><nav>{#each menu as item}<a href="/{item.id}" class:active={page.url.pathname === "/" + item.id}>{item.title}</a>{/each}</nav>{@render children()}</body></html>
 -- src/pages/[id].shugo --
 <script module>
-export const getStaticPaths = ({ query }) => query("categories").select("id").all().map(({ id }) => ({ params: { id } }))
+import { query, page } from "shugo"
+export const getStaticPaths = () => query("categories").select("id").all().map(({ id }) => ({ params: { id } }))
 </script>
 <script>
-const category = Shugo.query("categories").get(Shugo.params.id)
-const count = Shugo.query("products").where({ category: category.id }).count()
+const category = query("categories").get(page.params.id)
+const count = query("products").where({ category: category.id }).count()
 console.log("page " + category.id)
 </script>
 <svelte:head><title>{category.title}</title></svelte:head>

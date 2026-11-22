@@ -1,9 +1,10 @@
 <script module>
+  import { query, page } from "shugo"
   // The pages get their addresses alone; each asks for its product itself.
   // So one product that changes has one page computed, not the list of all.
   // The list names the one column it needs: of a hundred thousand products
   // that is a third of the time it takes to fetch them whole.
-  export function getStaticPaths({ query }) {
+  export function getStaticPaths() {
     return query("products").select("slug").all().map(({ slug }) => ({ params: { slug } }))
   }
 </script>
@@ -18,11 +19,11 @@
   // while it is computed — here, in the template, in the functions the
   // template calls and in the components it gives a row to — and on nothing
   // else of them.
-  const item = Shugo.query("products").where({ slug: Shugo.params.slug }).first()
-  const badges = Shugo.query("badges").where({ product: item.id }).order("position").all()
-  const variants = Shugo.query("variants").where({ product: item.id }).order("position").all()
-  const reviews = Shugo.query("reviews").where({ product: item.id, approved: true }).all()
-  const related = Shugo.query("related").where({ product: item.id }).order("position").all()
+  const item = query("products").where({ slug: page.params.slug }).first()
+  const badges = query("badges").where({ product: item.id }).order("position").all()
+  const variants = query("variants").where({ product: item.id }).order("position").all()
+  const reviews = query("reviews").where({ product: item.id, approved: true }).all()
+  const related = query("related").where({ product: item.id }).order("position").all()
 </script>
 
 <svelte:head><title>{item.title} — Measure</title></svelte:head>

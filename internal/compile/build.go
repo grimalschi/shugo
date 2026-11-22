@@ -381,8 +381,14 @@ func (b *builder) bundle(routes []skeleton.Route) (*bundled, error) {
 	fmt.Fprintf(&entry, "await run([%s]);\n", strings.Join(table, ", "))
 
 	plugin := api.Plugin{Name: "shugo", Setup: func(build api.PluginBuild) {
-		build.OnResolve(api.OnResolveOptions{Filter: `^shugo:`}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
-			return api.OnResolveResult{Path: args.Path, Namespace: "shugo"}, nil
+		// shugo is the module the code of a project imports from; shugo:…
+		// are the framework's own.
+		build.OnResolve(api.OnResolveOptions{Filter: `^shugo(:|$)`}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
+			path := args.Path
+			if path == "shugo" {
+				path = shugoModule
+			}
+			return api.OnResolveResult{Path: path, Namespace: "shugo"}, nil
 		})
 		build.OnLoad(api.OnLoadOptions{Filter: `.*`, Namespace: "shugo"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
 			contents := jsrt.Source
@@ -391,6 +397,8 @@ func (b *builder) bundle(routes []skeleton.Route) (*bundled, error) {
 				contents = entry.String()
 			case "shugo:query":
 				contents = jsrt.Query
+			case shugoModule:
+				contents = `export { query, paginate, page } from "shugo:runtime";`
 			}
 			return api.OnLoadResult{Contents: &contents, Loader: api.LoaderJS, ResolveDir: root}, nil
 		})
@@ -499,11 +507,14 @@ func (b *builder) diagnose(message api.Message) *syntax.Error {
 		text += "; markup cannot stand inside {…}: write {#if …}…{/if} or {#each …}…{/each} around it instead"
 	}
 	if strings.Contains(text, `"await" can only be used inside an "async" function`) {
-		text = "a page is computed without waiting: its data comes from Shugo.query, which answers at once, so there is nothing to wait for. " +
+		text = "a page is computed without waiting: its data comes from query of the module shugo, which answers at once, so there is nothing to wait for. " +
 			"What takes time and needs doing once, such as making a highlighter, can be awaited at the top of a module in lib/ and used here"
 	}
 	return u.file.Errorf(u.module.locate(at.Line-1, at.Column), "%s", text)
 }
+
+// shugoModule is the module shugo as the bundler knows it.
+const shugoModule = "shugo:module"
 
 // graph reads from the bundler which module imports which. It gives the
 // order of style sheets and tells which files can be computed once for all
@@ -531,10 +542,22 @@ func (b *builder) graph(metafile string, out *bundled) error {
 	sort.Strings(names)
 
 	// A file that depends on the page passes that on to all that import it.
+	// A template knows it of itself; another module of the project depends
+	// on the page when it takes page or paginate from the module shugo.
 	own := map[string]bool{}
 	for _, name := range names {
 		if id, known := b.ids[name]; known {
 			own[name] = b.units[id].own
+			continue
+		}
+		for _, imported := range meta.Inputs[name].Imports {
+			if strings.HasSuffix(imported.Path, shugoModule) {
+				source, err := os.ReadFile(b.project.Path(filepath.FromSlash(name)))
+				if err != nil {
+					return err
+				}
+				own[name] = importsPage(string(source))
+			}
 		}
 	}
 	for changed := true; changed; {

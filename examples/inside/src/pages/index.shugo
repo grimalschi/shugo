@@ -1,7 +1,8 @@
 <script>
+  import { query } from "shugo"
   import ProductCard from "../components/ProductCard.shugo"
 
-  const products = Shugo.query("products").select("id").order("title").all()
+  const products = query("products").select("id").order("title").all()
 </script>
 
 <svelte:head><title>Pottery Shop</title></svelte:head>

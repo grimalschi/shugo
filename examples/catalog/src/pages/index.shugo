@@ -1,7 +1,8 @@
 <script>
+  import { query } from "shugo"
   import ProductCard from "../components/ProductCard.shugo"
 
-  const first = Shugo.query("products").order("position").limit(24).all()
+  const first = query("products").order("position").limit(24).all()
 </script>
 
 <svelte:head><title>Measure — handmade tableware</title></svelte:head>

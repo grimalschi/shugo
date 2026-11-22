@@ -261,67 +261,86 @@ function propsOf(props, snippets, frame) {
   return out;
 }
 
-// Context is "Shugo" in the script and in the expressions of a template.
-class Context {
-  #scope;
+// ---------------------------------------------------------------------------
+// The module "shugo": what the code of a project asks of the framework.
+//
+//   import { query, paginate, page } from "shugo"
+//
+// What they answer depends on what is being computed: present is the page or
+// shared block being computed, or the list of pages of a route. Nothing
+// waits, so one computation runs at a time.
+//   reads  where its queries leave their readings
+//   page   the page: { params, path, route, origin, url }; null in a block
+//          kept once for all pages, and while a list of pages is made
+//   route  the route whose list of pages is made; null otherwise
+let present = null;
 
-  constructor(scope) {
-    this.#scope = scope;
-  }
-
-  get params() {
-    return this.#page("params").params;
-  }
-
-  // query starts a question to a table of the data database. What it reads
-  // is noted for the page or the shared block being computed.
-  query(table) {
-    return query(this.#scope.reads, table);
-  }
-
-  // paginate cuts a list into pages and returns the page whose number
-  // stands in the address, the way Astro describes it: { data, total,
-  // currentPage, lastPage, url: { prev, next, … } }. The list is a query,
-  // which asks the data database for that page alone, or an array.
-  paginate(rows, { pageSize = 10 } = {}) {
-    const asked = rows instanceof Query;
-    if (!asked && !Array.isArray(rows)) throw new TypeError(`Shugo.paginate() takes a query or an array, and got ${describe(rows)}: Shugo.paginate(Shugo.query("posts").order("date", "desc"), { pageSize: 10 })`);
-    const { route, params } = this.#page("paginate");
-    const segment = pageSegment(route);
-    const total = asked ? rows.count() : rows.length;
-    const current = params.page === undefined ? 1 : Number(params.page);
-    const start = (current - 1) * pageSize;
-    const found = asked ? rows.limit(pageSize).offset(start).all() : rows.slice(start, start + pageSize);
-    return paged(route, segment, params, found, start, pageSize, total, current);
-  }
-
-  get url() {
-    const page = this.#page("url");
-    return (page.url ??= new URL(encodeURI(page.path), page.origin));
-  }
-
-  get props() {
-    throw new Error("Shugo.props is gone: write let { title } = $props(), as in Svelte");
-  }
-
-  get slots() {
-    throw new Error("Shugo.slots is gone: a snippet the caller gave is a prop; check it with {#if children}");
-  }
-
-  #page(what) {
-    if (this.#scope.page === null) {
-      throw new Error(`Shugo.${what} was read inside a block that is computed once for all pages. This should not happen: please report it`);
-    }
-    return this.#scope.page;
+// computing runs compute as the given computation.
+function computing(now, compute) {
+  const outer = present;
+  present = now;
+  try {
+    return during(now.reads, compute);
+  } finally {
+    present = outer;
   }
 }
 
-// query starts a question to the data database for one reader.
-function query(reads, table) {
-  if (data === null) {
-    throw new Error('Shugo.query reads the data database of the project, and this project names none. Name it in shugo.json: { "data": "data/site.db" }');
+// query starts a question to a table of the data database. What it reads is
+// noted for the page, the shared block or the list of pages being computed.
+export function query(table) {
+  if (present === null) {
+    throw new Error(`query("${table}") is asked while nothing is computed: ask in a page, a component or getStaticPaths, or in a function they call, not at the top of a module`);
   }
-  return new Query(data, reads, table);
+  if (data === null) {
+    throw new Error('query() reads the data database of the project, and this project names none. Name it in shugo.json: { "data": "data/site.db" }');
+  }
+  return new Query(data, present.reads, table);
+}
+
+// paginate cuts a list into pages, the way Astro describes them. In
+// getStaticPaths it takes how many items there are and says which pages
+// there are. In a page it takes the list itself, a query or an array, and
+// returns the page whose number stands in the address: { data, total,
+// currentPage, lastPage, url: { prev, next, … } }; a query asks the data
+// database for that page alone.
+export function paginate(list, options = {}) {
+  if (present?.route) return paginator(present.route)(list, options);
+  const { pageSize = 10 } = options;
+  const asked = list instanceof Query;
+  if (!asked && !Array.isArray(list)) throw new TypeError(`paginate() in a page takes a query or an array, and got ${describe(list)}: paginate(query("posts").order("date", "desc"), { pageSize: 10 })`);
+  const { route, params } = pageNow("paginate()");
+  const segment = pageSegment(route);
+  const total = asked ? list.count() : list.length;
+  const current = params.page === undefined ? 1 : Number(params.page);
+  const start = (current - 1) * pageSize;
+  const found = asked ? list.limit(pageSize).offset(start).all() : list.slice(start, start + pageSize);
+  return paged(route, segment, params, found, start, pageSize, total, current);
+}
+
+// page is the page being computed, as page of $app/state is in SvelteKit.
+export const page = Object.freeze({
+  get url() {
+    const now = pageNow("page.url");
+    return (now.url ??= new URL(encodeURI(now.path), now.origin));
+  },
+  get params() {
+    return pageNow("page.params").params;
+  },
+  get route() {
+    return { id: pageNow("page.route").route.pattern };
+  },
+  get status() {
+    return pageNow("page.status").path === "/404" ? 404 : 200;
+  },
+});
+
+// pageNow returns the page being computed.
+function pageNow(what) {
+  if (present?.page) return present.page;
+  if (present?.route) throw new Error(`${what} is read while the list of pages of ${present.route.pattern} is made: getStaticPaths says which pages there are, and no page is computed yet`);
+  if (present) throw new Error(`${what} was read inside a block that is computed once for all pages. This should not happen: please report it`);
+  throw new Error(`${what} is read while nothing is computed: read it in a page or a component, or in a function they call`);
 }
 
 // The runes of Svelte as a server sees them: state is the value it starts
@@ -614,7 +633,7 @@ class Run {
       if (route === undefined) throw new Error(`the shugo command asked for the pages of route ${index}, which this project's compiled code does not have: build the project again`);
       const reads = new Reads();
       try {
-        for (const entry of during(reads, () => entries(route, this.modules.get(route.file), reads))) {
+        for (const entry of computing({ reads, page: null, route }, () => entries(route, this.modules.get(route.file)))) {
           const path = address(route, entry.params);
           const taken = this.pages.get(path);
           if (taken === index) continue;
@@ -674,7 +693,7 @@ class Run {
     block.snippets = snippets;
     const frame = { outer: scope.frame, block };
     const inner = { page: scope.page, snippets, reads: scope.reads, frame, props: propsOf(props, snippets, frame) };
-    target.render(new Writer(this, record, block, inner), new Context(inner));
+    target.render(new Writer(this, record, block, inner));
     return block.index;
   }
 
@@ -692,7 +711,7 @@ class Run {
     // matter: what they show belongs to the place the block is used at.
     const frame = { outer: null, block };
     const inner = { page, snippets, reads: record.reads, frame, props: propsOf(props, snippets, frame) };
-    during(record.reads, () => target.render(new Writer(this, record, block, inner), new Context(inner)));
+    computing({ reads: record.reads, page, route: null }, () => target.render(new Writer(this, record, block, inner)));
     this.emit(record);
   }
 
@@ -704,7 +723,7 @@ class Run {
     if (this.site.routes[index] === undefined) throw new Error(`the page ${path} was asked for under route ${index}, which this project's compiled code does not have: build the project again`);
     const record = new Record("p", path, index);
     const scope = { page: this.pageOf({ "@route": index, "@path": path }), snippets: null, reads: record.reads, frame: null, props: {} };
-    during(record.reads, () => this.around(record, index, scope));
+    computing({ reads: record.reads, page: scope.page, route: null }, () => this.around(record, index, scope));
     this.emit(record);
   }
 
@@ -895,11 +914,11 @@ function paged(route, segment, params, rows, start, size, total, current) {
 
 // paginate is what getStaticPaths({ paginate }) receives: given how many
 // items there are, it says which pages a list cut into pages has. Every page
-// asks for its part itself: Shugo.paginate(query, { pageSize }).
+// asks for its part itself: paginate(query, { pageSize }).
 function paginator(route) {
   return (total, { pageSize = 10, params = {} } = {}) => {
     if (typeof total !== "number" || !Number.isInteger(total) || total < 0) {
-      throw new TypeError(`paginate() in getStaticPaths takes how many items there are, got ${describe(total)}: paginate(query("posts").count(), { pageSize: 10 }); every page takes its part with Shugo.paginate(Shugo.query("posts"), { pageSize: 10 })`);
+      throw new TypeError(`paginate() in getStaticPaths takes how many items there are, got ${describe(total)}: paginate(query("posts").count(), { pageSize: 10 }); every page takes its part with paginate(query("posts"), { pageSize: 10 })`);
     }
     const segment = pageSegment(route);
     const last = Math.max(1, Math.ceil(total / pageSize));
@@ -909,10 +928,10 @@ function paginator(route) {
 
 // entries returns the pages of a route: one for a page without parameters,
 // and what getStaticPaths says for the others.
-function entries(route, module, reads) {
+function entries(route, module) {
   if (!route.segments.some((segment) => segment.text === undefined)) return [{ params: {} }];
   if (typeof module.getStaticPaths !== "function") throw new Error(`${route.pattern} has parameters, so its script must export getStaticPaths`);
-  const list = module.getStaticPaths({ paginate: paginator(route), query: (table) => query(reads, table) });
+  const list = module.getStaticPaths(noArguments);
   if (typeof list?.then === "function") throw new Error(`getStaticPaths of ${route.pattern} waits (it is async or returns a promise): pages are computed without waiting; the data comes from the data database through query`);
   if (!Array.isArray(list)) throw new Error(`getStaticPaths of ${route.pattern} must return a list of { params }, got ${describe(list)}`);
   for (const entry of list) {
@@ -920,7 +939,7 @@ function entries(route, module, reads) {
       throw new Error(`getStaticPaths of ${route.pattern} must return a list of { params: { … } }, and one item is ${describe(entry)}`);
     }
     if (entry.props !== undefined) {
-      throw new Error(`getStaticPaths of ${route.pattern} gives its pages addresses alone: return { params: { … } }, and let every page ask for its data with Shugo.query, by Shugo.params`);
+      throw new Error(`getStaticPaths of ${route.pattern} gives its pages addresses alone: return { params: { … } }, and let every page ask for its data with query(), by page.params`);
     }
   }
   return list;
@@ -1017,10 +1036,22 @@ export async function run(modules) {
   }
 }
 
-// Authors who know Astro reach for its global by habit.
-globalThis.Astro ??= new Proxy({}, {
+// getStaticPaths takes nothing: what it needs comes from the module shugo.
+// One that takes { query, paginate }, as in Astro, is told so.
+const noArguments = new Proxy({}, {
   get(_, name) {
-    const instead = { props: "let { … } = $props()", params: "Shugo.params", url: "Shugo.url", slots: "a snippet taken from $props(): {#if children}" }[String(name)];
-    throw new Error(`There is no Astro.${String(name)} in Shugo${instead ? `: write ${instead}` : ""}`);
+    throw new Error(`getStaticPaths gets no ${String(name)}: import { query, paginate } from "shugo" at the top of <script module>`);
   },
 });
+
+// Authors who know Astro reach for its global by habit, and the global
+// Shugo is gone.
+const hints = { props: "let { … } = $props()", params: "page.params, with import { page } from \"shugo\"", url: "page.url, with import { page } from \"shugo\"", query: "query(…), with import { query } from \"shugo\"", paginate: "paginate(…), with import { paginate } from \"shugo\"", slots: "a snippet taken from $props(): {#if children}" };
+for (const global of ["Astro", "Shugo"]) {
+  globalThis[global] ??= new Proxy({}, {
+    get(_, name) {
+      const instead = hints[String(name)];
+      throw new Error(`There is no ${global}.${String(name)} in Shugo${instead ? `: write ${instead}` : ""}`);
+    },
+  });
+}

@@ -41,29 +41,65 @@ const indexSite = `
 -- shugo.json --
 {"data": "data/shop.db"}
 -- src/pages/equal.shugo --
-<p>{Shugo.query("products").where({ category: "c1" }).all().length}</p>
+<script>
+import { query } from "shugo"
+</script>
+<p>{query("products").where({ category: "c1" }).all().length}</p>
 -- src/pages/counted.shugo --
-<p>{Shugo.query("products").where({ category: "c2", price: 9 }).count()}</p>
+<script>
+import { query } from "shugo"
+</script>
+<p>{query("products").where({ category: "c2", price: 9 }).count()}</p>
 -- src/pages/ordered.shugo --
-<p>{Shugo.query("products").where({ note: "" }).order("position", "desc").all().map((row) => row.title)}</p><p>{Shugo.query("products").where({ note: "" }).count()}</p>
+<script>
+import { query } from "shugo"
+</script>
+<p>{query("products").where({ note: "" }).order("position", "desc").all().map((row) => row.title)}</p><p>{query("products").where({ note: "" }).count()}</p>
 -- src/pages/sorted.shugo --
-<p>{Shugo.query("products").order("price").limit(2).all().map((row) => row.title)}</p>
+<script>
+import { query } from "shugo"
+</script>
+<p>{query("products").order("price").limit(2).all().map((row) => row.title)}</p>
 -- src/pages/among.shugo --
-<p>{Shugo.query("products").where("title", "in", ["Jug", "Cup"]).all().length}</p>
+<script>
+import { query } from "shugo"
+</script>
+<p>{query("products").where("title", "in", ["Jug", "Cup"]).all().length}</p>
 -- src/pages/both.shugo --
-<p>{Shugo.query("categories").where({ title: "Garden" }).where("position", "in", [1, 2]).order("id").all().length}</p>
+<script>
+import { query } from "shugo"
+</script>
+<p>{query("categories").where({ title: "Garden" }).where("position", "in", [1, 2]).order("id").all().length}</p>
 -- src/pages/key.shugo --
-<p>{Shugo.query("products").get("p1").title}{Shugo.query("products").where("id", "in", ["p1", "p2"]).order("price").all().length}</p>
+<script>
+import { query } from "shugo"
+</script>
+<p>{query("products").get("p1").title}{query("products").where("id", "in", ["p1", "p2"]).order("price").all().length}</p>
 -- src/pages/unique.shugo --
-<p>{Shugo.query("products").where({ slug: "jug" }).first().title}</p>
+<script>
+import { query } from "shugo"
+</script>
+<p>{query("products").where({ slug: "jug" }).first().title}</p>
 -- src/pages/all.shugo --
-<p>{Shugo.query("categories").all().length}{Shugo.query("categories").count()}</p>
+<script>
+import { query } from "shugo"
+</script>
+<p>{query("categories").all().length}{query("categories").count()}</p>
 -- src/pages/bykey.shugo --
-<p>{Shugo.query("products").order("id").limit(1).all().length}</p>
+<script>
+import { query } from "shugo"
+</script>
+<p>{query("products").order("id").limit(1).all().length}</p>
 -- src/pages/other.shugo --
-<p>{Shugo.query("products").where("price", "<", 8).all().length}</p>
+<script>
+import { query } from "shugo"
+</script>
+<p>{query("products").where("price", "<", 8).all().length}</p>
 -- src/pages/joined.shugo --
-<p>{Shugo.query("products").join("categories", "category").get("p1").categories.title}</p>
+<script>
+import { query } from "shugo"
+</script>
+<p>{query("products").join("categories", "category").get("p1").categories.title}</p>
 `
 
 // Shugo makes the indexes that the questions of a project need: by the
@@ -143,12 +179,16 @@ const orderSite = `
 {"data": "data/shop.db"}
 -- src/pages/a.shugo --
 <script>
+import { query } from "shugo"
 const titles = (query) => query.all().map((row) => row.title)
 console.log("a")
 </script>
-<p>{titles(Shugo.query("products").where({ category: "c1" }))}</p><p>{titles(Shugo.query("products").order("price"))} {titles(Shugo.query("products").order("price", "desc"))} {titles(Shugo.query("products").order("price").limit(2))}</p><p>{titles(Shugo.query("tags").where({ kind: "x" }))} {titles(Shugo.query("odd").where({ kind: "x" }))}</p><p>{titles(Shugo.query("products").where({ note: "" }))} {titles(Shugo.query("products").order("slug"))} {titles(Shugo.query("products").order("alias"))}</p>
+<p>{titles(query("products").where({ category: "c1" }))}</p><p>{titles(query("products").order("price"))} {titles(query("products").order("price", "desc"))} {titles(query("products").order("price").limit(2))}</p><p>{titles(query("tags").where({ kind: "x" }))} {titles(query("odd").where({ kind: "x" }))}</p><p>{titles(query("products").where({ note: "" }))} {titles(query("products").order("slug"))} {titles(query("products").order("alias"))}</p>
 -- src/pages/b.shugo --
-<p>{Shugo.query("products").where({ category: "c1" }).order("title").all().map((row) => row.title)}</p><p>{Shugo.query("products").order("price").order("title", "desc").all().map((row) => row.title)}</p>
+<script>
+import { query } from "shugo"
+</script>
+<p>{query("products").where({ category: "c1" }).order("title").all().map((row) => row.title)}</p><p>{query("products").order("price").order("title", "desc").all().map((row) => row.title)}</p>
 `
 
 // Three products cost the same, and were put into their table in another
@@ -220,9 +260,10 @@ func TestIndexMadeByAnUpdate(t *testing.T) {
 {"data": "data/shop.db"}
 -- src/pages/index.shugo --
 <script>
-const item = Shugo.query("products").get("p1")
+import { query } from "shugo"
+const item = query("products").get("p1")
 // The second question is asked only of a dear product.
-const others = item.price > 10 ? Shugo.query("products").where({ category: item.category }).order("position").all() : []
+const others = item.price > 10 ? query("products").where({ category: item.category }).order("position").all() : []
 console.log("index")
 </script>
 <p>{item.title}: {others.map((row) => row.title)}</p>
@@ -282,10 +323,11 @@ export function rename(): void {
 }
 -- src/pages/index.shugo --
 <script>
+import { query } from "shugo"
 import { rename } from "../lib/outside"
-const before = Shugo.query("products").get("p2").title
+const before = query("products").get("p2").title
 rename()
-const after = Shugo.query("products").where({ category: "c1" }).order("position").all().map((row) => row.title)
+const after = query("products").where({ category: "c1" }).order("position").all().map((row) => row.title)
 console.log("index")
 </script>
 <p>{before}: {after}</p>

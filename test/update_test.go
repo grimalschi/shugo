@@ -15,15 +15,17 @@ const shop = `
 {"data": "data/shop.db"}
 -- src/components/Header.shugo --
 <script>
-const motto = Shugo.query("settings").get(1).motto
-const count = Shugo.query("products").count()
+import { query } from "shugo"
+const motto = query("settings").get(1).motto
+const count = query("products").count()
 console.log("header computed")
 </script>
 <header>{motto} · {count} products</header>
 -- src/components/Card.shugo --
 <script>
+import { query } from "shugo"
 const { slug } = $props() as { slug: string }
-const { title, price } = Shugo.query("products").where({ slug }).first()
+const { title, price } = query("products").where({ slug }).first()
 </script>
 <a href={"/products/" + slug}>{title} — {price}</a>
 -- src/pages/+layout.shugo --
@@ -34,20 +36,22 @@ import Header from "../components/Header.shugo"
 <html><body><Header /><main>{@render children()}</main></body></html>
 -- src/pages/index.shugo --
 <script>
+import { query } from "shugo"
 import Card from "../components/Card.shugo"
-const products = Shugo.query("products").select("slug").order("position").all()
+const products = query("products").select("slug").order("position").all()
 </script>
 <ul>{#each products as p}<li><Card slug={p.slug} /></li>{/each}</ul>
 -- src/pages/about.shugo --
 <h1>About</h1>
 -- src/pages/products/[slug].shugo --
 <script module>
-export const getStaticPaths = ({ query }) => query("products").select("slug").all().map((p) => ({ params: { slug: p.slug } }))
+import { query, page } from "shugo"
+export const getStaticPaths = () => query("products").select("slug").all().map((p) => ({ params: { slug: p.slug } }))
 </script>
 <script>
 import Card from "../../components/Card.shugo"
-const p = Shugo.query("products").where({ slug: Shugo.params.slug }).first()
-const related = Shugo.query("related").where({ product: p.slug }).order("position").all()
+const p = query("products").where({ slug: page.params.slug }).first()
+const related = query("related").where({ product: p.slug }).order("position").all()
 </script>
 <h1>{p.title}</h1><p>{p.price}</p>{#each related as r}<Card slug={r.other} />{/each}
 `

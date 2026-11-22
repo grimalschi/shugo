@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { query } from "shugo"
   import { finalPrice, price } from "../lib/catalog"
 
   // The card takes the number of a product, not the product: called with a
@@ -11,7 +12,7 @@
   // discount inside finalPrice. A change of any other column of the product
   // does not reach it.
   let { id }: { id: string } = $props()
-  const item = Shugo.query("products").get(id)
+  const item = query("products").get(id)
   if (!item) throw new Error(`there is no product ${id}`)
 </script>
 

@@ -1,7 +1,7 @@
 // Package compile turns the sources of a project into what the next stages
 // run: one JavaScript bundle that computes the values of every template,
-// reading the data database of the project through Shugo.query, and the
-// skeleton the runtime puts those values into.
+// reading the data database of the project through query from the module
+// shugo, and the skeleton the runtime puts those values into.
 package compile
 
 import (
@@ -79,7 +79,7 @@ func compileFile(path, source string, id int, r role) (*unit, error) {
 		}
 	}
 	m.add(`import { component as $$component, $state, $derived, $effect, $bindable, $inspect, $host } from "shugo:runtime";`)
-	m.add("const $$self = $$component(%d, function ($$, Shugo) {", id)
+	m.add("const $$self = $$component(%d, function ($$) {", id)
 	m.add("const $props = () => $$.props();")
 	for _, lines := range instance.body() {
 		m.script(instance, lines)
@@ -92,7 +92,7 @@ func compileFile(path, source string, id int, r role) (*unit, error) {
 		file: f, role: r, module: m, parts: e.parts, styles: styles,
 		head: l.head, writesHead: l.writesHead, paths: moduleScript.paths || instance.paths,
 		warnings: append(warningsOf(f), l.warnings...),
-		own:      m.page || readsPage(strings.Join(instance.lines, "\n")) || readsPage(strings.Join(moduleScript.lines, "\n")),
+		own:      importsPage(strings.Join(instance.lines, "\n")) || importsPage(strings.Join(moduleScript.lines, "\n")),
 	}, nil
 }
 

@@ -30,7 +30,7 @@ type Config struct {
 	Runtime string `json:"runtime"`
 	// Redirects sends one path to another: {"/old": "/new"}.
 	Redirects map[string]string `json:"redirects"`
-	// Data is the SQLite database the pages read through Shugo.query:
+	// Data is the SQLite database the pages read through query from shugo:
 	// "data/site.db". An update computes only what a change in it reaches.
 	Data string `json:"data"`
 }
