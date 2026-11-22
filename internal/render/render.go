@@ -28,10 +28,21 @@ const (
 	maxOutput = 64 << 20 // bytes of one page
 )
 
-// Page appends the HTML of a page to dst: the page in its layouts, inside
-// the shell of the site.
-func Page(dst []byte, site *skeleton.Site, rec *record.Record, src Source) ([]byte, error) {
-	r := renderer{site: site, src: src, out: append(dst, site.Shell.Before...), start: len(dst)}
+// Page appends a page of a route to dst. A page of templates is HTML: the
+// page in its layouts, inside the shell of the site. A module gives a file
+// of its own type, written as it is.
+func Page(dst []byte, site *skeleton.Site, route int, rec *record.Record, src Source) ([]byte, error) {
+	if route < 0 || route >= len(site.Routes) {
+		return dst, fmt.Errorf("the page is of route %d, which the site does not have", route)
+	}
+	r := renderer{site: site, src: src, out: dst, start: len(dst)}
+	if site.FileRoute(route) {
+		if err := r.show(rec, rec.Top, nil); err != nil {
+			return dst, err
+		}
+		return r.out, nil
+	}
+	r.out = append(r.out, site.Shell.Before...)
 	r.headAt = len(r.out)
 	r.out = append(r.out, site.Shell.Middle...)
 	if err := r.show(rec, rec.Top, nil); err != nil {

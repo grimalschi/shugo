@@ -31,13 +31,13 @@ import (
 
 // layout names the set of tables below. A store laid out in another way is
 // emptied: it holds nothing that a build cannot make again.
-const layout = "6"
+const layout = "7"
 
 const schema = `
 CREATE TABLE meta   (name TEXT PRIMARY KEY, value BLOB NOT NULL) WITHOUT ROWID;
 CREATE TABLE page   (path TEXT PRIMARY KEY, hash BLOB NOT NULL, record BLOB NOT NULL, route INTEGER NOT NULL, reads BLOB NOT NULL, version INTEGER NOT NULL) WITHOUT ROWID;
 CREATE TABLE shared (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, hash BLOB NOT NULL, record BLOB NOT NULL, reads BLOB NOT NULL, version INTEGER NOT NULL);
-CREATE TABLE gone   (path TEXT PRIMARY KEY, version INTEGER NOT NULL) WITHOUT ROWID;
+CREATE TABLE gone   (path TEXT PRIMARY KEY, route INTEGER NOT NULL, version INTEGER NOT NULL) WITHOUT ROWID;
 CREATE TABLE shows  (shared INTEGER NOT NULL, user TEXT NOT NULL, PRIMARY KEY (shared, user)) WITHOUT ROWID;
 CREATE TABLE route  (id INTEGER PRIMARY KEY, reads BLOB NOT NULL);
 CREATE TABLE shape  (id INTEGER PRIMARY KEY, spec TEXT NOT NULL UNIQUE);
@@ -82,7 +82,7 @@ type preparer interface {
 func prepare(db preparer) (q queries, err error) {
 	for statement, query := range map[**sql.Stmt]string{
 		&q.meta:   "SELECT value FROM meta WHERE name = ?",
-		&q.page:   "SELECT record FROM page WHERE path = ?",
+		&q.page:   "SELECT record, route FROM page WHERE path = ?",
 		&q.shared: "SELECT record FROM shared WHERE id = ?",
 	} {
 		if *statement, err = db.PrepareContext(context.Background(), query); err != nil {
@@ -302,9 +302,13 @@ func (r *reader) Mark() (Mark, error) {
 	return mark, nil
 }
 
-// Page returns the record of the page at path.
-func (r *reader) Page(path string) (data []byte, found bool, err error) {
-	return r.blob(r.page, path)
+// Page returns the record of the page at path, and its route.
+func (r *reader) Page(path string) (data []byte, route int, found bool, err error) {
+	err = r.page.QueryRow(path).Scan(&data, &route)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, 0, false, nil
+	}
+	return data, route, err == nil, err
 }
 
 // Shared returns the record of a shared block.
@@ -312,23 +316,24 @@ func (r *reader) Shared(id int64) (data []byte, found bool, err error) {
 	return r.blob(r.shared, id)
 }
 
-// Pages calls visit with the address and the record of every page. It
-// stops at the first error of visit.
-func (r *reader) Pages(visit func(path string, record []byte) error) error {
-	return r.each("SELECT path, record FROM page", visit)
+// Pages calls visit with the address, the route and the record of every
+// page. It stops at the first error of visit.
+func (r *reader) Pages(visit func(path string, route int, record []byte) error) error {
+	return r.each("SELECT path, route, record FROM page", visit)
 }
 
 // Changes calls visit with every page whose HTML may have changed after
-// version since, with its record, and with every page that went away since,
-// with nil. A page has changed when its own record has, or the record of a
-// shared block it shows, directly or through other shared blocks. Since
-// must not be below the origin of the store: see Mark. Only those pages are
-// read; visit is called once for each, and an error of it stops the walk.
-func (r *reader) Changes(since int64, visit func(path string, record []byte) error) error {
+// version since, with its route and its record, and with every page that
+// went away since, with the route it had and nil. A page has changed when
+// its own record has, or the record of a shared block it shows, directly or
+// through other shared blocks. Since must not be below the origin of the
+// store: see Mark. Only those pages are read; visit is called once for
+// each, and an error of it stops the walk.
+func (r *reader) Changes(since int64, visit func(path string, route int, record []byte) error) error {
 	seen := map[string]struct{}{}
-	err := r.each("SELECT path, record FROM page WHERE version > ?", func(path string, record []byte) error {
+	err := r.each("SELECT path, route, record FROM page WHERE version > ?", func(path string, route int, record []byte) error {
 		seen[path] = struct{}{}
-		return visit(path, record)
+		return visit(path, route, record)
 	}, since)
 	if err != nil {
 		return err
@@ -365,34 +370,43 @@ func (r *reader) Changes(since int64, visit func(path string, record []byte) err
 				continue
 			}
 			seen[user] = struct{}{}
-			record, found, err := r.Page(user)
+			record, route, found, err := r.Page(user)
 			if err != nil {
 				return err
 			}
 			if found {
-				if err := visit(user, record); err != nil {
+				if err := visit(user, route, record); err != nil {
 					return err
 				}
 			}
 		}
 	}
 
-	// The pages that went away, unless they came back.
-	var gone []string
-	rows, err = r.query("SELECT gone.path FROM gone LEFT JOIN page ON page.path = gone.path WHERE gone.version > ? AND page.path IS NULL", since)
-	if err := column(rows, err, func(path string) { gone = append(gone, path) }); err != nil {
+	// The pages that went away, unless they came back. They are read whole
+	// before they are visited, so that one query runs at a time.
+	type left struct {
+		path  string
+		route int
+	}
+	var gone []left
+	err = r.each("SELECT gone.path, gone.route, NULL FROM gone LEFT JOIN page ON page.path = gone.path WHERE gone.version > ? AND page.path IS NULL", func(path string, route int, _ []byte) error {
+		gone = append(gone, left{path, route})
+		return nil
+	}, since)
+	if err != nil {
 		return err
 	}
-	for _, path := range gone {
-		if err := visit(path, nil); err != nil {
+	for _, page := range gone {
+		if err := visit(page.path, page.route, nil); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// each calls visit with the address and the record of every page a query gives.
-func (r *reader) each(query string, visit func(path string, record []byte) error, arguments ...any) error {
+// each calls visit with the address, the route and the record of every
+// page a query gives.
+func (r *reader) each(query string, visit func(path string, route int, record []byte) error, arguments ...any) error {
 	rows, err := r.query(query, arguments...)
 	if err != nil {
 		return err
@@ -400,11 +414,12 @@ func (r *reader) each(query string, visit func(path string, record []byte) error
 	defer rows.Close()
 	for rows.Next() {
 		var path string
+		var route int
 		var data []byte
-		if err := rows.Scan(&path, &data); err != nil {
+		if err := rows.Scan(&path, &route, &data); err != nil {
 			return err
 		}
-		if err := visit(path, data); err != nil {
+		if err := visit(path, route, data); err != nil {
 			return err
 		}
 	}
@@ -749,11 +764,11 @@ func (u *Update) SetData(state string) error {
 // DeletePage and DeleteShared drop a record. Who no longer shows a shared
 // block is told with Unshow.
 func (u *Update) DeletePage(path string) error {
-	if _, err := u.write.Exec("DELETE FROM page WHERE path = ?", path); err != nil {
+	// An export removes its file, named as the route of the page names it.
+	if _, err := u.write.Exec("INSERT INTO gone (path, route, version) SELECT path, route, ? FROM page WHERE path = ? ON CONFLICT (path) DO UPDATE SET route = excluded.route, version = excluded.version", u.number, path); err != nil {
 		return err
 	}
-	// An export removes its file.
-	_, err := u.write.Exec("INSERT INTO gone (path, version) VALUES (?, ?) ON CONFLICT (path) DO UPDATE SET version = excluded.version", path, u.number)
+	_, err := u.write.Exec("DELETE FROM page WHERE path = ?", path)
 	return err
 }
 

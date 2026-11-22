@@ -47,7 +47,7 @@ func BenchmarkRender(b *testing.B) {
 		if err != nil || !page.Found {
 			b.Fatal(err, page.Found)
 		}
-		html = page.HTML
+		html = page.Body
 		bytes += len(html)
 	}
 	b.ReportMetric(float64(bytes)/float64(b.N), "bytes/page")

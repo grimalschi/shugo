@@ -67,8 +67,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if page.Found && address != notFound {
-		*buffer = page.HTML
-		s.html(w, r, http.StatusOK, page.HTML)
+		*buffer = page.Body
+		s.answer(w, r, http.StatusOK, page)
 		return
 	}
 	if page.Site != nil {
@@ -90,26 +90,26 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "404 page not found", http.StatusNotFound)
 		return
 	}
-	*buffer = page.HTML
-	s.html(w, r, http.StatusNotFound, page.HTML)
+	*buffer = page.Body
+	s.answer(w, r, http.StatusNotFound, page)
 }
 
-// html answers with a page. The page may differ at the next request, so the
-// browser asks every time, with the tag of the page it has: the same page
-// is answered with 304 and no body.
-func (s *Server) html(w http.ResponseWriter, r *http.Request, status int, html []byte) {
+// answer answers with a page. The page may differ at the next request, so
+// the browser asks every time, with the tag of the page it has: the same
+// page is answered with 304 and no body.
+func (s *Server) answer(w http.ResponseWriter, r *http.Request, status int, page Page) {
 	header := w.Header()
-	header.Set("Content-Type", "text/html; charset=utf-8")
+	header.Set("Content-Type", page.Type)
 	header.Set("Cache-Control", "no-cache")
 	if status == http.StatusOK {
-		tag := pageTag(html)
+		tag := pageTag(page.Body)
 		header.Set("ETag", tag)
 		if hasTag(r.Header.Get("If-None-Match"), tag) {
 			w.WriteHeader(http.StatusNotModified)
 			return
 		}
 	}
-	write(w, r, status, html)
+	write(w, r, status, page.Body)
 }
 
 func (s *Server) fail(w http.ResponseWriter, err error) {

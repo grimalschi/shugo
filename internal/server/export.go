@@ -6,11 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/grimalschi/shugo/internal/compile"
+	"github.com/grimalschi/shugo/internal/skeleton"
 	"github.com/grimalschi/shugo/internal/store"
 )
 
@@ -27,12 +30,15 @@ type Exported struct {
 const listFile = ".shugo-export.json"
 
 // list tells the next export what this one wrote: from which state of which
-// store its pages are, and the files it copied, each with the size and the
-// time of change its original had.
+// store its pages are, the files it copied, each with the size and the time
+// of change its original had, and the files that modules among the pages
+// gave. An HTML file is known for a page by its name; those are not, so an
+// export that builds every page knows from the list which of them to remove.
 type list struct {
 	Store   string            `json:"store"`
 	Version int64             `json:"version"`
 	Copied  map[string]string `json:"copied"`
+	Files   []string          `json:"files,omitempty"`
 }
 
 // Export writes the site into dir as files that any web server can give
@@ -109,33 +115,53 @@ func Export(pages *Pages, public, assets, dir string) (Exported, error) {
 		}
 		next.Store, next.Version, done.Pages = mark.Store, mark.Version, totals.Pages
 		src := &source{view: v}
-		var html []byte
-		writePage := func(path string, data []byte) error {
+		files := map[string]struct{}{} // the files of modules the folder has
+		var body []byte
+		writePage := func(path string, route int, data []byte) error {
 			done.Built++
-			if html, err = build(html[:0], site, data, src); err != nil {
+			if body, err = build(body[:0], site, route, data, src); err != nil {
 				return fmt.Errorf("page %s: %w", path, err)
 			}
-			return write(pageFile(path), html)
+			name := pageFile(site, route, path)
+			if site.FileRoute(route) {
+				files[name] = struct{}{}
+			}
+			return write(name, body)
 		}
+		defer func() { next.Files = slices.Sorted(maps.Keys(files)) }()
 
 		if last.Store == mark.Store && mark.Origin <= last.Version && last.Version <= mark.Version {
-			return v.Changes(last.Version, func(path string, data []byte) error {
+			for _, name := range last.Files {
+				files[name] = struct{}{}
+			}
+			return v.Changes(last.Version, func(path string, route int, data []byte) error {
 				if data != nil {
-					return writePage(path, data)
+					return writePage(path, route, data)
 				}
-				if _, copied := next.Copied[pageFile(path)]; copied {
+				name := pageFile(site, route, path)
+				delete(files, name)
+				if _, copied := next.Copied[name]; copied {
 					return nil
 				}
-				return remove(pageFile(path))
+				return remove(name)
 			})
 		}
 		kept := map[string]struct{}{}
-		err = v.Pages(func(path string, data []byte) error {
-			kept[pageFile(path)] = struct{}{}
-			return writePage(path, data)
+		err = v.Pages(func(path string, route int, data []byte) error {
+			kept[pageFile(site, route, path)] = struct{}{}
+			return writePage(path, route, data)
 		})
 		if err != nil || !followed {
 			return err
+		}
+		for _, name := range last.Files {
+			_, page := kept[name]
+			_, copied := next.Copied[name]
+			if !page && !copied {
+				if err := remove(name); err != nil {
+					return err
+				}
+			}
 		}
 		return removeOtherPages(dir, kept, next.Copied, remove)
 	})
@@ -239,11 +265,16 @@ func readList(dir string) (list, bool) {
 	return last, true
 }
 
-// pageFile returns the file a page is written to, named the way SvelteKit
-// names the pages it prerenders: /about is about.html, and static hosts
-// serve /about from it; / is index.html. The page for missing addresses is
-// 404.html, where hosts look for it.
-func pageFile(address string) string {
+// pageFile returns the file a page of a route is written to. A page of
+// templates is named the way SvelteKit names the pages it prerenders:
+// /about is about.html, and static hosts serve /about from it; / is
+// index.html. The page for missing addresses is 404.html, where hosts look
+// for it. The file a module gives is named by its address: /sitemap.xml is
+// sitemap.xml.
+func pageFile(site *skeleton.Site, route int, address string) string {
+	if site.FileRoute(route) {
+		return strings.TrimPrefix(address, "/")
+	}
 	switch address {
 	case "/":
 		return "index.html"

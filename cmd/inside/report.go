@@ -171,7 +171,7 @@ func exportAfter(path string, since int64) (build, remove []string, err error) {
 	}
 	defer st.Close()
 	err = st.View(func(v *store.View) error {
-		return v.Changes(since, func(path string, record []byte) error {
+		return v.Changes(since, func(path string, _ int, record []byte) error {
 			if record == nil {
 				remove = append(remove, path)
 			} else {

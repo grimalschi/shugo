@@ -149,7 +149,7 @@ func (s *site) addresses() []string {
 	s.t.Helper()
 	var out []string
 	err := s.store.View(func(v *store.View) error {
-		return v.Pages(func(path string, _ []byte) error {
+		return v.Pages(func(path string, _ int, _ []byte) error {
 			out = append(out, path)
 			return nil
 		})

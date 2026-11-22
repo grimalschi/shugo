@@ -332,7 +332,7 @@ func TestPagesStayWholeDuringUpdates(t *testing.T) {
 					failures <- fmt.Sprintf("the page was not built: %v", err)
 					return
 				}
-				html := string(page.HTML)
+				html := string(page.Body)
 				listed := strings.Count(html, "<li>")
 				if !strings.Contains(html, fmt.Sprintf("· %d products</header>", listed)) {
 					failures <- "the header and the list come from different states: " + html

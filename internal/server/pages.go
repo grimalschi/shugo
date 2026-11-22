@@ -5,6 +5,7 @@ package server
 import (
 	"errors"
 	"fmt"
+	"mime"
 	"sync"
 
 	"github.com/grimalschi/shugo/internal/record"
@@ -112,40 +113,57 @@ func (s *source) Shared(id int64) (*record.Record, error) {
 
 // Page is one page as the store has it at some moment.
 type Page struct {
-	HTML  []byte
+	// Body is the page: its HTML, or the file a module gives.
+	Body []byte
+	// Type is the media type of the body: "text/html; charset=utf-8" for
+	// a page of templates.
+	Type  string
 	Found bool
 	// Site is the skeleton the page was built by.
 	Site *skeleton.Site
 }
 
-// Render appends the HTML of the page at path to dst.
+// Render appends the page at path to dst.
 func (p *Pages) Render(dst []byte, path string) (Page, error) {
-	page := Page{HTML: dst}
+	page := Page{Body: dst}
 	err := p.store.View(func(v *store.View) error {
 		site, err := p.skeleton(v)
 		if err != nil {
 			return err
 		}
 		page.Site = site
-		data, found, err := v.Page(path)
+		data, route, found, err := v.Page(path)
 		if err != nil || !found {
 			return err
 		}
-		html, err := build(dst, site, data, &source{view: v})
+		body, err := build(dst, site, route, data, &source{view: v})
 		if err != nil {
 			return fmt.Errorf("page %s: %w", path, err)
 		}
-		page.HTML, page.Found = html, true
+		page.Body, page.Type, page.Found = body, mediaType(site, route), true
 		return nil
 	})
 	return page, err
 }
 
-// build builds the HTML of a page from its record.
-func build(dst []byte, site *skeleton.Site, data []byte, src *source) ([]byte, error) {
+// build builds a page of a route from its record.
+func build(dst []byte, site *skeleton.Site, route int, data []byte, src *source) ([]byte, error) {
 	rec, err := record.Decode(data)
 	if err != nil {
 		return dst, err
 	}
-	return render.Page(dst, site, rec, src)
+	return render.Page(dst, site, route, rec, src)
+}
+
+// mediaType tells what a page of a route is: HTML, or for a module the
+// type of the files it gives, as their extension names it for a file of
+// the public folder.
+func mediaType(site *skeleton.Site, route int) string {
+	if !site.FileRoute(route) {
+		return "text/html; charset=utf-8"
+	}
+	if t := mime.TypeByExtension(site.Routes[route].Extension); t != "" {
+		return t
+	}
+	return "application/octet-stream"
 }

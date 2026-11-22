@@ -715,16 +715,34 @@ class Run {
     this.emit(record);
   }
 
-  // page computes one page of a route from its address alone: the page
-  // itself, then every layout around it, from the innermost. The parameters
-  // are read from the address: what getStaticPaths wrote as a number is a
-  // text there.
+  // page computes one page of a route from its address alone: a page of
+  // templates, then every layout around it, from the innermost; or the file
+  // that a module gives. The parameters are read from the address: what
+  // getStaticPaths wrote as a number is a text there.
   page(path, index) {
-    if (this.site.routes[index] === undefined) throw new Error(`the page ${path} was asked for under route ${index}, which this project's compiled code does not have: build the project again`);
+    const route = this.site.routes[index];
+    if (route === undefined) throw new Error(`the page ${path} was asked for under route ${index}, which this project's compiled code does not have: build the project again`);
     const record = new Record("p", path, index);
     const scope = { page: this.pageOf({ "@route": index, "@path": path }), snippets: null, reads: record.reads, frame: null, props: {} };
-    computing({ reads: record.reads, page: scope.page, route: null }, () => this.around(record, index, scope));
+    computing({ reads: record.reads, page: scope.page, route: null }, () => (route.extension === undefined ? this.around(record, index, scope) : this.file(record, route)));
     this.emit(record);
+  }
+
+  // file computes a file that a module among the pages gives: the text its
+  // function GET returns, the one value of the one block of the record.
+  file(record, route) {
+    const path = this.site.files[route.file].path;
+    const { GET } = this.modules.get(route.file);
+    if (typeof GET !== "function") throw new Error(`${path} gives the file ${record.key}, so it must export the function GET, which returns the text of the file: export function GET() { return "…" }`);
+    const text = GET(noArguments("GET", 'import { query, page } from "shugo" at the top of the module, and read page.params and page.url'));
+    if (typeof text?.then === "function") throw new Error(`GET of ${path} waits (it is async or returns a promise): files are computed without waiting; the data comes from the data database through query`);
+    if (typeof text !== "string") {
+      const hint = typeof Response === "function" && text instanceof Response ? ": a Response is read by waiting, so return the text itself" : typeof text === "object" && text !== null ? ": JSON.stringify(…) makes one of data" : "";
+      throw new Error(`GET of ${path} must return the text of the file, and returned ${describe(text)}${hint}`);
+    }
+    const block = record.block(route.file, 0);
+    block.values.push(escape(text));
+    record.top = block.index;
   }
 
   // pageOf returns the page a shared block is kept for: the route and the
@@ -848,7 +866,8 @@ function snippetsOf(snippets) {
 // Routes
 
 // address builds the address of a page from the route and the parameters
-// that getStaticPaths returned for it.
+// that getStaticPaths returned for it. The address of a file that a module
+// gives ends with the extension of its route.
 function address(route, params) {
   const parts = [];
   for (const segment of route.segments) {
@@ -870,12 +889,15 @@ function address(route, params) {
       parts.push(part);
     }
   }
-  return "/" + parts.join("/");
+  if (route.extension === undefined) return "/" + parts.join("/");
+  if (parts.length === 0) throw new Error(`getStaticPaths of ${route.pattern} returned params that leave no name before ${route.extension}`);
+  return "/" + parts.join("/") + route.extension;
 }
 
 // parameters reads the parameters of a page from its address: what address()
 // does, backwards. The route is known, so the address fits it.
 function parameters(route, path) {
+  if (route.extension !== undefined) path = path.slice(0, -route.extension.length);
   const parts = path === "/" ? [] : path.slice(1).split("/");
   const params = {};
   let at = 0;
@@ -930,8 +952,9 @@ function paginator(route) {
 // and what getStaticPaths says for the others.
 function entries(route, module) {
   if (!route.segments.some((segment) => segment.text === undefined)) return [{ params: {} }];
-  if (typeof module.getStaticPaths !== "function") throw new Error(`${route.pattern} has parameters, so its script must export getStaticPaths`);
-  const list = module.getStaticPaths(noArguments);
+  const where = route.extension === undefined ? "<script module>" : "the module";
+  if (typeof module.getStaticPaths !== "function") throw new Error(`${route.pattern} has parameters, so ${where} must export getStaticPaths`);
+  const list = module.getStaticPaths(noArguments("getStaticPaths", `import { query, paginate } from "shugo" at the top of ${where}`));
   if (typeof list?.then === "function") throw new Error(`getStaticPaths of ${route.pattern} waits (it is async or returns a promise): pages are computed without waiting; the data comes from the data database through query`);
   if (!Array.isArray(list)) throw new Error(`getStaticPaths of ${route.pattern} must return a list of { params }, got ${describe(list)}`);
   for (const entry of list) {
@@ -1036,13 +1059,16 @@ export async function run(modules) {
   }
 }
 
-// getStaticPaths takes nothing: what it needs comes from the module shugo.
-// One that takes { query, paginate }, as in Astro, is told so.
-const noArguments = new Proxy({}, {
-  get(_, name) {
-    throw new Error(`getStaticPaths gets no ${String(name)}: import { query, paginate } from "shugo" at the top of <script module>`);
-  },
-});
+// getStaticPaths and GET take nothing: what they need comes from the module
+// shugo. One that takes { query, paginate } or { params }, as in Astro, is
+// told where to find it.
+function noArguments(what, instead) {
+  return new Proxy({}, {
+    get(_, name) {
+      throw new Error(`${what} gets no ${String(name)}: ${instead}`);
+    },
+  });
+}
 
 // Authors who know Astro reach for its global by habit, and the global
 // Shugo is gone.

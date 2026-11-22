@@ -37,7 +37,7 @@ type Site struct {
 	Redirects map[string]string `json:"redirects,omitempty"`
 }
 
-// File is one compiled template.
+// File is one compiled template, or a module among the pages.
 type File struct {
 	Path string `json:"path"`
 	// Shared tells that the template shows the same on every page when it is
@@ -49,13 +49,29 @@ type File struct {
 	Parts [][]Op `json:"parts"`
 }
 
-// Route is one page file and the addresses it gives.
+// ModuleFile is a module among the pages as the skeleton has it: its one
+// part writes the text that its function GET returns, as it is.
+func ModuleFile(path string) File {
+	return File{Path: path, Parts: [][]Op{{{Kind: HTML}}}}
+}
+
+// Route is one file among the pages and the addresses it gives: a page of
+// templates, or a module that gives files of another type.
 type Route struct {
 	File     int       `json:"file"`
-	Pattern  string    `json:"pattern"` // "/products/[slug]"
+	Pattern  string    `json:"pattern"` // "/products/[slug]", "/sitemap.xml"
 	Segments []Segment `json:"segments"`
+	// Extension ends the addresses of a route whose file is a module: it
+	// gives files of that type, ".xml", and not pages of HTML.
+	Extension string `json:"extension,omitempty"`
 	// Layouts are the files wrapped around the page, the outermost first.
 	Layouts []int `json:"layouts"`
+}
+
+// FileRoute tells whether a route of the site is that of a module among the
+// pages, which gives files that are not HTML.
+func (s *Site) FileRoute(route int) bool {
+	return route >= 0 && route < len(s.Routes) && s.Routes[route].Extension != ""
 }
 
 // Segment is one part of an address between slashes: text, a parameter that

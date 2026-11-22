@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/grimalschi/shugo/internal/route"
 )
 
 // The folders and files every project has by the same names.
@@ -83,21 +85,42 @@ func (p *Project) Data() string {
 // Templates returns the .shugo files of the project: those in src/,
 // sorted. The paths are relative to the root and use "/".
 func (p *Project) Templates() ([]string, error) {
+	return p.files(Source, func(name string) bool { return strings.HasSuffix(name, route.Extension) })
+}
+
+// PageModules returns the modules of code among the pages, the .ts and .js
+// files in src/pages/, as Templates returns its files: each gives files of
+// the site that are not HTML. One whose name or folder starts with _ is
+// code for others to import, and is not among them.
+func (p *Project) PageModules() ([]string, error) {
+	all, err := p.files(Pages, route.Module)
+	out := all[:0]
+	for _, path := range all {
+		if !strings.Contains(strings.TrimPrefix(path, Pages), "/_") {
+			out = append(out, path)
+		}
+	}
+	return out, err
+}
+
+// files returns the files in a folder of the project whose names it keeps,
+// sorted.
+func (p *Project) files(folder string, keep func(name string) bool) ([]string, error) {
 	var out []string
-	source := p.Path(Source)
-	err := filepath.WalkDir(source, func(path string, entry fs.DirEntry, err error) error {
+	top := p.Path(filepath.FromSlash(folder))
+	err := filepath.WalkDir(top, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		name := entry.Name()
 		if entry.IsDir() {
 			// Not sources: installed packages and hidden folders.
-			if path != source && (name == "node_modules" || strings.HasPrefix(name, ".")) {
+			if path != top && (name == "node_modules" || strings.HasPrefix(name, ".")) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		if strings.HasSuffix(name, ".shugo") {
+		if keep(name) {
 			rel, _ := filepath.Rel(p.Root, path)
 			out = append(out, filepath.ToSlash(rel))
 		}

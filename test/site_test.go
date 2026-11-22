@@ -161,7 +161,7 @@ func (s *site) page(address string) string {
 	if !page.Found {
 		s.t.Fatalf("there is no page %s", address)
 	}
-	return string(page.HTML)
+	return string(page.Body)
 }
 
 func (s *site) has(address string) bool {
