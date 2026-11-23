@@ -170,7 +170,17 @@ The scheme has changed the database tables have changed. The journal can not say
 
 ### Libraries without synchronous option
 
-Page is calculated without waiting: `await` is not in its code. A library that can only wait Markdown parsing with plugins, API query, code highlighting cannot be called for each page. Its place is an adapter: it waits as long as necessary, and puts the finished HTML articles in the database, the answer is API, the data is analyzed. What you need once for the entire calculation, for example, a created backlight, you can wait at the top level of the module from `src/lib/`. The author of the project postponed the question of whether this is enough, here 22 November 2026 year; advice - enough.
+Page is calculated without waiting: `await` is not in its code. A library that can only wait Markdown parsing with plugins, API query, code highlighting cannot be called for each page. Its place is an adapter: it waits as long as necessary, and puts the finished HTML articles in the database, the answer is API, the data is analyzed. What you need once for the entire calculation, for example, created a backlight, you can wait at the top level of the module from `src/lib/` or `<script module>`. The author of the project postponed the question whether this is enough, here 22 November 2026 year; advice - enough.
+
+Another way is to allow `await` in the page itself, in `<script>` and in the markup. The author of the project postponed it, 23 November 2026. What is clarified:
+
+- Svelte 5.59.1 can render with expectation, but under the flag of `experimental.async`, it is by default off: it is still an experiment of Svelte.
+- Server output in this mode is different. The server output holds the page sliced into blocks, a separate render of common blocks and snippets, and the islands programs that Go performs.
+- The account that the page read from the database is based on the fact that the page is considered in a row, without pauses. After waiting it would have to be restored, otherwise the reading will be written to the wrong page.
+- `await fetch(…)` in the page will cease to be an assembly error: a page with data past the database will silently become obsolete.
+- No waiting calculation faster. Measurement of 21 November 2026 years, the first assembly of the store on 100,000 products: on Bun 7.41–7.44 s vs 7.50–7.75 s with waiting, on Node 9.66–9.82 s vs 10.88–11.46 s.
+
+It is worth returning to this when you need a library that has only an asynchronous call and which you need to call for each page.
 
 ### Commands
 
