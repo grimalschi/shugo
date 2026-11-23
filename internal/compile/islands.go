@@ -151,7 +151,8 @@ const noShugo = "__shugo_island_runtime_unavailable_3ef1b7c4__"
 func (b *builder) islandOptions() api.BuildOptions {
 	return api.BuildOptions{
 		Bundle: true, Format: api.FormatESModule, Target: api.ESNext, Charset: api.CharsetUTF8,
-		Alias: map[string]string{"@": b.project.Path(project.Source)}, Define: map[string]string{"Shugo": noShugo},
+		Conditions: []string{"production"}, // Svelte and packages without what only runs in development
+		Alias:      map[string]string{"@": b.project.Path(project.Source)}, Define: map[string]string{"Shugo": noShugo},
 		AbsWorkingDir: b.project.Root, LegalComments: api.LegalCommentsNone, Metafile: true, LogLevel: api.LogLevelSilent,
 		MinifyIdentifiers: true, MinifySyntax: true, MinifyWhitespace: true,
 	}
@@ -159,15 +160,11 @@ func (b *builder) islandOptions() api.BuildOptions {
 
 // sveltePlugin has Svelte compile the graph of an island, for the browser
 // or for the server, ordinary components it shares with pages included; the
-// modules of Svelte come from the runtimes Shugo ships.
+// modules of Svelte come from the package svelte the build runs.
 func (b *builder) sveltePlugin(entries map[string]string, client bool) api.Plugin {
 	return api.Plugin{Name: "shugo-svelte", Setup: func(build api.PluginBuild) {
 		rejectOldTemplates(build)
-		if client {
-			svelte.BrowserRuntime(build)
-		} else {
-			svelte.Runtime(build)
-		}
+		b.sveltePackage.Runtime(build, client)
 		build.OnResolve(api.OnResolveOptions{Filter: `^shugo-island-`}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
 			return api.OnResolveResult{Path: args.Path, Namespace: "shugo-island"}, nil
 		})

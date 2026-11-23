@@ -15,7 +15,11 @@ func compiler(t *testing.T) *Compiler {
 	if _, err := exec.LookPath(runtime); err != nil {
 		runtime = "node"
 	}
-	c, err := Start(runtime, t.TempDir())
+	pkg, err := Find(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := pkg.Start(runtime, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

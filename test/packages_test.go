@@ -68,7 +68,7 @@ func TestPackageMistakes(t *testing.T) {
 		{"a package that is not installed", page + "-- bun.lock --\n{}", `src/pages/index.svelte:2:24: date-fns is not installed: bun add date-fns`},
 		{"a package that npm installs", page + "-- package-lock.json --\n{}", `date-fns is not installed: npm install date-fns`},
 		{"a package for Svelte 4", page + "-- node_modules/date-fns/package.json --\n{\"name\": \"date-fns\", \"main\": \"index.js\", \"peerDependencies\": {\"svelte\": \"^3.0.0 || ^4.0.0\"}}\n-- node_modules/date-fns/index.js --\nexports.format = () => \"\"",
-			"date-fns needs Svelte ^3.0.0 || ^4.0.0, and Shugo has Svelte 5.59.1 inside: take a version of date-fns made for Svelte 5"},
+			"date-fns needs Svelte ^3.0.0 || ^4.0.0, and Shugo is made for Svelte 5.59.1: take a version of date-fns made for Svelte 5"},
 		{"native code in a package", page + "-- node_modules/date-fns/package.json --\n{\"name\": \"date-fns\", \"main\": \"index.js\"}\n-- node_modules/date-fns/index.js --\nexports.format = require(\"./build/format.node\").format\n-- node_modules/date-fns/build/format.node --\nnot javascript",
 			`No loader is configured for ".node" files: node_modules/date-fns/build/format.node: the package date-fns brings a file that is not JavaScript`},
 		{"a package that reads its own files", page + "-- node_modules/date-fns/package.json --\n{\"name\": \"date-fns\", \"main\": \"index.js\"}\n-- node_modules/date-fns/index.js --\nconst words = require(\"node:fs\").readFileSync(__dirname + \"/words.txt\", \"utf8\")\nexports.format = () => words\n-- node_modules/date-fns/words.txt --\nwords",

@@ -26,13 +26,3 @@ The network code pages is now not allowed: `await` is prohibited. But the file c
 - c) leave as is: this is found by `shugo update -check`.
 
 **The Council:** a): This shows where the site wants to take data past the database, and this place will be a task for the data adapter.
-
-### 3. `shugo check`: Sewing or delivering with package
-
-`svelte-check` and TypeScript decided to sew into the `shugo` program when the project did not need npm. With 23 November Shugo itself is put through `bun add shugo`, and npm in the project is always there. In such a project, `svelte-check` already works with `tsconfig.json` in one line: 23 November 2026 has been verified.
-
-- a) `shugo` package dependencies: `svelte-check` and `typescript` are put together with it, and `shugo check` runs them from `node_modules`. Versions are what the package called `shugo`;
-- b) sew as decided: TypeScript 5.9 - 23.6 MB code, `svelte-check` - about 6 MB with dependencies, in each of the six programs. TypeScript 7 - not JavaScript, and the program for each system, and only for the whole system;
-- c) Do not bet: `shugo check` asks for `bun add -d svelte-check typescript`.
-
-**The Council:** a): the package manager is already in place, and the `shugo` program remains in 17–18 MB.

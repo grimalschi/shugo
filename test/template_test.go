@@ -136,7 +136,7 @@ const names = new SvelteMap([["a", "A"]])
 import { run } from "svelte/legacy"
 </script>
 <p>x</p>`)
-	if _, err := s.tryBuild(); err == nil || !strings.Contains(err.Error(), "svelte/legacy is not a part of it") {
+	if _, err := s.tryBuild(); err == nil || !strings.Contains(err.Error(), "svelte/legacy is not among the modules it takes") {
 		t.Errorf("a module of Svelte that a server has no use for: %v", err)
 	}
 }

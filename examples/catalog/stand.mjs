@@ -27,13 +27,18 @@ const size = Number(option("size", 1000));
 const shugo = option("shugo", join(here, "../../bin/shugo"));
 const runtime = option("runtime", "");
 
+// The program runs without the command of the package shugo, which would
+// tell it where Svelte is: the stand tells it, for the copy built from
+// scratch outside the repository too. bun install puts Svelte there.
+const env = { ...process.env, SHUGO_SVELTE: process.env.SHUGO_SVELTE ?? join(here, "../../node_modules/svelte") };
+
 // run runs a command of shugo and returns its report, with the time the
 // whole command took: starting it is a part of what an update costs.
 const run = (command, folder = here, ...more) => {
   const started = performance.now();
   const args = [command, "-json"];
   if (runtime && (command === "build" || command === "update")) args.push("-runtime", runtime);
-  const report = JSON.parse(execFileSync(shugo, [...args, ...more, folder], { encoding: "utf8", maxBuffer: 1 << 30 }));
+  const report = JSON.parse(execFileSync(shugo, [...args, ...more, folder], { encoding: "utf8", maxBuffer: 1 << 30, env }));
   report.took = performance.now() - started;
   return report;
 };

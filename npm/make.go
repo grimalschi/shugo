@@ -34,10 +34,6 @@ var systems = []struct{ npm, goos, goarch string }{
 	{"win32-x64", "windows", "amd64"},
 }
 
-// The notices of what the program carries inside: Svelte and the code it is
-// made of.
-var notices = []string{"internal/svelte/vendor/SVELTE-LICENSE.md", "internal/svelte/vendor/THIRD-PARTY.md"}
-
 func main() {
 	version := flag.String("version", "", "the version of the packages, such as 0.1.0")
 	only := flag.String("only", "", "the systems to make, such as linux-x64,darwin-arm64; all if empty")
@@ -115,22 +111,13 @@ func systemPackage(out, version, system, goos, goarch string) error {
 		Name: "@shugo/" + system, Version: version,
 		Description: "The shugo command for " + system + ": the package shugo runs it",
 		License:     "UNLICENSED", OS: cpu[:1], CPU: cpu[1:],
-		Files: []string{"bin", "SVELTE-LICENSE.md", "THIRD-PARTY.md"}, PreferUnplugged: true,
+		Files: []string{"bin"}, PreferUnplugged: true,
 	}, "", "  ")
 	if err != nil {
 		return err
 	}
 	if err := write(filepath.Join(out, "package.json"), append(manifest, '\n'), 0o644); err != nil {
 		return err
-	}
-	for _, notice := range notices {
-		data, err := os.ReadFile(filepath.FromSlash(notice))
-		if err != nil {
-			return err
-		}
-		if err := write(filepath.Join(out, filepath.Base(notice)), data, 0o644); err != nil {
-			return err
-		}
 	}
 	info, err := os.Stat(program)
 	if err != nil {

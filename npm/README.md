@@ -1,37 +1,37 @@
-# npm Packages
+# npm packages
 
-Shugo is put in the project package npm, as esbuild:
+Shugo uses the same package layout as esbuild.
 
-- `shugo` What the project puts forward: `bun add shugo`. Command `shugo` (`bin/shugo.js`Types of Modules `shugo` (`index.d.ts`), settings TypeScript the Project (`tsconfig.json`He inherits `tsconfig.json` Project and Dependency `svelte` The same version as the program: editor and `svelte-check` Take Types Svelte Rune and Rune`ambient.d.ts`).
-- `@shugo/<system>-<cPU>` is a ready program of `shugo` for one system: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `win32-x64`, `win32-arm64`. They are optional dependencies of the `shugo` package with `os` and `cpu` fields, so the package manager puts only the one that suits the machine. The `shugo` package command finds it and runs it with the same arguments. Each package contains a Svelte license and information about the code it is made of: the program carries Svelte inside.
+- `shugo` provides the `shugo` command, the `shugo` module types in `index.d.ts`, and the `tsconfig.json` projects can extend. It pins Svelte, `svelte-check`, and TypeScript. Builds use Svelte's compiler and runtime. The `shugo check` command uses the paired `svelte-check` and TypeScript versions, and editors load the Svelte and rune types through `ambient.d.ts`. The command passes the dependency paths to the executable through `SHUGO_SVELTE` and `SHUGO_SVELTE_CHECK`.
+- `@shugo/<platform>-<arch>` provides the executable for each target. Targets are `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `win32-x64`, and `win32-arm64`. The platform packages are optional dependencies with `os` and `cpu` fields. The package manager installs the matching binary, and the command forwards its arguments to it.
 
-Here lies the `shugo` package with the version of `0.0.0`; packages for systems make `make.go`.
+The source `shugo` package uses version `0.0.0`. The `make.go` script creates distribution packages with the specified version.
 
-## Collect
+## Build
 
-From the Repository Root:
+Run from the repository root.
 
 ```sh
-go run npm/make.go -version 0.1.0                    # all systems, about one and a half minutes
-go run npm/make.go -version 0.1.0 -only linux-x64    # one
+go run npm/make.go -version 0.1.0                    # all targets, about 90 seconds
+go run npm/make.go -version 0.1.0 -only linux-x64    # one target
 ```
 
-Packages are placed in `npm/dist/`, each with its own folder: `npm/dist/shugo` with the affixed version and `npm/dist/@shugo/linux-x64` and others. The program is assembled without cgo, so it is suitable for any system with any.
+Each package is written under `npm/dist/`, including `npm/dist/shugo` and directories such as `npm/dist/@shugo/linux-x64`. The executable builds with cgo disabled.
 
 ## Publish
 
-First packages under the system, then `shugo`, which refers to them:
+Publish the platform packages first, then the `shugo` package that references them.
 
 ```sh
 for package in npm/dist/@shugo/*; do (cd "$package" && npm publish --access public); done
 (cd npm/dist/shugo && npm publish)
 ```
 
-Prior to the first publication, `shugo` is listed in npm for `@shugo/…` names and Shugo license instead of `UNLICENSED`.
+The first release needs an npm organization for the `@shugo` scope and a project license to replace `UNLICENSED`.
 
-## Check without posting
+## Verify locally
 
-Packages compressed into archives are put in the project as published; packages under the system place in `overrides`:
+Pack the distributions and use an override for the local platform tarball.
 
 ```sh
 for package in npm/dist/shugo npm/dist/@shugo/*; do (cd "$package" && bun pm pack --destination /tmp/packs); done
@@ -50,4 +50,4 @@ bun add shugo@file:/tmp/packs/shugo-0.1.0.tgz
 bunx shugo build
 ```
 
-So checked 23 November 2026 Years on Linux: `bun add` We have a team, program and Svelte, `bunx shugo build` I have a website, and TypeScript 5.9 and 7.0 and `svelte-check` S `tsconfig.json` In one line found errors in `query`, `page` and `svelte/store`, and only them. Repository test `TestTypesOfTheModuleShugo` Verify `index.d.ts` Exporting the module `shugo`, and `TestPackageCommand` Checks the command from the package for Node and Bun.
+A Linux test on November 23, 2026 installed the CLI, executable, and Svelte and built a site. TypeScript 5.9 and 7.0 and `svelte-check` caught the deliberately invalid uses of `query`, `page`, and `svelte/store` with a one-line `tsconfig.json`. `TestTypesOfTheModuleShugo` compares `index.d.ts` with the exports of the `shugo` module. `TestPackageCommand` checks the CLI wrapper on Node and Bun.
