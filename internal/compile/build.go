@@ -581,7 +581,7 @@ func (b *builder) bundle(routes []skeleton.Route, islands *islandOutput) (*bundl
 			case "shugo:query":
 				contents = jsrt.Query
 			case shugoModule:
-				contents = "export { query, paginate, page } from \"shugo:runtime\";\nexport { search } from \"shugo:search\";"
+				contents = shugoExports
 			case "shugo:wire":
 				contents = jsrt.Wire
 			case searchModule:
@@ -838,6 +838,10 @@ var missingExport = regexp.MustCompile(`^No matching export in "([^"]+)" for imp
 
 // shugoModule is the module shugo as the bundler knows it.
 const shugoModule = "shugo:module"
+
+// shugoExports is the module shugo: what the code of a project imports. Its
+// types are npm/shugo/index.d.ts, which the package shugo gives a project.
+const shugoExports = "export { query, paginate, page } from \"shugo:runtime\";\nexport { search } from \"shugo:search\";"
 
 // svelteServer is svelte/internal/server as the code Svelte compiled takes it.
 const svelteServer = "shugo:svelte-server"

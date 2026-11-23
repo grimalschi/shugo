@@ -39,6 +39,8 @@ bin/shugo serve examples/basic        # server
 bin/shugo export examples/basic       # site to files: examples/basic/_build/dist
 ```
 
+The Site Project Shugo the Package npm: `bun add shugo`, then `bunx shugo build`. With the package come and module types `shugo`: `tsconfig.json` Project one line `{ "extends": "shugo/tsconfig.json" }`. The packages collect `go run npm/make.go -version 0.1.0`They have not been published yet ([Command line](spec/cli.md#the-shugo-npm-package)).
+
 ## Repository layout
 
 | Folder | What's up? |
@@ -52,6 +54,7 @@ bin/shugo export examples/basic       # site to files: examples/basic/_build/dis
 | [examples/search](examples/search/README.md) | Svelte islands: search by two tables with filters in the address and two islands without searching on one page |
 | [examples/tailwind](examples/tailwind) | styles through Tailwind |
 | `cmd/shugo` | `shugo` |
+| [npm/](npm/README.md) | npm `shugo` package, through which Shugo is put into the project: command, `shugo` module types, TypeScript settings; and assembly of packages with a program for each system |
 | `cmd/inside` | booth program «Shugo inside» |
 | `internal/` | framework, by package per stage: `svelte` (Sweet) Svelte), `compile`, `jsrt`, `data`, `evaluate`, `store`, `record`, `render`, `server` |
 | `test/` | tests that run entire sites through all stages; `test/svelte` is the test task and HTML gives them Svelte |

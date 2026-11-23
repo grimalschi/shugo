@@ -1,0 +1,24 @@
+{
+	"compilerOptions": {
+		"target": "esnext",
+		"module": "esnext",
+		"moduleResolution": "bundler",
+		"lib": ["esnext", "DOM", "DOM.Iterable"],
+		"verbatimModuleSyntax": true,
+		"isolatedModules": true,
+		"noEmit": true,
+		"allowImportingTsExtensions": true,
+		"allowJs": true,
+		"checkJs": true,
+		"strict": true,
+		"skipLibCheck": true,
+		"resolveJsonModule": true,
+		"forceConsistentCasingInFileNames": true,
+		"paths": {
+			"@/*": ["${configDir}/src/*"]
+		}
+	},
+	"files": ["./ambient.d.ts"],
+	"include": ["${configDir}/src/**/*.ts", "${configDir}/src/**/*.js", "${configDir}/src/**/*.svelte"],
+	"exclude": ["${configDir}/_build", "${configDir}/node_modules"]
+}

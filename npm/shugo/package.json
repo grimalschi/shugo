@@ -1,0 +1,35 @@
+{
+  "name": "shugo",
+  "version": "0.0.0",
+  "description": "Static sites from Svelte templates and a SQLite database, computed again page by page when the data changes",
+  "license": "UNLICENSED",
+  "type": "module",
+  "bin": {
+    "shugo": "bin/shugo.js"
+  },
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts"
+    },
+    "./tsconfig.json": "./tsconfig.json",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin",
+    "index.d.ts",
+    "ambient.d.ts",
+    "tsconfig.json"
+  ],
+  "dependencies": {
+    "svelte": "5.59.1"
+  },
+  "optionalDependencies": {
+    "@shugo/darwin-arm64": "0.0.0",
+    "@shugo/darwin-x64": "0.0.0",
+    "@shugo/linux-arm64": "0.0.0",
+    "@shugo/linux-x64": "0.0.0",
+    "@shugo/win32-arm64": "0.0.0",
+    "@shugo/win32-x64": "0.0.0"
+  }
+}

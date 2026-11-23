@@ -2,10 +2,13 @@ package compile
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -300,4 +303,26 @@ func templateProject(t *testing.T, files map[string]string) *project.Project {
 		t.Fatal(err)
 	}
 	return p
+}
+
+// The types the package shugo gives a project name what the module shugo
+// exports, no more and no less.
+func TestTypesOfTheModuleShugo(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "npm", "shugo", "index.d.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	declared := map[string]bool{}
+	for _, m := range regexp.MustCompile(`(?m)^export (?:function|const) (\w+)`).FindAllStringSubmatch(string(data), -1) {
+		declared[m[1]] = true
+	}
+	exported := map[string]bool{}
+	for _, m := range regexp.MustCompile(`export \{([^}]*)\}`).FindAllStringSubmatch(shugoExports, -1) {
+		for _, name := range strings.Split(m[1], ",") {
+			exported[strings.TrimSpace(name)] = true
+		}
+	}
+	if !maps.Equal(declared, exported) {
+		t.Errorf("the module shugo exports %v, and its types declare %v", slices.Sorted(maps.Keys(exported)), slices.Sorted(maps.Keys(declared)))
+	}
 }
