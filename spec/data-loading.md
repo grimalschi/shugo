@@ -66,4 +66,4 @@ What is lost: a library without a synchronous option cannot be called for each p
 
 ## Open questions
 
-- Libraries without a synchronous version: whether the top of the module and adapter is enough is postponed in [proposal for an adapter](../docs/proposals/data-adapter.md#libraries-without-synchronous-option).
+- Libraries without a synchronous version: whether the top of the module and adapter is enough is postponed in [proposal for an adapter](../docs/proposals/data-adapter.md#libraries-without-synchronous-option). There is also postponed waiting in the page itself - Svelte render with `experimental.async` (the decision of the author of the project 23 November 2026 year).
