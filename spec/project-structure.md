@@ -12,6 +12,7 @@ The document describes what folders and files are in the project on Shugo and wh
 - `sitemap.xml`, `robots.txt` and other files not in HTML write `.ts` modules among pages (22 solution November 2026 years), see [Routing](routing.md#files-not-in-html).
 - Svelte is sewn into Shugo by one version - the compiler, server and browser parts: the project does not need to put the `svelte` package, neither for pages nor for islands (the decision of the author of the project 22 November 2026 year).
 - `.svelte` components from npm packages are not compiled yet: their import is an assembly error with a prompt to copy the component to `src/components/`. Compile them with Svelte sewn when component libraries are needed (22 project author’s decision of November 2026 year). *This is about the pages: the island is compiled entirely by the sewn Svelte, and the package component works in it now (checked 22 November 2026 year).*
+- Shugo itself is put into the project by npm, `bun add shugo` package, and the `shugo` module types come into the project with it (the decision of the author of the 23 project is November 2026 year), see [Command line](cli.md#the-shugo-npm-package).
 - npm packages are put by the project package manager, `bun add` or `npm install`, in `node_modules`, as in any project on JavaScript; Shugo only reads them. The `svelte` package from `node_modules` is never taken. The package that does not exist, and the package that needs another version of Svelte, are build errors with a hint (the decision of the author of the project 22 November 2026 year).
 - Packages that import the page code are collected with it in `_build/eval.mjs`As in the islands: Svelte in them - sewn, each file in the assembly - source with hash, missing package - build error at the place of import, package with native code - error with a hint (project author's decision) 22 November 2026 years).
 
@@ -19,7 +20,8 @@ The document describes what folders and files are in the project on Shugo and wh
 
 ```
 shugo.json settings
-package.json dependencies from npm if they are needed
+package.json dependencies from npm: shugo and what imports the code
+tsconfig.json    { "extends": "shugo/tsconfig.json" }
 src/
   site.html every page shell: <html>, <head>, <body>
   pages/ pages and layouts; the location of the file specifies the address;
@@ -33,7 +35,7 @@ _build/ result of the framework; git is not included
 ```
 
 - Only the `src/pages/` folder is required. Without `src/site.html`, the framework shell is taken.
-- Svelte is not required: Svelte 5.59.1, a compiler, server and browser parts — Shugo brings with it, for the pages and islands. Imports of `svelte` and `svelte/…` and in the project code, and always take it in packages, even if `node_modules` contains another Svelte.
+- Svelte is not necessary to put: Svelte 5.59.1 - compiler, server and browser parts - Shugo brings with it, for pages and for islands. The `svelte` package of the same version comes with the `shugo` package, but only for types: editor and `svelte-check`. Importing `svelte` and `svelte/…` in both project code and packages always takes it, even if the `node_modules` is another Svelte.
 - The npm package is placed by `bun add date-fns` or `npm install date-fns` and imported by name. What the assembly can't take, she says at the import site: the package is not – `date-fns is not installed: bun add date-fns`; the command is on the project blocking file; the package needs another version of Svelte on its `peerDependencies` or `dependencies` – an error with both versions; the package does not bring JavaScript, such as the `.node` home code – an error with a clue to take the package into one JavaScript. The package that reads the file next to its code doesn't find it -- the package code now in `_build/` -- and falls when you compute with a clue.
 - `src/components/`, `src/lib/` and `src/styles/` are agreements: framework finds files by import, not by folder names.
 - `.svelte` files are only searched in `src/`, except for `node_modules` and hidden folders. Importing a `.svelte` file on the way out of `src/` is an assembly error with a hint of where it belongs. The `.svelte` component of the npm package and the package of such components are a build error with a hint: the components of the Shugo packages do not compile yet, the component is copied to `src/components/`.
@@ -81,7 +83,7 @@ Rename `.shugo` templates to `.svelte` and fix the import paths: the build finds
 
 ## Open questions
 
-- `shugo init` is a new project with an example, `src/site.html`, `tsconfig.json`, `shugo` module types for the editor and a memo for the agent: it is decided to do (21 solution November 2026 years), has not yet been done.
+- `shugo init` is a new project with an example, `src/site.html`, `package.json` with a package of `shugo`, `tsconfig.json` in one line and a memo for the agent: it is decided to do (the decision of 21 on November 2026 years), until done.
 - `$lib` from SvelteKit is on par with `@/`.
 - Tailwind is a project package. Whether to embed it in Shugo, like Svelte, or leave it as a package.
 - Whether the `shugo add` team needs a shortcut to the project package manager or the agent has enough memo.

@@ -2,17 +2,7 @@
 
 Questions are numbered: answer the numbers. Where there is advice, yes - to accept it. Decisions taken without confirmation are collected in [Decisions awaiting approval](decisions.md); proposals that do not yet exist are in [docs/proposals](../docs/proposals/README.md).
 
-### 1. Types for editor
-
-The editor does not know the module `shugo`: `import { query, page, search } from "shugo"` He points out as a mistake. 22 November 2026 Year Svelte sewn in Shugo, package `svelte` No project, and it is also highlighted. `import type { Snippet } from "svelte"`. Same types needed `shugo check`He will be `svelte-check` S TypeScriptsewn into Shugo.
-
-- a) types write assembly like SvelteKit in `.svelte-kit/`: `_build/types/shugo.d.ts`, ads sewn by Svelte and `_build/tsconfig.json` - where to look for them and what `@/` means. `tsconfig.json` is one line that does not change: `{ "extends": "./_build/tsconfig.json" }`; it is written by `shugo init`. Types of always that version of Shugo that the site assembles; until the first build, the editor does not see them;
-- b) npm package with the same types, which are put like any package. Works before the first build, but the version of the package needs to be updated together with Shugo, and the assembly - to check that they coincide;
-- c) `shugo init` puts a file with types in the project once. The easiest way, but after updating Shugo types become obsolete silently.
-
-**The Council:** a).
-
-### 2. `<svelte:boundary>` on static page
+### 1. `<svelte:boundary>` on static page
 
 `<svelte:boundary>` is made for the browser: it catches an error inside itself and shows instead of content the snippet `failed`, and while the content is waiting for data, the snippet `pending` shows. There is no browser part on the static page, and both snippets do not do what the author who knows Svelte expects. 22 November 2026 year:
 
@@ -27,7 +17,7 @@ There is nothing to wait on the page now: `await` is prohibited.
 
 **The Council:** a): One entry that does nothing on the page is less error for the agent.
 
-### 3. Reading past the database: files in the page code
+### 2. Reading past the database: files in the page code
 
 The network code pages is now not allowed: `await` is prohibited. But the file can be read immediately, without waiting: `readFileSync` from `node:fs`. This update does not track the file, and the page remains the same until it is calculated by `shugo build` or finds `shugo update -check`. The file that is imported, `import posts from "../../data/posts.json"`, is part of the code, and changing it reassembles the project; it's not about it.
 
@@ -36,3 +26,13 @@ The network code pages is now not allowed: `await` is prohibited. But the file c
 - c) leave as is: this is found by `shugo update -check`.
 
 **The Council:** a): This shows where the site wants to take data past the database, and this place will be a task for the data adapter.
+
+### 3. `shugo check`: Sewing or delivering with package
+
+`svelte-check` and TypeScript decided to sew into the `shugo` program when the project did not need npm. With 23 November Shugo itself is put through `bun add shugo`, and npm in the project is always there. In such a project, `svelte-check` already works with `tsconfig.json` in one line: 23 November 2026 has been verified.
+
+- a) `shugo` package dependencies: `svelte-check` and `typescript` are put together with it, and `shugo check` runs them from `node_modules`. Versions are what the package called `shugo`;
+- b) sew as decided: TypeScript 5.9 - 23.6 MB code, `svelte-check` - about 6 MB with dependencies, in each of the six programs. TypeScript 7 - not JavaScript, and the program for each system, and only for the whole system;
+- c) Do not bet: `shugo check` asks for `bun add -d svelte-check typescript`.
+
+**The Council:** a): the package manager is already in place, and the `shugo` program remains in 17–18 MB.

@@ -6,8 +6,8 @@
 - Changing the project code calculates the entire site anew, and this is correct. The development mode will receive a real Live Reload separately: [proposal](../docs/proposals/live-reload.md) (21 solution November 2026 year).
 - CLI messages and the specification use English so agents can read them and search for their wording. Confirmed November 21, 2026.
 - `shugo init` is needed: a new project with an example, `tsconfig.json`, types for the editor and a memo for the agent (21 solution November 2026 years). Not yet done.
-- Type checking is a separate `shugo check` command, along with component parameter checking (21 November 2026 solution). It is made by `svelte-check` with TypeScript sewn into Shugo as Svelte: the project does not need to put them, nor npm (the decision of the author of the project 22 November 2026 years). Not yet.
-- How `shugo` gets on the machine: ready files for all systems in releases on GitHub, npm package, which puts the finished file under the system, like esbuild, and Homebrew (22 solution November 2026 years). Not yet done.
+- Type checking is a separate `shugo check` command, along with component parameter checking (21 November 2026 solution). It is made by `svelte-check` with TypeScript sewn into Shugo as Svelte: the project does not need to put them, nor npm (the decision of the author of the project 22 November 2026 year). Not yet. *With the 23 November Shugo is put by the npm package, and sew them maybe not needed: [question 3](open-questions.md#3-shugo-check-sewing-or-delivering-with-package).*
+- How `shugo` gets on the machine: ready files for all systems in releases on GitHub, npm package, which puts the finished file under the system, like esbuild, and Homebrew (22 solution November 2026 year). *Changed by the decision of the author of the project 23 November 2026 year:* Shugo is always put in the project package npm, `bun add shugo`, and with it the types of `shugo` module come into the project. Packages are made, not yet published, see. [below](#the-shugo-npm-package).
 
 ## Implemented, pending approval
 
@@ -126,6 +126,27 @@ Node indicates the location accurately. Bun sometimes points to a nearby string:
 
 `shugo dev` monitors all project files except `_build`, `node_modules` and hidden files. After the change, it does what `shugo update` did: the source code has changed compiles the project and calculates everything; the database has changed calculates what the changed lines have read; other files have changed calculates nothing. The pages are reloaded anyway. What to improve in it - in [the Live Reload](../docs/proposals/live-reload.md).
 
+### The Shugo npm package
+
+Shugo — project package, like Vite or SvelteKit:
+
+```sh
+bun add shugo                  # or npm install shugo
+bunx shugo build               # p  b  b                           
+```
+
+The `shugo` package gives the `shugo` command, `shugo` module types, and TypeScript settings for the project. The ready program for the system lies in its package - `@shugo/linux-x64`, `@shugo/darwin-arm64` and so on - and the package manager puts only the one that fits the machine, like esbuild. The `shugo` command from the package runs it with the same arguments.
+
+`tsconfig.json` project — one line:
+
+```json
+{ "extends": "shugo/tsconfig.json" }
+```
+
+Package settings tell TypeScript that `@/` is `src/`, what to check (`src/` but not `_build/` and not `node_modules/`) and how: as Shugo collects. `shugo` module types are from the `shugo` package, Svelte types are from the `svelte` package of the same version as the one sewn into the program: the `shugo` package puts it dependent. Assembly does not take it, it uses its own, and the editor and `svelte-check` it gives the types `svelte`, `svelte/store` and rune. 23 is verified on November 2026 year: TypeScript 5.9 and 7.0 and `svelte-check` find bugs in the code with `query`, `page` and `svelte/store` and do not find them in the correct one.
+
+How packages are made and published [npm/README.md](../npm/README.md).
+
 ## Open questions
 
-Oh, no.
+- Packages publication: `shugo` name in npm is free; `@shugo/…` packages need `shugo` organization in npm, and for all packages, Shugo license, while `UNLICENSED` costs.

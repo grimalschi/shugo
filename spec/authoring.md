@@ -6,6 +6,8 @@ Shugo builds static sites with interactive islands. A page, a layout and a compo
 
 ```
 shugo.json       settings (optional)
+package.json     shugo, and the packages the code imports
+tsconfig.json    { "extends": "shugo/tsconfig.json" }
 src/
   site.html      the document every page stands in: <html>, <head>, <body>
   pages/         pages and layouts; the path of a file is its address;
@@ -19,6 +21,8 @@ _build/          written by shugo; never edit, never commit
 ```
 
 Only `src/pages/` is required. Every `.svelte` file lives in `src/`. `@/` in an import is `src/`: `import { price } from "@/lib/shop"`.
+
+Shugo is a package of the project: `bun add shugo`, then `bunx shugo build` (with Node, `npm install shugo` and `npx shugo build`). The types of the module `shugo` come with it, and those of Svelte: `tsconfig.json` is the one line above, and the editor knows `shugo`, `svelte` and the runes.
 
 Svelte comes with Shugo: never install `svelte`. A package from npm is installed with the package manager of the project, `bun add date-fns` or `npm install date-fns`, and imported by its name. It is bundled with the code of the site, and `svelte` in it is the Svelte of Shugo. The build says at the import when a package is not installed, needs another version of Svelte or brings native code. A package that reads files next to its own code does not find them. A Svelte component from a package is an error in a page: copy it into `src/components/`.
 
@@ -45,7 +49,7 @@ shugo serve     serve the site: every page is built on request from what build a
 shugo export    write the site as files into _build/dist; after the first time, only what changed
 ```
 
-Run `shugo build` after every change and read the errors and warnings: each names a file, a line and a column. Those of Svelte, accessibility warnings among them, end with a link to their page on svelte.dev.
+Run them through the package manager: `bunx shugo build`. Run `shugo build` after every change and read the errors and warnings: each names a file, a line and a column. Those of Svelte, accessibility warnings among them, end with a link to their page on svelte.dev.
 
 `shugo update` is for data that changed: it computes the pages and components that read a row of the data database which is not what it was, and nothing else. It takes tens of milliseconds, whatever the size of the site. If a file of the project changed, it compiles the project first and computes everything, so it is always safe to run. An update that fails changes nothing: the site stays as it was, and the next update meets the same changes again.
 

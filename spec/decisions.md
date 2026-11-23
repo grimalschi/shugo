@@ -2,7 +2,7 @@
 
 Here is written what is decided without direct confirmation of the author of the project: where the answer was “don’t know”, “decision” or question before. Every decision has a reason. After approval, the decision is transferred to the “Decision” section of its document, after refusal redone. The numbers don’t change so that the links don’t break; every decision above tells you what happened to it.
 
-Decisions 1–27 taken during the assembly of the first version, 28–35 when switching to syntax Svelte 21 November 2026 years, 36–38 — 22 November 2026 The year when the shell appeared `src/site.html` Files are not HTML, 39 When there is only one search, 40–48 — the same time when the templates began to compile and render themselves Svelte, 49–53 — then, according to the author's answers to questions about documents, 54–55 then, according to the answers about the packages npm and waiting.
+Decisions 1–27 taken during the assembly of the first version, 28–35 when switching to syntax Svelte 21 November 2026 years, 36–38 — 22 November 2026 The year when the shell appeared `src/site.html` Files are not HTML, 39 When there is only one search, 40–48 — the same time when the templates began to compile and render themselves Svelte, 49–53 — then, according to the author's answers to questions about documents, 54–55 then, according to the answers about the packages npm and the waiting, 56 — 23 November 2026 The year when Shugo the Slippery Pack npm.
 
 ## 1. Data loading and expression are counted together, Go compares the result
 
@@ -507,3 +507,17 @@ The only difference from Svelte is that the layout context does not reach the pa
 - Build revision - 6: A project assembled when packages were taken from `node_modules` when computed is reassembled once.
 
 **Why not.** So there's only one page. Svelte: `getContext` the package sees the context of the page, and the package `svelte/store` works without package `svelte` in the project. The missing package is at the assembly, at the place of import, and not at calculation. Changes to packages are visible as accurately as changes to the project code. Checked on Bun and NodeCommonJS Package `require` and `__dirname`Package with `getContext` and `svelte/store` Next to a stranger `svelte` the City of London `node_modules`, missing package, package under Svelte 4, native code, reading your file.
+
+## 56. Package npm `shugo`: how made
+
+**Waiting for approval.** The author of the project decided that Shugo is always put into the project through `bun add shugo` to types come into the project themselves. Details:
+
+- It is arranged like esbuild: the `shugo` package gives a command, and the ready program under the system lies in the `@shugo/<system>-<cPU>` package - an optional dependence with the `os` and `cpu` fields. System six: Linux, macOS and Windows, each on x64 and arm64. The program is assembled without cgo, so all six are assembled on the same machine, about one and a half minutes; each weighs 17–18 MB, in the archive - about 7 MB. There are no installation scripts: Bun defaults and does not run them.
+- The package command is `bin/shugo.js` on Node or Bun: it finds the system program and runs it with the same arguments, and ends up just like the program. Without the system package, it says what to put.
+- The `shugo` module types are `index.d.ts` packages. The `TestTypesOfTheModuleShugo` test checks them against what the `shugo` module exports.
+- Svelte types are from the same version of the `svelte` package as the program: the `shugo` package puts it dependent. Assembly does not take it.
+- `tsconfig.json` package settings with which Shugo collects: `moduleResolution: "bundler"`, `verbatimModuleSyntax`, `allowImportingTsExtensions`, strict verification, `@/` is `src/`. He writes the project paths through `${configDir}`, so `tsconfig.json` project is one line of `{ "extends": "shugo/tsconfig.json" }`; so can TypeScript with the version of 5.5. `ambient.d.ts` connects Svelte types with runes: `.svelte.ts` modules know `$state`.
+- The version is put `npm/make.go`: in the package `shugo` it is written as `0.0.0` - and his own, and packages for the system.
+- Each package under the system are the license Svelte and information about the code from which it is made: the program carries Svelte inside. The license of the packages themselves is still `UNLICENSED`.
+
+**Why not.** So make the tools on Go and Rust, which are put from npm, - esbuild, Biome, Turborepo: the package manager himself chooses the program for the machine, and nothing is downloaded past it. 23 checked November 2026 on Linux: `bun add` put a command, the program of this system and Svelte, `bunx shugo build` put together a site, and TypeScript 5.9 and 7.0 and `svelte-check` found no other errors.
