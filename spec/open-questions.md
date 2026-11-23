@@ -9,7 +9,7 @@ Questions are numbered: answer the numbers. Where there is advice, yes - to acce
 - with the `failed` snippet, the error is not caught inside: the assembly stops with this error. The error is visible immediately, this is good, but `failed` will never appear, and the assembly is silent about it;
 - with Snippet `pending` Svelte On the server, the render is not content, but a waiting branch: the page forever shows “Loading...”, and there is no content in it. The assembly takes place without a single word this is a quietly broken page.
 
-There is nothing to wait on the page now: `await` is prohibited.
+There is nothing to wait on the page: `await` in `<script>` and in the markup - an error, the page is calculated without waiting.
 
 - a) `<svelte:boundary>` outside the islands — a bug with a hint like `await`: on a static page it has nothing to catch and nothing to wait. In the island it works;
 - b) leave and warn when assembling: about `failed` - that it will not appear, about `pending` - that the page will show only it;
@@ -19,9 +19,9 @@ There is nothing to wait on the page now: `await` is prohibited.
 
 ### 2. Reading past the database: files in the page code
 
-The network code pages is now not allowed: `await` is prohibited. But the file can be read immediately, without waiting: `readFileSync` from `node:fs`. This update does not track the file, and the page remains the same until it is calculated by `shugo build` or finds `shugo update -check`. The file that is imported, `import posts from "../../data/posts.json"`, is part of the code, and changing it reassembles the project; it's not about it.
+The code of the pages can read the file immediately, without waiting: `readFileSync` from `node:fs`, and at the top of the module - and wait for the network, `await fetch(…)`. This update does not track the file, and the page remains the same until it is calculated by `shugo build` or finds `shugo update -check`. The file that is imported, `import posts from "../../data/posts.json"`, is part of the code, and changing it reassembles the project; it's not about it.
 
-- (a) Imports `node:fs` and neighboring modules that read past the base - `fs`, `child_process`, `net`, `http`, in the site code build error, intentionally, as `await`; in the package - a warning with the name of the package: many packages take `fs` for what pages are not needed;
+- a) import of `node:fs` and neighboring modules that read past the base — `fs`, `child_process`, `net`, `http`, — in the site code — build error, intentionally, to see where it is needed; in the package — a warning with the name of the package: many packages take `fs` for what;
 - b) only warnings, both in the site code and in packages;
 - c) leave as is: this is found by `shugo update -check`.
 

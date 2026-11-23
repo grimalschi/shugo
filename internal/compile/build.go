@@ -638,10 +638,6 @@ func (b *builder) bundle(routes []skeleton.Route, islands *islandOutput) (*bundl
 		build.OnLoad(api.OnLoadOptions{Filter: `\.svelte\.(js|ts)$`, Namespace: "file"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
 			return b.runeModule(args.Path)
 		})
-		// The code of the site does not wait at the top of a module either.
-		build.OnLoad(api.OnLoadOptions{Filter: `\.[cm]?[jt]sx?$`, Namespace: "file"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
-			return b.siteModule(args.Path)
-		})
 		b.checkPackages(build, true)
 		// Style sheets do not go into JavaScript: they are collected and
 		// built into a file of their own.
@@ -701,9 +697,6 @@ func (b *builder) runeModule(path string) (api.OnLoadResult, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return api.OnLoadResult{}, err
-	}
-	if at := waits(rel, string(data)); at != nil {
-		return api.OnLoadResult{Errors: []api.Message{*at}}, nil
 	}
 	source, types := string(data), (*sourcemap.Map)(nil)
 	if strings.HasSuffix(path, ".ts") {

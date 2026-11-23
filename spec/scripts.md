@@ -1,18 +1,18 @@
-# Page scripts
+# Scripts on a page
 
-The document describes the code that is executed in the visitor's browser.
+Browser code can run in a script embedded in the HTML or in a Svelte island.
 
 ## Decisions
 
-- `<script>` inside the markup gets into the page as written; the curly brackets inside it are plain text (21 decision of November 2026 year).
-- The basis for the code in the browser is Svelte (21 solution November 2026 year).
-- The `*.island.svelte` component becomes a hydration point when it is shown by a pattern: it is an island. The file name is visible in the source and import (22 November 2026 solution). The islands are made before the data adapter, although the November 22 decided to take them after it.
-- Svelte for islands is sewn into Shugo, the browser part of the same version as the compiler: the project with the islands does not need to put anything (the decision of the author of the project 22 November 2026 years). *Changed by the decision of the author of the project 23 November 2026 year:* Svelte, and the browser part too, is from the `svelte` package, which puts the `shugo` package.
-- When a JavaScript page is requested, the HTML island for the filtered address collects Go on a program that the assembly prepares from the server output of Svelte (22 November 2026 solution).
+- A `<script>` nested in markup is copied into the page. Braces inside it are ordinary text (November 21, 2026).
+- Svelte provides the foundation for browser code (November 21, 2026).
+- When a template renders an imported `*.island.svelte` component, it becomes a hydration entry point. The suffix appears both on disk and in imports (November 22, 2026). Islands shipped before the data adapter, reversing the order planned on November 22.
+- Shugo initially bundled the browser runtime at the compiler's Svelte version (November 22, 2026). Since November 23, 2026, the `shugo` package has installed `svelte` as a dependency that supplies both the compiler and the browser runtime.
+- Page requests execute only Go on the server. To render an island for a URL with filters, Go applies a program produced at build time from Svelte's server output (November 22, 2026).
 
 ## Implemented, pending approval
 
-The top `<script>` of a regular `.svelte` file is performed when calculating the page. For small browser scripts, you can use `<script>` inside the element or in `<svelte:head>`:
+The top-level `<script>` in a regular `.svelte` file runs during page computation. For short browser scripts, put a `<script>` inside an element or in `<svelte:head>`.
 
 ```svelte
 <button id="menu">Menu</button>
@@ -27,14 +27,14 @@ The top `<script>` of a regular `.svelte` file is performed when calculating the
 </svelte:head>
 ```
 
-- The contents of such `<script>` fall into the page as written. Expressions in it are not calculated: `{x}` remains the text of `{x}`.
-- The attributes of the tag itself are common attributes: `defer` is displayed as `defer=""`, `src={…}` is calculated.
-- The script files are put into `public/` and connected to the address.
-- A component with a script that is shown ten times will give ten identical scripts.
-- The second `<script>` at the top level of the file is the Svelte error: the top `<script>` of the component one, and that's its code.
-- Event handlers in markup (`onclick={…}`) do not get into the page: there is no one to perform them on the static page.
+- Shugo copies the script body verbatim. For example, `{x}` remains the literal text `{x}`.
+- Script attributes follow normal template rules. `defer` renders as `defer=""` and `src={…}` is evaluated.
+- Put standalone scripts in `public/` and reference them by URL.
+- Rendering a component with an embedded script ten times emits ten copies of the script.
+- Svelte accepts one top-level instance `<script>` per component. A second one is an error.
+- Static markup omits event bindings such as `onclick={…}`. Use an island for Svelte event handling in the browser.
 
-The value from the data is transferred to the script via the attribute:
+Pass page data to an embedded script through attributes.
 
 ```svelte
 <div id="map" data-lat={shop.lat} data-lon={shop.lon} data-places={JSON.stringify(places)}></div>
@@ -48,7 +48,7 @@ The value from the data is transferred to the script via the attribute:
 
 ## Svelte islands
 
-The page imports the island by name and passes it data as parameters. The file can contain standard runes, actions and Svelte handlers. The island compiles the same Svelte as the pages from the `svelte` package, which puts the `shugo` package: nothing is needed to put. The island, like any template, is written on runes. The island is a browser code: it can wait (`await`) in the functions and at the top of the modules that only it imports, and it runs the components of Svelte from npm packages, which are an error on the pages.
+Import an island into a page and pass data as props. Use Svelte's runes, actions, and event handlers inside the island. The `svelte` dependency installed by `shugo` compiles both pages and islands. Islands also accept Svelte components from npm packages.
 
 ```svelte
 <script>
@@ -68,42 +68,42 @@ The page imports the island by name and passes it data as parameters. The file c
 <Catalog request:initial={products} action="/catalog" />
 ```
 
-The suffix selects the boundary of hydration. A subsidiary of `*.island.svelte` inside another island is included in its tree Svelte. The regular `ProductCard.svelte` can be imported into both the server template and the island if the component takes data through the parameters and uses only Svelte tools. `query` from the `shugo` module is asked in a normal server template that transmits the result to the island.
+The `.island.svelte` suffix marks the hydration boundary for a component rendered by a server template. An island imported by another island is part of that island's Svelte component tree. A regular component such as `ProductCard.svelte` can work in both contexts if it takes data through props and uses only Svelte APIs. Call `query` from a server template and pass the result to the island.
 
-`request:initial={products}` binds the parameter `initial` to the output of URL. The `search` call registers the reading of the initial issuance during the calculation, including calls within components and `getStaticPaths`. The call when loading the module registers reading for the entire site. The normal parameter `initial={products}` transmits the result of the calculation step.
+`request:initial={products}` binds the `initial` prop to search results for the request URL. A `search` call during computation records a read of the initial results, including calls inside components and `getStaticPaths`. A call at module load records a site-wide read. A regular `initial={products}` prop passes the result from build-time computation.
 
-When assembling Shugo prepares the program SSR from the output of Svelte. On request Go reads the published index and applies the program, including branches, lists and hydration tags. In the browser Svelte connects handlers to the received markup. [How the Islands Are Made](../docs/islands.md)
+At build time, Shugo derives a server-rendering program from Svelte's output. When a request arrives, Go reads the published index and runs that program, including its branches, loops, and hydration markers. Svelte attaches behavior to the resulting HTML in the browser. See [Island internals](../docs/islands.md).
 
-### Tag island
+### Island tag
 
-What the assembly checks:
+The build enforces these rules.
 
-- The island is imported by default, right in the usual `.svelte` template: `import Catalog from "../components/Catalog.island.svelte"`. Named import and import not from the template is an error.
-- The island tag only transmits data: values that are translated into JSON and `{...parameters}`. Content, snippets and directives in the tag are error: directives are written inside the island file. Function in parameters is error when calculating the page.
-- `request:name={…}` stands only on the island tag, with one expression - the result of `search`. The same parameter is also a common attribute - an error.
-- The island inside `<svelte:head>`, `<svg>`, `<select>`, `<option>`, `<optgroup>`, `<textarea>` or `<template>` is an error: its wrapper needs a place in `<body>`.
-- The island is shown with its tag: `<svelte:component this={Catalog}>` is an error.
-- `<svelte:head>` in the island itself is a mistake when calculating a page: what you need in `<head>`, writes the page.
+- Import an island directly in a regular `.svelte` template using its default export, as in `import Catalog from "../components/Catalog.island.svelte"`. Named imports and imports from standalone modules are errors.
+- Island tags accept JSON-serializable props, including `{...props}`. Put directives inside the island file. Child content, snippets, and directives on the island tag are build errors. A function prop fails during page computation.
+- `request:name={…}` belongs on an island tag and takes one expression that returns a `search` result. Supplying the same prop as a regular attribute is an error.
+- An island's wrapper needs a place in the document body. An island inside `<svelte:head>`, `<svg>`, `<select>`, `<option>`, `<optgroup>`, `<textarea>`, or `<template>` is an error.
+- Render the island with its own tag, such as `<Catalog />`. The build rejects `<svelte:component this={Catalog}>` for an island.
+- Put head markup in the page. `<svelte:head>` inside an island reports an error during page computation.
 
-### Search by table
+### Table search
 
-The first argument of `search` calls the table in the `data` database from `shugo.json`. Shugo displays the index identity from the table, search columns and projection fields. Page size, default sorting and fixed `where` values refer to a specific call. `products` and `articles` searches read their tables, and two `products` searches with the same projection can use the same index.
+The first argument to `search` names a table in the database configured as `data` in `shugo.json`. Shugo identifies an index by table, search columns, and projected fields. Page size, default sorting, and fixed `where` values apply to individual calls. Searches of `products` and `articles` use separate tables. Two searches of `products` with the same projection can share an index.
 
-| Parameter | Conduct |
+| Option | Behavior |
 | --- | --- |
-| `text` | Full-text search columns by `q` |
-| `fields` | Additional columns in `hits` |
-| `filters` | `multi` reads repetitive values, e.g. `category=cups&category=plates`. `range` reads `price_from` and `price_to`. `boolean` reads `available=1` or `available=0` |
-| `sorts`, `defaultSort` | Permitted variants of `sort` and the default option |
-| `pageSize` | Number of results per page, default is 24. Page number is passed as `page` |
-| `where` | Fixed equality, e.g. `{ published: true }`. The request from the browser is applied within this area |
+| `text` | Columns searched by the full-text query `q` |
+| `fields` | Additional columns to return in `hits` |
+| `filters` | `multi` accepts repeated values such as `category=cups&category=plates`. `range` accepts `price_from` and `price_to`. `boolean` accepts `available=1` or `available=0`. |
+| `sorts`, `defaultSort` | Allowed values for `sort` and the default |
+| `pageSize` | Results per page, 24 by default. The page number comes from `page`. |
+| `where` | Fixed equality constraints, for example `{ published: true }`. The browser query searches within those constraints. |
 
-By default, the URL filter name matches the column. You can set your own, for example, `filters: { topic: { column: "section", type: "multi" } }`. In addition to `fields`, the `hits` string includes the primary key and text columns, filters and sorting.
+A URL filter uses the column name by default. To name a filter differently, use a declaration such as `filters: { topic: { column: "section", type: "multi" } }`. Each row in `hits` includes the primary key and the columns used for text search, filters, sorting, and `fields`.
 
-The result contains `hits`, `total`, `facets`, `query`, pagination fields and `endpoint`. The `/catalog?category=cups&sort=cheap` page immediately gives the HTML for these parameters. After hydration, the island sends the same set of parameters to `initial.endpoint` and updates the address via History API. The GET form at the page address allows you to open the same issue without JavaScript in the browser.
+The result contains `hits`, `total`, `facets`, `query`, pagination fields, and `endpoint`. Visiting `/catalog?category=cups&sort=cheap` returns HTML for those parameters. After hydration, the island sends the parameters to `initial.endpoint` and updates the URL with the History API. A GET form submitted to the page URL can show the same results with browser JavaScript disabled.
 
-`shugo serve` serves both HTML and search endpoint. With `shugo export`, files get an issue prepared during assembly. In the example there are two pages with a common island and search for different tables. [Example of catalogue and articles](../examples/search/README.md)
+`shugo serve` serves both the HTML and the search endpoint. `shugo export` writes the results prepared at build time. The [catalog and articles example](../examples/search/README.md) has two pages that use the same island to search different tables.
 
 ## Open questions
 
-- Do you need a separate way to collect browser scripts with imports for pages without islands?
+- Whether to offer a separate way to bundle browser scripts with imports on pages that use no islands.

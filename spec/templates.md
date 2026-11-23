@@ -1,29 +1,33 @@
 # Templates
 
-The template — page, model or component — is a component Svelte 5 in file `.svelte`It's compiled for the server and render when assembled Svelte 5.59.1. — Package dependency `shugo`: Don't put it separately. SvelteSee also the "S" report, para. [documentation Svelte](https://svelte.dev/docs/svelte/overview). Shugo Adds blocks -- the general component is re-rated once on the entire site -- the module `shugo` with data and page address, shell `src/site.html` And his tests, and the hydration comments cut out. Shugo He's retreating from Svelte — [below](#how-shugo-differs-from-svelte)The net component may also be included in the section of the island where Svelte Combine it for the browser. The sub-assembly with the hydration entry point has a suffix. `.island.svelte`. [Islands Svelte](scripts.md#svelte-islands)
+Pages, layouts, and reusable components are Svelte 5 components in `.svelte` files. Shugo uses Svelte 5.59.1 to compile them for the server and render them during the build. The `shugo` package installs that version. See the [Svelte documentation](https://svelte.dev/docs/svelte/overview) for syntax, errors, and warnings.
+
+Shugo can render a shared component once for the whole site. It provides data and page information through the `shugo` module, assembles pages in `src/site.html`, and runs additional template checks. It removes hydration comments from static output. See [How Shugo differs from Svelte](#how-shugo-differs-from-svelte) for details.
+
+A component can also be part of an island's dependency graph, where Svelte compiles it for the browser. An island's hydration entry point uses the suffix `.island.svelte`. See [Svelte islands](scripts.md#svelte-islands).
 
 ## Decisions
 
-- Terms, cycles, expressions, snippets and styles of regular templates are written in Svelte 5.
-- Cycle - `{#each}` of Svelte; no mandatory key (21 solution November 2026 year).
-- The terms are `{:else if}` and `{:else}`; `{#each}` also has `{:else}` for the empty list (21 solution November 2026 years).
-- Expressions in text and attributes output Svelte (21 solution November 2026 year).
-- The HTML is `{@html …}` (21 solution is November 2026 year).
-- The markup is analyzed by Svelte, strictly (21 solution of November 2026 year).
-- The component passes the markup to another component with snippets (21 solution November 2026 year). Details are in [Components](components.md).
-- The component shows itself by importing its own file (21 solution November 2026 year).
-- The name tag is `<svelte:element this={…}>` (21 solution November 2026 year).
-- Expressions are written in JS, in source code - TypeScript. Functions and components are connected by explicit imports.
-- The values are screened when inserted into the page.
-- Addresses in `href`, `src` and similar attributes are displayed as is: `javascript:` address replacement is cancelled (22 November 2026 decision).
-- Templates are `.svelte` files, the island is `.island.svelte`; Svelte 5.59.1 parsers parsers them (22 November 2026 solution). Prior to that, files were called `.shugo`, and Shugo parsers them.
-- Templates compile and render Svelte itself, rather than its Shugo compiler; comments that Svelte writes for hydration are cut everywhere except islands (22 project author's decision November 2026 years).
-- "Challenge" is the common word for a site's `.svelte` file: page template, layout template, component template; "component" is the reusable part (the decision of the author of the project 22 November 2026 year).
-- An error in expression shows a row and column in the `.svelte` file.
-- Data and page address are taken by import from the module `shugo`: `import { query, paginate, page } from "shugo"`; `page` How to `page` the City of `$app/state` the City of London SvelteKitGlobal facility `Shugo` No, and the transition time with two records is also (decision 22 November 2026 years).
-- `search` for islands is also from the `shugo` module; recording `shugo:search` is a hint error (22 solution November 2026 year).
-- `<svelte:options runes={false} />` — error with a hint: templates are written on runes (the decision of the author of the project 22 November 2026 year).
-- `await` at the top level of `<script module>` is a bug: it is forbidden to intentionally see where the wait is needed and track data that goes past the base (22 project author's decision of November 2026 year).
+- Use Svelte 5 for conditions, loops, expressions, snippets, and styles.
+- Use Svelte's `{#each}` for loops. Keys are optional (November 21, 2026).
+- Use `{:else if}` and `{:else}` for conditions, and `{:else}` on an `{#each}` to handle an empty list (November 21, 2026).
+- Svelte renders expressions in text and attributes (November 21, 2026).
+- Insert HTML with `{@html …}` (November 21, 2026).
+- Svelte applies its own strict markup parsing (November 21, 2026).
+- Pass markup between components with snippets. See [Components](components.md) (November 21, 2026).
+- A recursive component imports its own file (November 21, 2026).
+- Use `<svelte:element this={…}>` for a dynamic tag name (November 21, 2026).
+- Write expressions in JavaScript or TypeScript, and import functions and components explicitly.
+- The renderer escapes interpolated values.
+- The renderer preserves URLs in `href`, `src`, and similar attributes, including `javascript:` URLs (November 22, 2026).
+- Use `.svelte` for templates and `.island.svelte` for islands. Svelte 5.59.1 parses both. Earlier templates used `.shugo` template files and Shugo's own parser (November 22, 2026).
+- Svelte compiles and renders templates. Shugo removes the hydration comments outside islands and raw HTML (November 22, 2026).
+- A template is any `.svelte` file for a page, layout, or component. A component is a reusable part of a template (November 22, 2026).
+- Errors in expressions identify the line and column in the `.svelte` file.
+- Import `query`, `paginate`, and `page` from `shugo`. The `page` object follows SvelteKit's `$app/state` API. The former `Shugo` global was removed without a compatibility period (November 22, 2026).
+- Import island `search` from `shugo`. The build reports an error with migration advice for `shugo:search` (November 22, 2026).
+- Templates use runes. The compiler reports an error and a hint for `<svelte:options runes={false} />` (November 22, 2026).
+- Top-level `await` in `<script module>` was briefly disabled to identify waits and data sources outside the database (November 22, 2026). The following day, the project author restored top-level `await` in `<script module>` and site modules.
 
 ## Implemented, pending approval
 
@@ -31,7 +35,7 @@ The template — page, model or component — is a component Svelte 5 in file `.
 
 ```svelte
 <script module>
-  // Once per module. List of route pages is here.
+  // Runs once per module. Put the route's page list here.
   import { query, page } from "shugo"
 
   export function getStaticPaths() {
@@ -40,7 +44,7 @@ The template — page, model or component — is a component Svelte 5 in file `.
 </script>
 
 <script lang="ts">
-  // Every time the file is shown.
+  // Runs each time the component renders.
   import Card from "../../components/Card.svelte"
   import { price } from "@/lib/shop"
 
@@ -59,29 +63,29 @@ The template — page, model or component — is a component Svelte 5 in file `.
 </style>
 ```
 
-- `<script module>` is executed once when the module is loaded. It contains `getStaticPaths` and everything you need once: constants, functions, imports. Its names are visible to the rest of the file.
-- `<script>` is executed every time a file is shown: once for a page, once for each component call. Common blocks are an exception, see. [Components](components.md#shared-components). `getStaticPaths` in it is an error with a prompt to transfer it to `<script module>`. `export let` - parameters Svelte 4 - error Svelte with a hint about `$props()`.
-- The component parameters are `let { … } = $props()`.
-- What framework knows is imported from the `shugo` module, in any file page, layout, component, module from `src/lib/`:
+- `<script module>` runs when the module loads. Define `getStaticPaths`, constants, functions, and module-level imports there. Its bindings are available throughout the file.
+- `<script>` runs for each render of a page or component. [Shared components](components.md#shared-components) reuse their output. If you put `getStaticPaths` here, the compiler tells you to move it to `<script module>`. Svelte also rejects the Svelte 4 prop declaration `export let` and points to `$props()`.
+- Read component props with `let { … } = $props()`.
+- Import framework values from `shugo` in a page, layout, component, or module under `src/lib/`.
 
-  | Name | What is it |
+  | API | Value or behavior |
   | --- | --- |
-  | `query(table)` | question to the project database, see [Data Download](data-loading.md) |
-  | `paginate(…)` | for the list part of the page with the number, see [Dynamic pages](dynamic-pages.md#pagination) |
-  | `page.url` | page address, `URL`, on the site from `shugo.json` |
-  | `page.params` | address options: `{ slug: "jug" }` for `/products/[slug]` |
-  | `page.route.id` | route: `/products/[slug]` |
-  | `page.status` | 200, and the page `404.svelte` — 404 |
-  | `search(table, { … })` | search by table for islands, see [Page scripts](scripts.md#search-by-table) |
+  | `query(table)` | Query the project database. See [Loading data](data-loading.md). |
+  | `paginate(…)` | Select one page of a list. See [Pagination](dynamic-pages.md#pagination). |
+  | `page.url` | A `URL` resolved against the site address in `shugo.json`. |
+  | `page.params` | Route parameters, such as `{ slug: "jug" }` for `/products/[slug]`. |
+  | `page.route.id` | The route pattern, such as `/products/[slug]`. |
+  | `page.status` | 200 by default and 404 for `404.svelte`. |
+  | `search(table, { … })` | Search a table from an island. See [Table search](scripts.md#table-search). |
 
-  The query belongs to what is being calculated: a page or a common component. Outside of computing for example, at the top level of a module it is an error with an explanation. The component that takes `page` or `paginate`, either by itself or through imported modules, is calculated for each page separately, see. [Components](components.md#shared-components). `Shugo.query` entry is an error with a hint of what to import.
-- `await` no: the page is calculated without waiting, because `query` responds immediately. `await` in `<script>`, in markup, on the top level of `<script module>` and the site module is an error with this explanation. While you can not wait anywhere in the code that calculates the pages: so you can see where the wait will be needed, most often it is data past the database. Island - code for the browser: in the functions and at the top of the modules that only he imports, you can wait.
-- For TypeScript, write `<script lang="ts">` or `<script module lang="ts">`: Svelte recognizes TypeScript by this attribute and erases the types without checking them. `enum` and other designs that TypeScript turns into code are the error Svelte: instead of `enum`, it is the object `as const`. In `.ts` modules, the types are removed by esbuild, and there `enum` works. Type of module imported via `type`: `import type { Product } from "@/lib/shop"` or `import { price, type Product } from "@/lib/shop"`. Svelte does not know that `Product` is the type, and leaves the usual import in the code, and the assembly stops: `No matching export`. Types check `shugo check`: `svelte-check` with TypeScript from the dependencies of the `shugo` package, by `tsconfig.json` project.
-- `@/` in import path means folder `src/`.
-- Rune modules — `counter.svelte.ts`, `state.svelte.js` — compile Svelte, as in SvelteKit: imported as regular modules, `import { counter } from "@/lib/counter.svelte"`. On the server `$state` in them — just a value; on the island they work in the browser.
-- From Svelte template and everything it imports take modules `svelte`, `svelte/store`, `svelte/reactivity`, `svelte/reactivity/window`, `svelte/easing`, `svelte/transition`, `svelte/animate`, `svelte/motion`, `svelte/events`, `svelte/attachments` and `svelte/server` from the package `svelte`which provides the package `shugo`. Another module, for example `svelte/legacy`Error with the list of those that are available.
-- Runes on server: `$state(x)` is just a value of `x`, `$derived(…)` is considered to be once, `$effect` is not executed. The page is rendered once, when assembled, and its code does not work in the browser; what should work there is written by the island.
-- `return` at the top level `<script>` and `export default` are Svelte errors.
+  Shugo associates a query with the page or shared component it is computing. A call outside that computation, such as at the top level of a module, reports an error. A component that uses `page` or `paginate` directly or through an import renders separately for each page. See [Shared components](components.md#shared-components). Using `Shugo.query` reports an error with the required import.
+- `query` is synchronous. While rendering a page, using `await` in `<script>` or the markup reports an error. Put one-time asynchronous work, such as preparing a syntax highlighter, at the top level of `<script module>` or a module under `src/lib/`. Module loading waits for it before the first render.
+- Use `<script lang="ts">` or `<script module lang="ts">` for TypeScript. Svelte strips types without checking them. For constructs that generate JavaScript, such as `enum`, use a plain object with `as const`. In separate `.ts` modules, esbuild handles TypeScript and supports `enum`. Import types explicitly with `import type { Product } from "@/lib/shop"` or `import { price, type Product } from "@/lib/shop"`. A regular import of a type is emitted as a JavaScript import and fails with `No matching export`. Run `shugo check` to type-check against the project's `tsconfig.json` using the packaged `svelte-check` and TypeScript.
+- The import prefix `@/` points to `src/`.
+- Svelte compiles rune modules such as `counter.svelte.ts` and `state.svelte.js`, as in SvelteKit. Import them as ordinary modules, for example `import { counter } from "@/lib/counter.svelte"`. On the server, `$state` holds a value. In an island, the rune module also runs in the browser.
+- Templates and their imports may use `svelte`, `svelte/store`, `svelte/reactivity`, `svelte/reactivity/window`, `svelte/easing`, `svelte/transition`, `svelte/animate`, `svelte/motion`, `svelte/events`, `svelte/attachments`, and `svelte/server` from Shugo's Svelte dependency. An import such as `svelte/legacy` reports an error listing the supported modules.
+- On the server, `$state(x)` yields `x`, `$derived(…)` is evaluated once, and `$effect` is skipped. Static pages render at build time. Put code that should run in the browser in an island.
+- Svelte rejects top-level `return` and `export default` in `<script>`.
 
 ### Text
 
@@ -91,135 +95,133 @@ The template — page, model or component — is a component Svelte 5 in file `.
 <p>{user ? user.name : "guest"}</p>
 ```
 
-What brings up the value:
-
-| Value | In text |
+| Value | Text output |
 | --- | --- |
-| string | as is, `&` and `<` are screened |
-| `null`, `undefined` | nothing |
+| String | The string with `&` and `<` escaped |
+| `null`, `undefined` | No output |
 | `true`, `false` | `true`, `false` |
-| number | as written by JS |
-| array | comma elements: `{[1, 2]}`  `1,2` |
-| object | `[object Object]` |
+| Number | The JavaScript string representation |
+| Array | Comma-separated items, for example `{[1, 2]}` renders `1,2` |
+| Object | `[object Object]` |
 
-In the curly brackets are written expressions JavaScript or TypeScript. To repeat markup use `{#each}`.
+Write JavaScript or TypeScript expressions inside braces. Use `{#each}` to repeat markup.
 
 ### Attributes
 
 ```svelte
-<a href={url} class="link {active ? 'active' : ''}" title="plain text">…</a>
+<a href={url} class="link {active ? 'active' : ''}" title="Plain text">…</a>
 <input disabled={!ready} value={query} {...rest}>
 <img {src} alt="">
 <p class={["card", { featured, sale: item.discount > 0 }]} class:wide style:color={accent}>…</p>
 ```
 
-- `attribute={expression}`, a substitution inside the quotation marks of `title="Order {id}"`, a short entry of `{src}` is the same as `src={src}`, and `{...rest}` are all object fields.
-- `null` and `undefined` remove the attribute. The rest is displayed as in the text: `title={false}` gives `title="false"`.
-- Attributes that either are or are not (`disabled`, `checked`, `hidden`, `selected` and others from the Svelte list) are displayed as `disabled=""`; the false value removes them. An empty string, as in the markup, leaves.
-- `class` accepts array and object: true elements and keys with true values fall into the class. There are `class:name={condition}` and `style:property={value}`.
-- Event handlers (`onclick`), `use:`, `{@attach …}`, `transition:` and the like do not get to the page: there is no one to perform them on the static page. `bind:value` displays a value. The code for the browser is in [Scripts on page](scripts.md).
+- Use `attribute={expression}` or interpolate inside a quoted value, as in `title="Order {id}"`. The shorthand `{src}` means `src={src}`. Spread an object's fields with `{...rest}`.
+- `null` and `undefined` omit the attribute. Other values render as they do in text. For example, `title={false}` produces `title="false"`.
+- HTML boolean attributes such as `disabled`, `checked`, `hidden`, and `selected` render by presence, for example `disabled=""`. A false value omits the attribute. An explicit empty string keeps it.
+- `class` accepts arrays and objects. Truthy array entries and object keys with truthy values contribute class names. You can also write `class:name={condition}` and `style:property={value}`.
+- Static output omits event handlers such as `onclick`, as well as `use:`, `{@attach …}`, and `transition:`. `bind:value` still writes the value. See [Scripts on a page](scripts.md) for browser code.
 
-### Condition
+### Conditions
 
 ```svelte
 {#if item.stock > 3}
-  Available
+  In stock
 {:else if item.stock > 0}
-  {item.stock}
+  {item.stock} left
 {:else}
-  Custom Made
+  Available to order
 {/if}
 ```
 
-### Cycle
+### Loops
 
 ```svelte
 {#each products as product, i (product.id)}
   <li>{i + 1}. {product.title}</li>
 {:else}
-  <li>While empty</li>
+  <li>No products yet</li>
 {/each}
 ```
 
-- An array or something similar to it is moved: `Set`, `Map`, a string. `null` and `undefined` are an empty list.
-- The element can be disassembled immediately: `{#each rows as { id, title }}`, `{#each pairs as [key, value]}`.
-- The key in parentheses is accepted and does not affect anything on the static page.
-- `{#each items}` without name and `{#each { length: 3 }, i}` also work.
+- Loop over an array, a `Set`, a `Map`, or a string. `null` and `undefined` count as empty lists.
+- You can destructure each item with `{#each rows as { id, title }}` or `{#each pairs as [key, value]}`.
+- A key in parentheses is accepted and has no effect on static output.
+- Loops such as `{#each items}` and `{#each { length: 3 }, i}` can omit the item binding.
 
 ### Other blocks and tags
 
-| Recording | What does |
+| Syntax | Behavior |
 | --- | --- |
-| `{@html post.body}` | inserts a value without shielding; comments remain in it |
-| `{@const total = a + b}` | constant inside the block |
-| `{#snippet name(params)}…{/snippet}`, `{@render name(…)}` | a piece of markup that is shown elsewhere; details are in [Components](components.md#snippets) |
-| `{#key value}…{/key}` | shows the content; on a static page, the key does not affect anything |
-| `{#await promise}…{:then value}…{/await}` | for promise shows a waiting line, and it remains on the page: the page does not expect anything; for the usual value - the branch `{:then}` |
-| `{@debug …}` | page does not print anything; values print to the build output at each render |
+| `{@html post.body}` | Inserts the value without escaping and keeps its comments. |
+| `{@const total = a + b}` | Declares a constant in the current block. |
+| `{#snippet name(params)}…{/snippet}`, `{@render name(…)}` | Define and render reusable markup. See [Snippets](components.md#snippets). |
+| `{#key value}…{/key}` | Renders its contents once. The key has no effect on static output. |
+| `{#await promise}…{:then value}…{/await}` | Renders the pending branch for a promise. A plain value renders the `{:then}` branch. |
+| `{@debug …}` | Logs values during each render and emits no page content. |
 
 ### Special elements
 
-| Element | What does |
+| Element | Behavior |
 | --- | --- |
-| `<svelte:head>` | markup for `<head>` pages: title, meta tags. It is written in any component and gets to the place of `%shugo.head%` shell `src/site.html`, see [Layouts](layouts.md) |
-| `<svelte:element this={tag}>` | element with a calculated name; empty name shows nothing |
-| `<svelte:boundary>` | shows the contents, and with the snippet `pending` - only `pending`, and it remains on the page. The error inside does not catch, even with the snippet `failed`: assembly stops with this error |
-| `<svelte:window>`, `<svelte:document>`, `<svelte:body>` | they do nothing on the server. |
-| `<svelte:options>` | configures component compilation; `css="injected"` puts component styles in `<head>` pages, `runes={false}` is an error, see [Styles](styles.md#one-stylesheet-per-site) |
-| `<svelte:self>`, `<svelte:component this={…}>` | work, but Svelte warns that they are outdated: instead, a component imported into itself and a component from a variable named tag |
+| `<svelte:head>` | Contributes a title, metadata, or other head markup from any component. Shugo inserts it at `%shugo.head%` in `src/site.html`. See [Layouts](layouts.md). |
+| `<svelte:element this={tag}>` | Renders a dynamic element. An empty tag name produces no output. |
+| `<svelte:boundary>` | Renders the contents or, when supplied, the `pending` snippet. Errors inside the boundary stop the build even if there is a `failed` snippet. |
+| `<svelte:window>`, `<svelte:document>`, `<svelte:body>` | Have no server-side effect. |
+| `<svelte:options>` | Configures compilation. `css="injected"` puts component CSS in the page's `<head>`, and `runes={false}` reports an error. See [One stylesheet per site](styles.md#one-stylesheet-per-site). |
+| `<svelte:self>`, `<svelte:component this={…}>` | Work with Svelte deprecation warnings. Use a self-import for recursion and a variable as the tag name for dynamic components. |
 
-### Markup and gaps
+### Markup and whitespace
 
-- Spaces and row transfers between tags and within text are compressed into one space. At the edges of the element and block (`{#if}`, `{#each}`Snippets, they are removed completely: `{#if a} ${a} {/if}` Gn `$5` without spaces at the edges. The required space at the edge of the block is written as follows: `{" "}`.
-- In `<pre>` and `<textarea>`, the text remains as written.
-- Comments `<!-- -->` in the page do not fall. The necessary comment displays `{@html "<!-- … -->"}`.
-- Entities like `&nbsp;` and `&copy;` are displayed by symbols.
-- The element that the browser would rearrange (`<div>` inside `<p>`, `<tr>` directly into `<table>`) is an assembly error. If there is a block between them, it is a warning.
-- Invalid attachment of closing tags is an error with the space in the file. Where HTML allows not to close the tag (`<li>`, `<p>`, `<td>`), it closes itself, with a warning.
-- `</script>` anywhere `<script>`, even in a line or comment, closes it.
-- The literal brace in the text is `{"{"}` or `&#123;`.
-- Attached `<script>` and `<style>` inside the element or in `<svelte:head>` fall into the page as written.
+- Whitespace between tags and within text collapses to one space. Svelte removes it at the start and end of an element or a block such as `{#if}`, `{#each}`, or a snippet. For example, `{#if a} {a} USD {/if}` renders `5 USD` without surrounding spaces. Use `{" "}` to preserve a space at a boundary.
+- Svelte keeps the text in `<pre>` and `<textarea>` as written.
+- Svelte removes `<!-- -->` comments. To keep one, write `{@html "<!-- … -->"}`.
+- Svelte renders entities such as `&nbsp;` and `&copy;` as their characters.
+- Invalid nesting that a browser would rearrange, such as `<div>` inside `<p>` or `<tr>` directly inside `<table>`, is a build error. A block between the elements produces a warning.
+- Misnested closing tags report a source location. When HTML allows the end tag to be omitted, as for `<li>`, `<p>`, or `<td>`, Svelte closes the element and issues a warning.
+- Within `<script>`, `</script>` closes the element even inside a string or comment.
+- Write a literal opening brace as `{"{"}` or `&#123;`.
+- Nested `<script>` and `<style>` elements, including those in `<svelte:head>`, pass through as written.
 
 ### How Shugo differs from Svelte
 
-| What | Svelte | Shugo |
+| Feature | Svelte | Shugo |
 | --- | --- | --- |
-| Comments on hydration `<!--[-->`, `<!--]-->`, `<!---->` and others | sd | cuts: static page they are not needed. Remain at the islands and in HTML of `{@html}` |
-| Layout | renders with the page | rendered separately: the context given in it through `setContext` does not reach either the nested layout or the page, and the names from `$props.id()` in it start with his file number, `b3-s1` |
-| Warnings about what is changing in the browser: `state_referenced_locally`, `non_reactive_update`, `binding_property_non_reactive`, `perf_avoid_inline_class`, `perf_avoid_nested_class`, `store_rune_conflict` | I have | no: static page is rendered once. The islands have them |
+| Hydration comments such as `<!--[-->`, `<!--]-->`, and `<!---->` | Writes the comments. | Removes them from static output. Keeps them in islands and in markup passed to `{@html}`. |
+| Layout | Renders with the page. | Renders separately. A layout's `setContext` applies within the layout, and nested layouts and pages have their own contexts. Layout IDs from `$props.id()` start with the layout's file number, as in `b3-s1`. |
+| Browser and reactivity warnings, including `state_referenced_locally`, `non_reactive_update`, `binding_property_non_reactive`, `perf_avoid_inline_class`, `perf_avoid_nested_class`, and `store_rune_conflict` | Reports these warnings. | Reports them for islands. Static pages render once at build time. |
 
-### What is not and what the compiler answers
+### Compiler diagnostics
 
-Errors and warnings Svelte are displayed in its text, with reference to the explanation of `https://svelte.dev/e/…`; Shugo adds its errors to them.
+Shugo shows Svelte's messages and help links at `https://svelte.dev/e/…`, and adds its own checks.
 
-| Recording | Response |
+| Syntax or situation | Diagnostic |
 | --- | --- |
-| `<g-if>`, `<g-else-if>`, `<g-else>`, `<g-for>`, `<g-html>`, `<g-slot>`, `<g-fragment>` — the first syntax of Shugo | error Shugo with Svelte record, which is needed instead of tag |
-| `<slot>`, `slot="…"` right in the component tag, `let:`, `<svelte:fragment>` (Svelte 4) | error Shugo: snippets, `{@render children?.()}` and `{#snippet name()}…{/snippet}` are needed. Elsewhere, for example, in a custom element, `slot="…"` is a common attribute |
-| `export let title`, `$:`, `$$props` (Svelte 4) | error Svelte: need `let { title } = $props()`, instead of `$:` `$derived` or `$effect` |
-| `<svelte:options runes={false} />` | error Shugo: templates are written on runes |
-| `getStaticPaths` in `<script>` | error Shugo: its place is `<script module>` |
-| `await` in `<script>`, in markup, at the top level of `<script module>` and site module | error with explanation Shugo: page is calculated without waiting |
-| `<html>`, `<head>`, `<body>`, `<!doctype>` | error Shugo: this is written in the shell of `src/site.html`, see [Layouts](layouts.md#site-shell) |
-| import `+layout.svelte` | error Shugo: the layout wraps the pages of its folder, no one imports it; general markup is in the component |
-| `{cond && <b>…</b>}`, `{list.map(x => <li>…</li>)}` | error Shugo: markup is not worth inside `{…}`, need `{#if}` and `{#each}` |
-| `Shugo.props`, `Shugo.slots` is the first syntax of Shugo. | error in the calculation of page: `$props()`; snippet call — parameter |
-| `Shugo.query`, `Shugo.params` | error in calculating the page: import from the module `shugo` — `query`, `page.params`, `page.url` is required |
-| `import … from "shugo:search"` | error: `search` is taken from the `shugo` module |
-| import File `.shugo` | error with prompt to replace `.shugo` with `.svelte` |
-| `svelte/legacy` and other Svelte modules not listed in the list of [above](#file-structure) | error with the list of modules that are available |
-| component `.svelte` from the package npm or a package of such components | Shugo error: package components are not compiled yet, the component is copied to `src/components/` |
-| package that is not in `node_modules` | error Shugo at the point of import with installation command: `date-fns is not installed: bun add date-fns` |
-| package that needs another version of Svelte | error Shugo with both versions |
-| package with native `.node` code or other file not on JavaScript | build error with prompt Shugo take package on one JavaScript |
-| a package that reads a file next to its code | error when calculating with the prompt Shugo: package code collected in `_build/eval.mjs` |
-| type of module without `type`: `import { Product } from "@/lib/shop"` | `No matching export` assembly error with Shugo prompt: type imported via `import type` |
-| A component in place that endlessly shows itself | error Shugo with component chain: `src/components/Tree.svelte shows itself without end: … → …` |
-| island with content or directives, inside `<svelte:head>` or `<select>`; `request:` at tag that is not island | errors Shugo, see [Tag island](scripts.md#tag-island) |
+| Shugo's original tags `<g-if>`, `<g-else-if>`, `<g-else>`, `<g-for>`, `<g-html>`, `<g-slot>`, and `<g-fragment>` | Shugo reports an error and suggests the equivalent Svelte syntax. |
+| Svelte 4 `<slot>`, `slot="…"` directly on a component, `let:`, and `<svelte:fragment>` | Shugo requires snippets such as `{@render children?.()}` and `{#snippet name()}…{/snippet}`. Elsewhere, such as on a custom element, `slot="…"` is a normal attribute. |
+| Svelte 4 `export let title`, `$:`, and `$$props` | Svelte reports an error. Use `let { title } = $props()` for props and `$derived` or `$effect` for reactivity. |
+| `<svelte:options runes={false} />` | Shugo requires runes. |
+| `getStaticPaths` in `<script>` | Shugo asks you to move it to `<script module>`. |
+| `await` in `<script>` or markup | Shugo explains that page rendering is synchronous. Top-level `await` works in `<script module>` and site modules. |
+| `<html>`, `<head>`, `<body>`, and `<!doctype>` | Shugo requires these in `src/site.html`. See [Site shell](layouts.md#site-shell). |
+| Importing `+layout.svelte` | Shugo applies a layout automatically. Move shared markup into a component if you need to import it. |
+| `{cond && <b>…</b>}` or `{list.map(x => <li>…</li>)}` | Shugo rejects markup inside expressions. Use `{#if}` and `{#each}`. |
+| `Shugo.props` or `Shugo.slots` | Rendering reports an error. Read props with `$props()` and receive a caller's snippet as a prop. |
+| `Shugo.query` or `Shugo.params` | Rendering reports an error. Import `query` and `page` from `shugo` to access the database, `page.params`, and `page.url`. |
+| `import … from "shugo:search"` | Import `search` from `shugo`. |
+| Importing a `.shugo` template | Shugo tells you to use `.svelte`. |
+| `svelte/legacy` and other modules outside the [supported list](#file-structure) | Shugo lists the supported modules. |
+| A `.svelte` component from an npm package | Shugo cannot compile packaged components. Place the component under `src/components/`. |
+| Package missing from `node_modules` | Shugo reports the import location and an install command, such as `date-fns is not installed: bun add date-fns`. |
+| Package requires another Svelte version | Shugo reports both versions. |
+| Package contains a native `.node` binary or another non-JavaScript file | Shugo reports a build error and suggests a JavaScript-only package. |
+| Package reads a file relative to its own code | Rendering reports an error and explains that the package code was bundled into `_build/eval.mjs`. |
+| Importing a type as a value, such as `import { Product } from "@/lib/shop"` | The build reports `No matching export` and suggests `import type`. |
+| An in-place component renders itself indefinitely | Shugo reports the component chain, such as `src/components/Tree.svelte shows itself without end: … → …`. |
+| An island with child content or directives, an island in `<svelte:head>` or a `<select>`, or `request:` on another tag | Shugo reports an error. See [Island tag](scripts.md#island-tag). |
 
 ## Open questions
 
-- The remaining deviations from Svelte are in the table of [above](#how-shugo-differs-from-svelte). There is no separate proposal for compatibility anymore: the basis is Svelte itself, it compiles and renders templates, and its checks are those that work (22 closed on November 2026 year).
-- Warning when an object is displayed in the text: it is almost always a mistake. In Svelte it is not.
+- The remaining compatibility differences are [listed above](#how-shugo-differs-from-svelte). The separate compatibility proposal was closed after Shugo adopted Svelte's compiler, renderer, and checks (November 22, 2026).
+- Interpolating an object as text is usually accidental. Consider a warning for it. Svelte does not currently warn.
 
-What Svelte does in templates, and what Shugo does, and the test that was chosen for syntax, is in [Shugo and Svelte](../docs/svelte.md).
+[Shugo and Svelte](../docs/svelte.md) describes the division of responsibilities and the tests that informed the template syntax.
