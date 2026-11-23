@@ -61,7 +61,11 @@ func Build(p *project.Project) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	b := &builder{project: p, paths: paths, modules: modules, ids: map[string]int{}}
+	found, err := svelte.Find(p.Root)
+	if err != nil {
+		return nil, err
+	}
+	b := &builder{project: p, paths: paths, modules: modules, ids: map[string]int{}, sveltePackage: found}
 	for id, path := range paths {
 		b.ids[path] = id
 	}
@@ -210,8 +214,9 @@ type sources struct {
 // protocol to the generated bundle, along with the current compiler input
 // tracking; 3 takes search from the module shugo and drops shugo:catalog; 4
 // has Svelte compile the templates; 5 counts the files of the package
-// manager in every project; 6 bundles the packages of npm with the code.
-const sourcesRevision = 6
+// manager in every project; 6 bundles the packages of npm with the code; 7
+// takes Svelte from its package, which the package shugo depends on.
+const sourcesRevision = 7
 
 // packageFiles tell which packages of npm the project has. The packages
 // that the code of the site imports are bundled with it, and their files
@@ -319,8 +324,10 @@ type builder struct {
 	modules []string
 	// shell is the hash of src/site.html as it was read; empty without it.
 	shell string
-	// svelte compiles the templates, the islands and the modules with
-	// runes; see compilers.
+	// sveltePackage is the package svelte the build takes Svelte from, and
+	// svelte its compilers, which compile the templates, the islands and the
+	// modules with runes; see compilers.
+	sveltePackage  *svelte.Package
 	svelte         *svelte.Pool
 	svelteFailed   error
 	startCompilers sync.Once
@@ -381,7 +388,7 @@ func (b *builder) compile() error {
 // work at once.
 func (b *builder) compilers() (*svelte.Pool, error) {
 	b.startCompilers.Do(func() {
-		b.svelte, b.svelteFailed = svelte.StartPool(b.project.Runtime(), b.project.Root, min(runtime.NumCPU(), 1+len(b.paths)/32, 4))
+		b.svelte, b.svelteFailed = b.sveltePackage.StartPool(b.project.Runtime(), b.project.Root, min(runtime.NumCPU(), 1+len(b.paths)/32, 4))
 	})
 	return b.svelte, b.svelteFailed
 }
@@ -548,14 +555,14 @@ func (b *builder) bundle(routes []skeleton.Route, islands *islandOutput) (*bundl
 		})
 		// The code Svelte compiled takes svelte/internal/server through
 		// the framework, which gives it its own {@html}; the rest of Svelte
-		// is the server runtime Shugo ships.
+		// comes from the package svelte that the build runs.
 		build.OnResolve(api.OnResolveOptions{Filter: `^svelte/internal/server$`}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
-			if args.Namespace == "shugo" {
+			if _, resolving := args.PluginData.(svelte.Resolving); resolving || args.Namespace == "shugo" {
 				return api.OnResolveResult{}, nil
 			}
 			return api.OnResolveResult{Path: svelteServer, Namespace: "shugo"}, nil
 		})
-		svelte.Runtime(build)
+		b.sveltePackage.Runtime(build, false)
 		// shugo is the module the code of a project imports from; shugo:…
 		// are the framework's own, and a template is shown through
 		// shugo:runtime. A search came from shugo:search, and from
@@ -650,6 +657,7 @@ func (b *builder) bundle(routes []skeleton.Route, islands *islandOutput) (*bundl
 		Platform:      api.PlatformNode,
 		Target:        api.ESNext,
 		Charset:       api.CharsetUTF8,
+		Conditions:    []string{"production"}, // Svelte and packages without what only runs in development
 		External:      []string{"bun:sqlite"}, // built into Bun; Node has node:sqlite
 		Alias:         map[string]string{"@": filepath.Join(root, project.Source)},
 		Plugins:       []api.Plugin{plugin},
@@ -895,11 +903,11 @@ func (b *builder) graph(metafile string, out *bundled) error {
 			own[name], placed[name] = u.own(), u.placed()
 			continue
 		}
-		if strings.Contains(name, ":") {
+		if strings.Contains(name, ":") || b.sveltePackage.Contains(b.project.Path(filepath.FromSlash(name))) {
 			continue // the framework and Svelte are not files of the project
 		}
 		for _, imported := range meta.Inputs[name].Imports {
-			if strings.HasSuffix(imported.Path, shugoModule) || strings.HasPrefix(imported.Path, "svelte:") {
+			if strings.HasSuffix(imported.Path, shugoModule) || b.sveltePackage.Contains(b.project.Path(filepath.FromSlash(imported.Path))) {
 				source, err := os.ReadFile(b.project.Path(filepath.FromSlash(name)))
 				if err != nil {
 					return err

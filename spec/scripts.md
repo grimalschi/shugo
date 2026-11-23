@@ -7,7 +7,7 @@ The document describes the code that is executed in the visitor's browser.
 - `<script>` inside the markup gets into the page as written; the curly brackets inside it are plain text (21 decision of November 2026 year).
 - The basis for the code in the browser is Svelte (21 solution November 2026 year).
 - The `*.island.svelte` component becomes a hydration point when it is shown by a pattern: it is an island. The file name is visible in the source and import (22 November 2026 solution). The islands are made before the data adapter, although the November 22 decided to take them after it.
-- Svelte for islands is sewn into Shugo, the browser part of the same version as the compiler: the project with the islands does not need to put anything (the decision of the author of the project 22 November 2026 years).
+- Svelte for islands is sewn into Shugo, the browser part of the same version as the compiler: the project with the islands does not need to put anything (the decision of the author of the project 22 November 2026 years). *Changed by the decision of the author of the project 23 November 2026 year:* Svelte, and the browser part too, is from the `svelte` package, which puts the `shugo` package.
 - When a JavaScript page is requested, the HTML island for the filtered address collects Go on a program that the assembly prepares from the server output of Svelte (22 November 2026 solution).
 
 ## Implemented, pending approval
@@ -48,7 +48,7 @@ The value from the data is transferred to the script via the attribute:
 
 ## Svelte islands
 
-The page imports the island by name and passes it data as parameters. The file can contain standard runes, actions and Svelte handlers. The island compiles the same Svelte as the pages sewn into Shugo along with its browser part: you don’t need to put anything. The island, like any template, is written on runes. The island is a browser code: it can wait (`await`) in the functions and at the top of the modules that only it imports, and it runs the components of Svelte from the npm packages, which are an error on the pages.
+The page imports the island by name and passes it data as parameters. The file can contain standard runes, actions and Svelte handlers. The island compiles the same Svelte as the pages from the `svelte` package, which puts the `shugo` package: nothing is needed to put. The island, like any template, is written on runes. The island is a browser code: it can wait (`await`) in the functions and at the top of the modules that only it imports, and it runs the components of Svelte from npm packages, which are an error on the pages.
 
 ```svelte
 <script>

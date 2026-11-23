@@ -33,6 +33,8 @@ const usage = `shugo builds a static site and shows it.
   shugo export [folder]   write the site as files for any web server; after the
                           first time, only what has changed since
   shugo dev    [folder]   update, show, and update again whenever a file changes
+  shugo check  [folder]   check the types of the project and the props of its
+                          components, with svelte-check and TypeScript
 
 The folder is the project; without it, the current one. Options:
 
@@ -56,6 +58,7 @@ var options = map[string][]string{
 	"serve":  {"addr"},
 	"export": {"json", "out"},
 	"dev":    {"addr", "runtime"},
+	"check":  {"runtime"},
 }
 
 // Main runs the command and returns its exit status.
@@ -95,7 +98,7 @@ func Main(arguments []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	run := map[string]func() error{"build": c.build, "update": c.update, "serve": c.serve, "export": c.export, "dev": c.dev}[arguments[0]]
+	run := map[string]func() error{"build": c.build, "update": c.update, "serve": c.serve, "export": c.export, "dev": c.dev, "check": c.checkTypes}[arguments[0]]
 	if run == nil {
 		fmt.Fprintf(stderr, "shugo: there is no command %q\n\n%s", arguments[0], usage)
 		return 2

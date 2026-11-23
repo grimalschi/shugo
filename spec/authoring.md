@@ -24,7 +24,7 @@ Only `src/pages/` is required. Every `.svelte` file lives in `src/`. `@/` in an 
 
 Shugo is a package of the project: `bun add shugo`, then `bunx shugo build` (with Node, `npm install shugo` and `npx shugo build`). The types of the module `shugo` come with it, and those of Svelte: `tsconfig.json` is the one line above, and the editor knows `shugo`, `svelte` and the runes.
 
-Svelte comes with Shugo: never install `svelte`. A package from npm is installed with the package manager of the project, `bun add date-fns` or `npm install date-fns`, and imported by its name. It is bundled with the code of the site, and `svelte` in it is the Svelte of Shugo. The build says at the import when a package is not installed, needs another version of Svelte or brings native code. A package that reads files next to its own code does not find them. A Svelte component from a package is an error in a page: copy it into `src/components/`.
+Svelte comes with the package shugo, of the one version Shugo is made for, and so do `svelte-check` and TypeScript: never install them yourself. A package from npm is installed with the package manager of the project, `bun add date-fns` or `npm install date-fns`, and imported by its name. It is bundled with the code of the site, and `svelte` in it is that Svelte. The build says at the import when a package is not installed, needs another version of Svelte or brings native code. A package that reads files next to its own code does not find them. A Svelte component from a package is an error in a page: copy it into `src/components/`.
 
 `shugo.json`, every field optional:
 
@@ -47,6 +47,7 @@ shugo update    bring the site up to date after the data or the project changed
 shugo dev       update, serve at http://localhost:4321, update again on every change
 shugo serve     serve the site: every page is built on request from what build and update computed
 shugo export    write the site as files into _build/dist; after the first time, only what changed
+shugo check     check the types and the props of components with svelte-check and TypeScript
 ```
 
 Run them through the package manager: `bunx shugo build`. Run `shugo build` after every change and read the errors and warnings: each names a file, a line and a column. Those of Svelte, accessibility warnings among them, end with a link to their page on svelte.dev.
@@ -89,11 +90,11 @@ Run them through the package manager: `bunx shugo build`. Run `shugo build` afte
 - `<script>` runs once for every page the file gives, and once for every place a component is shown; a component kept apart runs once for each set of its props, see [Where to ask](#where-to-ask). Everything it declares is visible in the markup.
 - `<script module>` runs once, when the module loads. `getStaticPaths` goes there: in `<script>` it is an error. Names imported in `<script module>` are seen in `<script>` too; importing one again is an error of Svelte.
 - There is no `await`: a page is computed without waiting, since `query` answers at once. Nor at the top of `<script module>` or of a module in `src/`: the code that computes pages does not wait anywhere, and data that has to be waited for comes past the database. An island is code for the browser: it may wait in functions and at the top of the modules only islands import. Top-level `return` is an error.
-- TypeScript: write `<script lang="ts">`. Svelte removes the types and does not check them: a type error does not stop the build, and `post.titel` shows nothing. TypeScript that turns into code, such as `enum`, is an error: use an object `as const`. Import a type with `type`: `import type { Product } from "@/lib/shop"`, or `import { price, type Product } from "@/lib/shop"`. Svelte does not know that `Product` is a type and keeps a plain import of it, and the build stops with `No matching export`.
+- TypeScript: write `<script lang="ts">`. Svelte removes the types and does not check them: a type error does not stop the build, and `post.titel` shows nothing. `shugo check` finds such mistakes, and wrong props of components: run it before you are done. TypeScript that turns into code, such as `enum`, is an error: use an object `as const`. Import a type with `type`: `import type { Product } from "@/lib/shop"`, or `import { price, type Product } from "@/lib/shop"`. Svelte does not know that `Product` is a type and keeps a plain import of it, and the build stops with `No matching export`.
 - Only runes: `export let`, `$:`, `<svelte:options runes={false} />` and the slots of Svelte 4 (`<slot>`, `slot="…"` right inside a component's tag, `let:`, `<svelte:fragment>`) are errors; take props with `$props()` and markup with snippets.
 - Modules with runes, `counter.svelte.ts` or `state.svelte.js`, are compiled by Svelte too: import them like any module. In an island they run in the browser. In `src/pages/` they are code to import, not files of the site.
 - A page is rendered on the server: `$state(x)` is just `x`, `$derived(…)` is computed once, `$effect` never runs. The page is static.
-- These modules of Svelte come with Shugo, so a project does not install `svelte`: `svelte`, `svelte/store`, `svelte/reactivity`, `svelte/reactivity/window`, `svelte/easing`, `svelte/transition`, `svelte/animate`, `svelte/motion`, `svelte/events`, `svelte/attachments`, `svelte/server`. Any other, such as `svelte/legacy`, is an error.
+- A page may import these modules of Svelte: `svelte`, `svelte/store`, `svelte/reactivity`, `svelte/reactivity/window`, `svelte/easing`, `svelte/transition`, `svelte/animate`, `svelte/motion`, `svelte/events`, `svelte/attachments`, `svelte/server`. Any other, such as `svelte/legacy`, is an error.
 
 ## Text and attributes
 
@@ -437,7 +438,7 @@ A component named `*.island.svelte` is an island: the page shows its HTML, and i
 <Catalog request:initial={products} action="/catalog" />
 ```
 
-- Nothing is installed for islands: Shugo brings Svelte for the browser too. An island is written with runes, as every template is. It is code for the browser: it may `await` in functions and at the top of the modules only islands import, and a Svelte component from a package works in it.
+- Nothing else is installed for islands: the Svelte of the package shugo runs in the browser too. An island is written with runes, as every template is. It is code for the browser: it may `await` in functions and at the top of the modules only islands import, and a Svelte component from a package works in it.
 - Props are JSON data: no functions, no snippets, nothing inside the tag.
 - An island may import regular components, such as `ProductCard.svelte`, when they take data through props and use Svelte alone: no `query`, no `page`.
 - `search("table", { … })` describes a search of a table of the data database; Shugo builds and names its index. `text` are the columns of the full-text search by `q`; `filters` take `multi` (`category=cups&category=plates`), `range` (`price_from`, `price_to`) and `boolean` (`available=1`); `sorts` and `defaultSort` name the orders for `sort`; `where` fixes a part of the table: `{ published: true }`. The result has `hits`, `total`, `facets`, `query`, the fields of pages and `endpoint`.

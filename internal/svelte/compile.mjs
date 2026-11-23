@@ -15,17 +15,20 @@
 //                                   request: the program Go builds its HTML
 //                                   by, see island-program.mjs
 //
-// The compiler is the one Shugo ships, vendor/compiler-<version>.cjs, and so
-// is acorn, the parser of JavaScript it uses: a project does not install
-// Svelte. They are given as paths and the version after the code.
+// The compiler is that of the package svelte, which the package shugo
+// depends on, and so is acorn, the parser of JavaScript Svelte uses. The
+// folder of the package and the version Shugo is made for come after the
+// code.
 
 import { createRequire } from 'node:module';
+import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 
-const [compilerFile, acornFile, version] = process.argv.slice(-3);
-const svelte = createRequire(compilerFile)(compilerFile);
-if (svelte.VERSION !== version) throw new Error(`Shugo ships Svelte ${version}, and the compiler it started is ${svelte.VERSION}`);
-const acorn = createRequire(acornFile)(acornFile);
+const [svelteFolder, version] = process.argv.slice(-2);
+const fromSvelte = createRequire(join(svelteFolder, 'package.json'));
+const svelte = fromSvelte('./compiler/index.js');
+if (svelte.VERSION !== version) throw new Error(`Shugo is made for Svelte ${version}, and the compiler of ${svelteFolder} is ${svelte.VERSION}`);
+const acorn = fromSvelte('acorn');
 const parseGenerated = (code) => acorn.parse(code, { ecmaVersion: 'latest', sourceType: 'module', locations: true });
 
 

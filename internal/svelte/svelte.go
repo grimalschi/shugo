@@ -1,21 +1,22 @@
-// Package svelte is the Svelte that Shugo ships: its compiler, which turns
-// the templates of a project into code for a server and the islands into
-// code for the browser too, and its runtimes, for the server and for the
-// browser. All are of one version, vendor/README.md tells where they come
-// from, so a project does not install Svelte.
+// Package svelte runs Svelte for Shugo: its compiler, which turns the
+// templates of a project into code for a server and the islands into code
+// for the browser too, and its runtimes, which the bundler takes from the
+// package. Svelte is a dependency of the package shugo, of the one version
+// Shugo is made for; the command of that package tells the program where it
+// is. Nothing of Svelte is a part of the program.
 package svelte
 
 import (
 	"bytes"
-	"embed"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -23,14 +24,11 @@ import (
 	"github.com/evanw/esbuild/pkg/api"
 )
 
-// Version is the version of Svelte that Shugo ships.
+// Version is the version of Svelte that Shugo is made for: the package
+// shugo depends on this one, and Shugo takes no other. Its server code and
+// the comments of hydration are what the blocks of Shugo and the programs
+// of islands are made of.
 const Version = "5.59.1"
-
-//go:embed vendor/compiler-5.59.1.cjs
-var compilerBundle []byte
-
-//go:embed vendor/acorn.cjs
-var acornBundle []byte
 
 //go:embed compile.mjs
 var compilerScript string
@@ -38,8 +36,65 @@ var compilerScript string
 //go:embed island-program.mjs
 var islandProgram string
 
-//go:embed vendor/runtime/*.js vendor/runtime-browser/*.js
-var runtime embed.FS
+// Package is the package svelte that Shugo runs.
+type Package struct {
+	// Dir is the folder of the package, inside a folder node_modules.
+	Dir string
+}
+
+// Find finds the package svelte: where the command of the package shugo
+// says it is, in SHUGO_SVELTE, or else in node_modules of the folder of the
+// project or of one around it, as the repository of Shugo has it for its
+// examples. It must be of Version.
+func Find(root string) (*Package, error) {
+	dir := os.Getenv("SHUGO_SVELTE")
+	if dir == "" {
+		dir = Installed(root, "svelte")
+	}
+	if dir == "" {
+		return nil, errors.New("Svelte is not installed: Shugo takes it from the package shugo, which depends on it; install shugo: bun add shugo")
+	}
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, err
+	}
+	if filepath.Base(dir) != "svelte" || filepath.Base(filepath.Dir(dir)) != "node_modules" {
+		return nil, fmt.Errorf("%s is not a package svelte in node_modules", dir)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "package.json"))
+	if err != nil {
+		return nil, fmt.Errorf("the package svelte at %s: %w", dir, err)
+	}
+	var manifest struct{ Version string }
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return nil, fmt.Errorf("the package svelte at %s: %w", dir, err)
+	}
+	if manifest.Version != Version {
+		return nil, fmt.Errorf("the package svelte at %s is of version %s, and Shugo is made for Svelte %s: install shugo again, bun add shugo, and nothing else of Svelte", dir, manifest.Version, Version)
+	}
+	return &Package{Dir: dir}, nil
+}
+
+// Installed returns the folder of a package of npm in node_modules of a
+// folder or of one around it, where the runtime of JavaScript would look for
+// it; nothing when there is none.
+func Installed(dir, name string) string {
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		return ""
+	}
+	for {
+		folder := filepath.Join(dir, "node_modules", filepath.FromSlash(name))
+		if info, err := os.Stat(folder); err == nil && info.IsDir() {
+			return folder
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
+}
 
 // Template is a template compiled for a server.
 type Template struct {
@@ -110,24 +165,14 @@ type Compiler struct {
 	failed   error
 }
 
-// Start starts the compiler with the JavaScript runtime given, "bun" or
-// "node", in the folder dir.
-func Start(runtime, dir string) (*Compiler, error) {
-	compiler, err := temporary("shugo-svelte-*.cjs", compilerBundle)
-	if err != nil {
-		return nil, err
-	}
-	defer os.Remove(compiler)
-	acorn, err := temporary("shugo-acorn-*.cjs", acornBundle)
-	if err != nil {
-		return nil, err
-	}
-	defer os.Remove(acorn)
-
-	cmd := exec.Command(runtime, "--input-type=module", "--eval", islandProgram+"\n"+compilerScript, compiler, acorn, Version)
+// Start starts the compiler of the package with the JavaScript runtime
+// given, "bun" or "node", in the folder dir.
+func (p *Package) Start(runtime, dir string) (*Compiler, error) {
+	cmd := exec.Command(runtime, "--input-type=module", "--eval", islandProgram+"\n"+compilerScript, p.Dir, Version)
 	cmd.Dir = dir
 	c := &Compiler{cmd: cmd}
 	cmd.Stderr = &c.stderr
+	var err error
 	if c.stdin, err = cmd.StdinPipe(); err != nil {
 		return nil, err
 	}
@@ -145,8 +190,7 @@ func Start(runtime, dir string) (*Compiler, error) {
 	c.request.SetEscapeHTML(false)
 	c.response = json.NewDecoder(stdout)
 
-	// The compiler is loaded before the first answer, so the copy of it can
-	// go while it works.
+	// The compiler says it is ready once it is loaded.
 	var startup struct{ Ready bool }
 	if err := c.response.Decode(&startup); err != nil {
 		return nil, c.fail(err)
@@ -155,26 +199,6 @@ func Start(runtime, dir string) (*Compiler, error) {
 		return nil, c.fail(errors.New("it did not say it is ready"))
 	}
 	return c, nil
-}
-
-// temporary writes data into a new file of the folder of temporary files
-// and returns its absolute path: createRequire needs one, even when TMPDIR
-// is relative.
-func temporary(pattern string, data []byte) (string, error) {
-	folder, err := filepath.Abs(os.TempDir())
-	if err != nil {
-		return "", err
-	}
-	file, err := os.CreateTemp(folder, pattern)
-	if err != nil {
-		return "", err
-	}
-	_, writeErr := file.Write(data)
-	if err := errors.Join(writeErr, file.Close()); err != nil {
-		os.Remove(file.Name())
-		return "", err
-	}
-	return file.Name(), nil
 }
 
 // Compile compiles one template. path is how messages name the file. The
@@ -290,11 +314,11 @@ type Pool struct {
 	free chan *Compiler
 }
 
-// StartPool starts n compilers, as Start does.
-func StartPool(runtime, dir string, n int) (*Pool, error) {
+// StartPool starts n compilers of the package, as Start does.
+func (pkg *Package) StartPool(runtime, dir string, n int) (*Pool, error) {
 	p := &Pool{free: make(chan *Compiler, max(n, 1))}
 	for range cap(p.free) {
-		c, err := Start(runtime, dir)
+		c, err := pkg.Start(runtime, dir)
 		if err != nil {
 			p.Close()
 			return nil, err
@@ -344,64 +368,64 @@ func (p *Pool) Close() {
 	}
 }
 
-// Runtime has the bundler take the modules of Svelte that a page imports,
-// svelte, svelte/internal/server, svelte/store and the others, from the
-// server runtime Shugo ships. A module of Svelte that a server has no use
-// for is an error.
-func Runtime(build api.PluginBuild) {
-	runtimeOf(build, "runtime", "a page is computed with the server runtime")
-}
-
-// BrowserRuntime has the bundler take the modules of Svelte that an island
-// imports in the browser from the browser runtime Shugo ships.
-func BrowserRuntime(build api.PluginBuild) {
-	runtimeOf(build, "runtime-browser", "an island runs in the browser with the browser runtime")
-}
-
-// runtimeOf resolves the modules of Svelte to the files of a runtime under
-// vendor/.
-func runtimeOf(build api.PluginBuild, folder, which string) {
-	build.OnResolve(api.OnResolveOptions{Filter: `^svelte(/|$)`}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
-		name := "svelte.js"
-		if rest, sub := strings.CutPrefix(args.Path, "svelte/"); sub {
-			name = strings.ReplaceAll(rest, "/", "-") + ".js"
-		}
-		if _, err := runtime.Open("vendor/" + folder + "/" + name); err != nil {
-			return api.OnResolveResult{}, fmt.Errorf("%s of Svelte %s that Shugo ships, and %s is not a part of it: it has %s", which, Version, args.Path, strings.Join(modules(folder), ", "))
-		}
-		return api.OnResolveResult{Path: name, Namespace: "svelte"}, nil
-	})
-	build.OnResolve(api.OnResolveOptions{Filter: `^\./`, Namespace: "svelte"}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
-		return api.OnResolveResult{Path: path.Join(path.Dir(args.Importer), args.Path), Namespace: "svelte"}, nil
-	})
-	build.OnLoad(api.OnLoadOptions{Filter: `.*`, Namespace: "svelte"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
-		data, err := runtime.ReadFile("vendor/" + folder + "/" + args.Path)
-		if err != nil {
-			return api.OnLoadResult{}, err
-		}
-		contents := string(data)
-		return api.OnLoadResult{Contents: &contents, Loader: api.LoaderJS}, nil
-	})
-}
+// The modules of Svelte that the code a page is computed with may import,
+// and those an island may import in the browser, with the internal modules
+// that the code Svelte compiled imports.
+var (
+	serverModules = []string{
+		"svelte", "svelte/internal/server", "svelte/server", "svelte/store", "svelte/reactivity",
+		"svelte/reactivity/window", "svelte/easing", "svelte/transition", "svelte/animate", "svelte/motion",
+		"svelte/events", "svelte/attachments",
+	}
+	browserModules = []string{
+		"svelte", "svelte/internal/client", "svelte/internal/init-operations", "svelte/store", "svelte/reactivity",
+		"svelte/reactivity/window", "svelte/easing", "svelte/transition", "svelte/animate", "svelte/motion",
+		"svelte/events", "svelte/attachments",
+	}
+)
 
 // Modules lists the modules of Svelte that a page may import.
 func Modules() []string {
-	return modules("runtime")
+	return slices.Clone(serverModules)
 }
 
-// modules lists the modules of Svelte in a runtime under vendor/.
-func modules(folder string) []string {
-	entries, _ := runtime.ReadDir("vendor/" + folder)
-	var out []string
-	for _, entry := range entries {
-		name := strings.TrimSuffix(entry.Name(), ".js")
-		switch {
-		case strings.HasPrefix(name, "chunk-"):
-		case name == "svelte":
-			out = append(out, "svelte")
-		default:
-			out = append(out, "svelte/"+strings.ReplaceAll(name, "-", "/"))
-		}
+// Resolving marks a resolution that a plugin of Shugo asks the bundler for,
+// to find a file as the bundler itself would: every plugin of Shugo leaves
+// it to the bundler, and none asks again.
+type Resolving struct{}
+
+// Runtime has the bundler take the modules of Svelte from the package,
+// whatever node_modules of the project holds: those a page may import on a
+// server, or, for the browser, those an island may import there. Another
+// module of Svelte is an error. Svelte imports itself by its name too; what
+// it imports is not looked at.
+func (p *Package) Runtime(build api.PluginBuild, browser bool) {
+	modules, which := serverModules, "a page is computed on a server"
+	if browser {
+		modules, which = browserModules, "an island runs in the browser"
 	}
-	return out
+	from := filepath.Dir(filepath.Dir(p.Dir)) // the folder whose node_modules holds the package
+	inside := p.Dir + string(filepath.Separator)
+	build.OnResolve(api.OnResolveOptions{Filter: `^svelte(/|$)`}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
+		if _, again := args.PluginData.(Resolving); again {
+			return api.OnResolveResult{}, nil
+		}
+		if !strings.HasPrefix(args.Importer, inside) && !slices.Contains(modules, args.Path) {
+			return api.OnResolveResult{}, fmt.Errorf("%s with Svelte %s, and %s is not among the modules it takes: %s", which, Version, args.Path, strings.Join(modules, ", "))
+		}
+		found := build.Resolve(args.Path, api.ResolveOptions{ResolveDir: from, Kind: args.Kind, PluginData: Resolving{}})
+		if len(found.Errors) > 0 {
+			return api.OnResolveResult{Errors: found.Errors}, nil
+		}
+		sideEffects := api.SideEffectsFalse
+		if found.SideEffects {
+			sideEffects = api.SideEffectsTrue
+		}
+		return api.OnResolveResult{Path: found.Path, Namespace: found.Namespace, External: found.External, SideEffects: sideEffects, Suffix: found.Suffix}, nil
+	})
+}
+
+// Contains tells whether a file is a part of the package.
+func (p *Package) Contains(path string) bool {
+	return strings.HasPrefix(path, p.Dir+string(filepath.Separator))
 }

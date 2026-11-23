@@ -19,8 +19,8 @@ import (
 
 // The packages of npm that the code of the site imports are installed by
 // the package manager of the project into node_modules and bundled with
-// that code: Svelte in them is the one Shugo has inside, as in the code of
-// the site, and every file of theirs that goes into the bundle is a source
+// that code: Svelte in them is the one the package shugo brings, as in the
+// code of the site, and every file of theirs that goes into the bundle is a source
 // of the build.
 
 // bareImport finds an import of a package: a name, not a path, and not a
@@ -36,25 +36,21 @@ func (b *builder) checkPackages(build api.PluginBuild, pages bool) {
 	})
 }
 
-// resolvingPackage marks the resolution that a check of a package asks the
-// bundler for, so that the check does not ask again.
-type resolvingPackage struct{}
-
 // checkPackage tells of an import of a package that is not installed, of
 // one that gives components of Svelte to pages, and of one that needs
-// another version of Svelte than Shugo has inside. nil lets the bundler
+// another version of Svelte than Shugo is made for. nil lets the bundler
 // resolve the import as it does.
 func (b *builder) checkPackage(build api.PluginBuild, args api.OnResolveArgs, pages bool) error {
-	if _, again := args.PluginData.(resolvingPackage); again {
+	if _, again := args.PluginData.(svelte.Resolving); again {
 		return nil
 	}
 	name := packageName(args.Path)
 	found := build.Resolve(args.Path, api.ResolveOptions{
 		Importer: args.Importer, ResolveDir: args.ResolveDir, Kind: args.Kind,
-		Namespace: args.Namespace, PluginData: resolvingPackage{},
+		Namespace: args.Namespace, PluginData: svelte.Resolving{},
 	})
 	if len(found.Errors) > 0 {
-		folder := installed(args.ResolveDir, name)
+		folder := svelte.Installed(args.ResolveDir, name)
 		if folder == "" {
 			return fmt.Errorf("%s is not installed: %s", name, b.install(name))
 		}
@@ -80,23 +76,6 @@ func packageName(specifier string) string {
 		return parts[0] + "/" + parts[1]
 	}
 	return parts[0]
-}
-
-// installed returns the folder of a package in node_modules of a folder or
-// of one around it, where the runtime of JavaScript would look for it;
-// nothing when it is not there.
-func installed(dir, name string) string {
-	for {
-		folder := filepath.Join(dir, "node_modules", filepath.FromSlash(name))
-		if info, err := os.Stat(folder); err == nil && info.IsDir() {
-			return folder
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return ""
-		}
-		dir = parent
-	}
 }
 
 // install tells how the package manager of the project adds a package: the
@@ -156,7 +135,7 @@ func (pkg *npmPackage) problem(name string, pages, component bool) error {
 		return fmt.Errorf("%s gives components of Svelte, and Shugo does not compile the components of packages yet: copy the component into src/components/ and import it from there", name)
 	}
 	if pkg.svelte != "" {
-		return fmt.Errorf("%s needs Svelte %s, and Shugo has Svelte %s inside: take a version of %s made for Svelte %s", name, pkg.svelte, svelte.Version, name, strings.SplitN(svelte.Version, ".", 2)[0])
+		return fmt.Errorf("%s needs Svelte %s, and Shugo is made for Svelte %s: take a version of %s made for Svelte %s", name, pkg.svelte, svelte.Version, name, strings.SplitN(svelte.Version, ".", 2)[0])
 	}
 	return nil
 }

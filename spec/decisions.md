@@ -2,7 +2,7 @@
 
 Here is written what is decided without direct confirmation of the author of the project: where the answer was “don’t know”, “decision” or question before. Every decision has a reason. After approval, the decision is transferred to the “Decision” section of its document, after refusal redone. The numbers don’t change so that the links don’t break; every decision above tells you what happened to it.
 
-Decisions 1–27 taken during the assembly of the first version, 28–35 when switching to syntax Svelte 21 November 2026 years, 36–38 — 22 November 2026 The year when the shell appeared `src/site.html` Files are not HTML, 39 When there is only one search, 40–48 — the same time when the templates began to compile and render themselves Svelte, 49–53 — then, according to the author's answers to questions about documents, 54–55 then, according to the answers about the packages npm and the waiting, 56 — 23 November 2026 The year when Shugo the Slippery Pack npm.
+Decisions 1–27 taken during the assembly of the first version, 28–35 when switching to syntax Svelte 21 November 2026 years, 36–38 — 22 November 2026 The year when the shell appeared `src/site.html` Files are not HTML, 39 When there is only one search, 40–48 — the same time when the templates began to compile and render themselves Svelte, 49–53 — then, according to the author's answers to questions about documents, 54–55 then, according to the answers about the packages npm and the waiting, 56–57 — 23 November 2026 The year when Shugo the Slippery Pack npm, and Svelte his dependence.
 
 ## 1. Data loading and expression are counted together, Go compares the result
 
@@ -174,7 +174,7 @@ Reset Chain`+page@.svelte` the City of London SvelteKit) postponed. Resolved 22 
 
 ## 19. Commands
 
-**Waiting for approval.** The author asked how `dev` differs from other commands, the answer is in [Command Line](cli.md#how-teams-are-different).
+**Waiting for approval.** The author asked how `dev` differs from other commands, the answer is in [Command Line](cli.md#command-behavior).
 
 | Command | What does |
 | --- | --- |
@@ -276,7 +276,7 @@ Export follows the previous one: in the folder, it leaves a list of which storag
 - Svelte version update new benchmarks and correction of discrepancies.
 - Derogations: hydration labels are not written, style class is placed on all elements ([32](#32-style-class-on-all-component-elements)), `<svelte:head>` - only in the page and layout ([30](#30-sveltehead-and-title)), there are no availability warnings, runes are not checked. Derogations are listed in [Templates](templates.md#how-shugo-differs-from-svelte).
 
-*C 22 November 2026 the Year Templates Compiles and Renders Himself Svelte 5.59.1, sewn into Shugo (author's decision): page coincides with the conclusion Svelte Building and updating Svelte - means to replace the sewn compiler and server part and run tests ([40](#40-server-part-of-svelte-is-sewn-into-shugo)). There are three differences: comments of hydration are cut ([44](#44-comments-of-hydration-are-cut-by-sight)The layout context does not reach the page ([42](#42-shared-components-do-not-use-context-or-propsid)), warnings about what is changing in the browser, pages do not have ([34](#34-checks-svelte)).*
+*C 22 November 2026 the Year Templates Compiles and Renders Himself Svelte 5.59.1, sewn into Shugo (author's decision): page coincides with the conclusion Svelte Building and updating Svelte - means to replace the sewn compiler and server part and run tests ([40](#40-server-part-of-svelte-is-sewn-into-shugo)); c 23 November — change the version of the package dependence `shugo` ([57](#57-svelte-svelte-check-and-typescript--package-dependencies-shugo-how-to-make)). There are three differences: comments of hydration are cut ([44](#44-comments-of-hydration-are-cut-by-sight)The layout context does not reach the page ([42](#42-shared-components-do-not-use-context-or-propsid)), warnings about what is changing in the browser, pages do not have ([34](#34-checks-svelte)).*
 
 **Why so strict.** The template should be transferred to Svelte And then there will be islands. Svelte. If only Shugo Repetitive Svelte "about", the agent could not count on any of the rules: gaps at the edges of the blocks, `false` in the text, `class` from the array.
 
@@ -382,7 +382,9 @@ The *As it was before this day:* parsing errors were Svelte, and the rest was re
 
 ## 40. Server part of Svelte is sewn into Shugo
 
-**Approved by the author of the project 22 November 2026 years:** “Svelt built-in version”, and the browser part too. Details below — how it is done.
+**Approved by the author of the project 22 November 2026 years:** “Svelt built-in version”, and the browser part too. Details below — as it was done.
+
+**Changed by the decision of the author of the project 23 November 2026 year:** is not embroidered in `shugo`; Svelte is one version of the `shugo` package dependency, through which Shugo is put into the project ([57](#57-svelte-svelte-check-and-typescript--package-dependencies-shugo-how-to-make)). A copy of Svelte in `internal/svelte/vendor/` has been deleted.
 
 Compiler Svelte 5.59.1 was sewn into Shugo and before. Now its server part is also nearby: modules `svelte`, `svelte/internal/server`, `svelte/server`, `svelte/store`, `svelte/reactivity`, `svelte/reactivity/window`, `svelte/easing`, `svelte/transition`, `svelte/animate`, `svelte/motion`, `svelte/events`, `svelte/attachments`. Each - one file, the common code - in the common pieces, 265 KB. They collect esbuild from package npm the same version of the script `internal/svelte/vendor/make.go`for the server and without code, which works only during development. The server part is sewn into `_build/eval.mjs`. Importing another module Sveltefor example `svelte/legacy`Error with the list of those that are available.
 
@@ -454,7 +456,7 @@ The only difference from Svelte is that the layout context does not reach the pa
 
 ## 49. Islands only on runes
 
-**Waiting for approval.** Islands compiles sewn Svelte with `runes: true` as templates: `export let`, `$:` and `<svelte:options runes={false} />` in the island — errors. Previously, the island compiled the package of `svelte` project, and Svelte decided on file, on ru.
+**Waiting for approval.** Islands compile the same Svelte with `runes: true` as templates: `export let`, `$:` and `<svelte:options runes={false} />` in the island — errors. Previously, the island compiled the `svelte` package of the project, and Svelte solved by file, on the ru.
 
 **Why not.** One entry for all `.svelte` files is less error for the agent. A normal component that stands in both the page and the island, otherwise it would compile in them differently.
 
@@ -476,7 +478,7 @@ The only difference from Svelte is that the layout context does not reach the pa
 
 **Why not.** The build package code does not compile, and such a component fell when calculating: on Bun - page, on Node - the whole process, without a hint.
 
-*22 November 2026 year verification moved to where the assembler allows the import of the package: component is the path it found, on `.svelte`, or the package whose `package.json` names components. In the islands, the components of the packages work: the island is compiled entirely by the sewn Svelte.*
+*22 November 2026 year verification moved to where the assembler allows the import of the package: component is the path it found, on `.svelte`, or the package whose `package.json` names components. In the islands, the components of the packages work: the island compiles the same Svelte.*
 
 ## 53. Files of the package manager — source of the project
 
@@ -498,7 +500,7 @@ The only difference from Svelte is that the layout context does not reach the pa
 
 - Importing a package first allows the assembler to itself, in the same way as it will then collect, and checks the package for its `package.json`. The error occurs at the point of import, including import from another package.
 - Package is not in any `node_modules` around the file — error with the installation command. The command is on the project lock file: `bun.lock` — `bun add`, `package-lock.json` — `npm install`, `pnpm-lock.yaml` — `pnpm add`, `yarn.lock` — `yarn add`without it, in the form of an early time that calculates pages.
-- Svelte versions, which the package calls in `peerDependencies` or `dependencies`, are checked against the `github.com/Masterminds/semver` sewn library: it understands the npm ranges. A record that does not range, such as `workspace:*`, says nothing.
+- Versions SvelteWhat the package calls `peerDependencies` or `dependencies`Checked by Library Go `github.com/Masterminds/semver`She understands the ranges npm. A record that is not a range, for example `workspace:*`He doesn't talk about anything.
 - The package written for CommonJS, the framework library gives `require`, `__filename` and `__dirname` assembly through `globalThis`: it is performed first, before the site code. Their ads of these names in the modules do not face them.
 - An error while the site code is loaded goes to Go just like a page error: it is caught by the `uncaughtException` handler, and Bun, and Node calls it for an error at the top of the module. Previously, the process was just completed, and Go wrote that it ended before the site is computed.
 - The error `ENOENT`, whose innermost place is in the package, gets a hint: the package reads the file next to its code, and the code is now in `_build/`.
@@ -515,9 +517,23 @@ The only difference from Svelte is that the layout context does not reach the pa
 - It is arranged like esbuild: the `shugo` package gives a command, and the ready program under the system lies in the `@shugo/<system>-<cPU>` package - an optional dependence with the `os` and `cpu` fields. System six: Linux, macOS and Windows, each on x64 and arm64. The program is assembled without cgo, so all six are assembled on the same machine, about one and a half minutes; each weighs 17–18 MB, in the archive - about 7 MB. There are no installation scripts: Bun defaults and does not run them.
 - The package command is `bin/shugo.js` on Node or Bun: it finds the system program and runs it with the same arguments, and ends up just like the program. Without the system package, it says what to put.
 - The `shugo` module types are `index.d.ts` packages. The `TestTypesOfTheModuleShugo` test checks them against what the `shugo` module exports.
-- Svelte types are from the same version of the `svelte` package as the program: the `shugo` package puts it dependent. Assembly does not take it.
+- Svelte types are from the same version of the `svelte` package as the program: the `shugo` package puts it dependent. It does not take assembly. *With 23 November 2026 year assembly takes Svelte from it, and in the program Svelte is not ([57](#57-svelte-svelte-check-and-typescript--package-dependencies-shugo-how-to-make)).*
 - `tsconfig.json` package settings with which Shugo collects: `moduleResolution: "bundler"`, `verbatimModuleSyntax`, `allowImportingTsExtensions`, strict verification, `@/` is `src/`. He writes the project paths through `${configDir}`, so `tsconfig.json` project is one line of `{ "extends": "shugo/tsconfig.json" }`; so can TypeScript with the version of 5.5. `ambient.d.ts` connects Svelte types with runes: `.svelte.ts` modules know `$state`.
 - The version is put `npm/make.go`: in the package `shugo` it is written as `0.0.0` - and his own, and packages for the system.
-- Each package under the system are the license Svelte and information about the code from which it is made: the program carries Svelte inside. The license of the packages themselves is still `UNLICENSED`.
+- Packages license while `UNLICENSED`. *Until 23 November 2026 year in each package under the system lay and license Svelte: the program carried Svelte inside.*
 
 **Why not.** So make the tools on Go and Rust, which are put from npm, - esbuild, Biome, Turborepo: the package manager himself chooses the program for the machine, and nothing is downloaded past it. 23 checked November 2026 on Linux: `bun add` put a command, the program of this system and Svelte, `bunx shugo build` put together a site, and TypeScript 5.9 and 7.0 and `svelte-check` found no other errors.
+
+## 57. Svelte, `svelte-check` and TypeScript — package dependencies `shugo`: how to make
+
+**Waiting for approval.** The author of the project decided that Svelte, `svelte-check` and TypeScript are simply dependencies of the `shugo` package and nothing is embroidered in the program. Details:
+
+- Versions are accurate: Svelte 5.59.1 The one that was made Shugo (`Version` the City of London `internal/svelte/svelte.go`), `svelte-check` 4.7.8 and TypeScript 5.9.3: `svelte-check` 4 works with TypeScript 5 and 6but not with 7who no longer JavaScript.
+- Where Svelte and `svelte-check` lie, the program is told by the `shugo` package command: it finds them as its dependencies and transfers them to `SHUGO_SVELTE` and `SHUGO_SVELTE_CHECK`. So they are at `pnpm`, and when the layout of Bun, where the packages are not nearby. Without these variables, the program searches for them in `node_modules` project and folders around — so work repository examples. Svelte is another version — an error indicating what to put.
+- The compiler and acorn are downloaded from the `svelte` package as is. Server and browser parts of the assembler takes from the same package with the condition `production`; import `svelte` and `svelte/…` in the project code and in packages leads there, not in `node_modules` project. The list of modules that can be imported is checked only with the project code and packages: Svelte sources import Svelte by name.
+- To find the file, import checker itself asks the assembler to allow the path; such a request all Shugo extensions omit (`svelte.Resolving`), otherwise the substitution of `svelte/internal/server` would refer to itself.
+- `shugo check` runs `svelte-check` project runtime with `--tsconfig ./tsconfig.json`; errors are its text, 1 output code.
+- Development of Shugo: `package.json` repository with the same versions, `bun install` before tests. Tests indicate Svelte and `svelte-check` from `node_modules` repository through the same variables.
+- Build revision — 7: a project assembled by the insewable Svelte is reassembled once.
+
+**Why not.** One copy Svelte for the project - the same for assembly, editor and type checking - and there is no other code in the program. The package manager in the project is always: through it is put herself Shugo. Verified 23 November 2026 Year: Shop Pages 10,000 goods matched byte per byte with those that were given by the program with stitched Svelte, all 10,452; first assembly of the store on 100,000 goods, the same 15 s; Linux program - 16.7 MB instead of 18.5. `bun add shugo` the Archives Svelte, `svelte-check` and TypeScript, `bunx shugo build` I have a website, and `bunx shugo check` Found a fake error and comes out with a code 1.

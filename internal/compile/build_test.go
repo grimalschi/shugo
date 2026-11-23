@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/grimalschi/shugo/internal/project"
+	"github.com/grimalschi/shugo/internal/svelte"
 )
 
 // copyTree copies a project into a temporary folder, so that a test never
@@ -87,10 +88,6 @@ func TestBuildCompilerUsesProjectRuntimeDirectory(t *testing.T) {
 	}
 	p.Config.Runtime = "./runtime"
 	t.Chdir(t.TempDir())
-	if err := os.Mkdir("relative-temp", 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("TMPDIR", "relative-temp")
 	if _, err := Build(p); err != nil {
 		t.Fatal(err)
 	}
@@ -99,10 +96,6 @@ func TestBuildCompilerUsesProjectRuntimeDirectory(t *testing.T) {
 	}
 	if _, err := Build(p); err == nil || !strings.Contains(err.Error(), "it did not say it is ready") {
 		t.Fatalf("expected a compiler startup error, got %v", err)
-	}
-	files, err := os.ReadDir("relative-temp")
-	if err != nil || len(files) != 0 {
-		t.Fatalf("the compiler leaked its extracted copy: %v, %v", files, err)
 	}
 }
 
@@ -224,7 +217,11 @@ func TestManifestHashesParsedTemplate(t *testing.T) {
 	const name = "src/pages/index.svelte"
 	const parsed = "<p>before</p>"
 	p := templateProject(t, map[string]string{name: parsed})
-	b := &builder{project: p, paths: []string{name}, ids: map[string]int{name: 0}}
+	found, err := svelte.Find(p.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := &builder{project: p, paths: []string{name}, ids: map[string]int{name: 0}, sveltePackage: found}
 	if err := b.compile(); err != nil {
 		t.Fatal(err)
 	}
