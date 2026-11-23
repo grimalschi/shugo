@@ -87,28 +87,31 @@ func TestPackageMistakes(t *testing.T) {
 	}
 }
 
-// The code that computes pages does not wait, at the top of <script module>
-// and of a module of the site either. An island is code for the browser.
-func TestCodeOfPagesDoesNotWait(t *testing.T) {
-	cases := []struct{ name, files, want string }{
-		{"<script module>", "-- src/pages/index.svelte --\n<script module>\nconst items = await Promise.resolve([1])\n</script>\n<p>{items.length}</p>", "src/pages/index.svelte:2:15: <script module> does not wait either"},
-		{"a module", "-- src/lib/posts.ts --\nexport const posts: string[] = await fetch(\"https://example.com\").then((r) => r.json())\n-- src/pages/index.svelte --\n<script>\nimport { posts } from \"@/lib/posts\"\n</script>\n<p>{posts.length}</p>", "src/lib/posts.ts:1:32: a module of the site does not wait at its top"},
-		{"a module with runes", "-- src/lib/count.svelte.js --\nexport const count = $state(await Promise.resolve(1))\n-- src/pages/index.svelte --\n<script>\nimport { count } from \"@/lib/count.svelte.js\"\n</script>\n<p>{count}</p>", "src/lib/count.svelte.js:1:29: a module of the site does not wait at its top"},
-		{"a module among the pages", "-- src/pages/feed.json.ts --\nconst items = await Promise.resolve([])\nexport function GET() { return JSON.stringify(items) }", "src/pages/feed.json.ts:1:15: a module of the site does not wait at its top"},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			_, err := newSite(t, c.files).tryBuild()
-			if err == nil {
-				t.Fatal("no error")
-			}
-			if !strings.Contains(err.Error(), c.want) {
-				t.Errorf("\n got: %v\nwant: %s", err, c.want)
-			}
-		})
-	}
-	// Waiting inside a function is not waiting at the top.
-	s := newSite(t, "-- src/lib/later.ts --\nexport async function later() { return await Promise.resolve(1) }\nexport const now = 2\n-- src/pages/index.svelte --\n<script>\nimport { now } from \"@/lib/later\"\n</script>\n<p>{now}</p>")
+// The code of the site may wait at the top of <script module> and of a
+// module: it waits once, when the code is loaded, before any page is
+// computed. In <script> and in markup a page does not wait: that is a
+// mistake of its own.
+func TestModulesWaitAtTheirTop(t *testing.T) {
+	s := newSite(t, `
+-- src/lib/words.ts --
+export const words: string[] = await Promise.resolve(["jug", "cup"])
+-- src/lib/count.svelte.js --
+const start = await Promise.resolve(2)
+export const counter = $state({ value: start })
+-- src/pages/index.svelte --
+<script module>
+	const title = await Promise.resolve("Shop")
+</script>
+<script>
+	import { words } from "@/lib/words"
+	import { counter } from "@/lib/count.svelte.js"
+</script>
+<h1>{title}</h1><p>{words.join(" ")} {counter.value}</p>
+-- src/pages/feed.json.ts --
+const items = await Promise.resolve(["a"])
+export function GET() { return JSON.stringify(items) }
+`)
 	s.build()
-	expect(t, s.page("/"), "<p>2</p>")
+	expect(t, s.page("/"), "<h1>Shop</h1><p>jug cup 2</p>")
+	expect(t, s.page("/feed.json"), `["a"]`)
 }

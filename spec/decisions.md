@@ -164,7 +164,7 @@ Reset Chain`+page@.svelte` the City of London SvelteKit) postponed. Resolved 22 
 
 ## 17. Strict analysis of markup
 
-**Replaced by 21 November 2026 year:** The label is as well defined as Svelte: Unclosed or confused tag - error with place; `<li>`, `<p>`, `<td>` and others who HTML allows you not to close, close themselves, with a warning; the element that the browser would rearrange is an error or, through the block, a warning; comments are removed, spaces are compressed by the rules Svelte. Details — in [Templates](templates.md#markup-and-gaps).
+**Replaced by 21 November 2026 year:** The label is as well defined as Svelte: Unclosed or confused tag - error with place; `<li>`, `<p>`, `<td>` and others who HTML allows you not to close, close themselves, with a warning; the element that the browser would rearrange is an error or, through the block, a warning; comments are removed, spaces are compressed by the rules Svelte. Details — in [Templates](templates.md#markup-and-whitespace).
 
 *With 22 November 2026 year markup parses and checks the Svelte itself. `<div><span>text</div>` is not an error for it, but a warning `element_implicitly_closed`: `</div>` closes and `<span>`. Error is a closing tag that has nothing to close, and the file is not closed.*
 
@@ -490,7 +490,9 @@ The only difference from Svelte is that the layout context does not reach the pa
 
 ## 54. Site modules are not waiting at the top level
 
-**Waiting for approval.** The author of the project decided to intentionally ban `await` at the top level of `<script module>` to see where the wait is needed and track the data past the database. The ban applies to all site modules that calculate pages: `src/lib/`, modules with runes `.svelte.ts` and `.svelte.js`, modules among the pages. `await` and `for await` at their top level is an assembly error in its place: Shugo asks esbuild to assemble a module for the environment without such an expectation, and he calls the place. You can wait inside the function. Islands and modules that import only islands are code for the browser: they can wait. The memo no longer advises to prepare at the top of the module what is waiting, for example, code highlighting.
+**Canceled by the author of the project 23 November 2026 year:** "let's return the use of await". Waiting at the top level of `<script module>` and site modules again works, checks are removed. Below - as it was.
+
+The author of the project decided to intentionally ban `await` at the top level of `<script module>` to see where the wait is needed and track the data past the database. The ban applies to all site modules that calculate pages: `src/lib/`, modules with runes `.svelte.ts` and `.svelte.js`, modules among the pages. `await` and `for await` at their top level is an assembly error in its place: Shugo asks esbuild to assemble a module for the environment without such an expectation, and he calls the place. You can wait inside the function. Islands and modules that import only islands are code for the browser: they can wait. The memo no longer advises to prepare at the top of the module what is waiting, for example, code highlighting.
 
 **Why not.** Without this prohibition in `<script module>` Transferring the waiting to `src/lib/`where he was advised to carry the memo, and the ban would not show anything.
 

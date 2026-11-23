@@ -126,12 +126,9 @@ function told(source, error) {
   return messages[error.code] ?? error.message;
 }
 
-// What Shugo says of await in the code that computes pages.
-const noWaiting = 'a page is computed without waiting: its data comes from query of the module shugo, which answers at once, so there is nothing to wait for';
-
 // What Shugo says in place of Svelte, for a mistake it explains better.
 const messages = {
-  experimental_async: noWaiting,
+  experimental_async: 'a page is computed without waiting: its data comes from query of the module shugo, which answers at once, so there is nothing to wait for. What takes time and needs doing once, such as making a highlighter, can be awaited at the top of <script module> or of a module in src/lib/ and used here',
 };
 
 // The warnings of Svelte about what changes in a browser: a page of a
@@ -246,16 +243,7 @@ class Look {
           this.facts.id = true;
         }
       });
-      return;
     }
-    // <script module> runs when the file is loaded, and Svelte lets it
-    // wait there. Shugo does not: the code that computes pages does not
-    // wait anywhere.
-    let waits = null;
-    atTop(script.content, (node) => {
-      if (node.type === 'AwaitExpression' || (node.type === 'ForOfStatement' && node.await)) waits ??= node;
-    });
-    if (waits) this.error(waits.start, `<script module> does not wait either: ${noWaiting}`);
   }
 
   imports(node) {
@@ -381,21 +369,6 @@ function walk(node, visit) {
   if (typeof node.type === 'string') visit(node);
   for (const key in node) {
     if (key !== 'metadata' && key !== 'loc') walk(node[key], visit);
-  }
-}
-
-// atTop calls visit for every node of a tree of JavaScript that runs with
-// the code around it: what stands inside a function runs when it is called.
-function atTop(node, visit) {
-  if (node === null || typeof node !== 'object') return;
-  if (Array.isArray(node)) {
-    for (const item of node) atTop(item, visit);
-    return;
-  }
-  if (['FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression'].includes(node.type)) return;
-  if (typeof node.type === 'string') visit(node);
-  for (const key in node) {
-    if (key !== 'metadata' && key !== 'loc') atTop(node[key], visit);
   }
 }
 
